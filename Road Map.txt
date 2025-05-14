@@ -1,0 +1,186 @@
+🗂 Phase 1 – Project Setup & Data Pipeline
+[ ] 1. Environment & Repo
+    [ ] Create project folder and initialize a Git repository
+    [ ] Create and activate a Python virtual environment
+    [ ] Add a requirements.txt with core libs (pandas, numpy, yfinance, ta, scikit-learn, xgboost, PySimpleGUI)
+
+[ ] 2. Directory Structure
+    [ ] data/raw/ for downloaded CSVs
+    [ ] data/clean/ for preprocessed data
+    [ ] src/ for scripts/modules
+    [ ] notebooks/ for exploratory work
+    [ ] reports/ for outputs
+
+[ ] 3. Ticker Universe
+    [ ] Write script to fetch and save current S&P 500 ticker list
+
+[ ] 4. Ingestion Script
+    [ ] Implement download_data.py that, given a ticker list, pulls daily OHLCV via yfinance
+    [ ] Save each ticker’s raw CSV to data/raw/
+
+[ ] 5. Data Cleaning Module
+    [ ] Build clean_data.py to:
+        [ ] Handle missing dates/bars (forward/backfill)
+        [ ] Adjust for splits/dividends
+        [ ] Output cleaned files to data/clean/
+
+[ ] 6. Validation & Docs
+    [ ] Test ingestion + cleaning on 5 tickers (AAPL, MSFT, AMZN, GOOGL, TSLA)
+    [ ] Write README instructions for pipeline usage
+    [ ] Commit all Phase 1 code
+
+📊 Phase 2 – Rule-Based Backtester
+[ ] 1. Define Entry/Exit Rules
+    [ ] Entry: 5-day price momentum > X% (tweakable)
+    [ ] Stop-loss: 2× ATR below entry
+    [ ] Time-exit: sell after 5 days if not stopped out
+
+[ ] 2. Backtesting Engine
+    [ ] Create backtest.py that:
+        [ ] Loads cleaned data
+        [ ] Simulates scanning each day for entry signals
+        [ ] Tracks open positions, applies stops/time exits
+
+[ ] 3. Slippage & Costs
+    [ ] Add 0.05% per-trade slippage assumption
+    [ ] Confirm zero commissions
+
+[ ] 4. Risk Controls
+    [ ] Enforce 1% equity risk per trade (using ATR sizing)
+    [ ] Cap max 8 concurrent positions
+    [ ] Sector exposure ≤ 25% equity
+
+[ ] 5. Run & Evaluate
+    [ ] Backtest 2008–May 2025
+    [ ] Compute Sharpe, Sortino, max drawdown, CAGR, profit factor, win rate
+    [ ] Export trade log CSV to reports/
+
+[ ] 6. Documentation
+    [ ] Detail rules, parameters, and results in a markdown report
+    [ ] Commit Phase 2 code + results
+
+🤖 Phase 3 – Feature Engineering & Basic ML
+[ ] 1. Feature List
+    [ ] 5-day return, 10-day return
+    [ ] ATR(14), Bollinger Band width
+    [ ] EMA(12/26) crossover value
+    [ ] OBV, RSI(14)
+
+[ ] 2. Engineering Script
+    [ ] Build features.py to compute & merge features per ticker/day
+    [ ] Save feature matrix + future-return label to data/clean/features.parquet
+
+[ ] 3. Labeling
+    [ ] Define target = 1 if return over next 5 days > 0%; else 0
+
+[ ] 4. Train/Test Splits
+    [ ] Implement walk-forward splits (e.g. train on 2008–2015, test 2016; slide quarterly)
+
+[ ] 5. Model Training
+    [ ] Train XGBoost classifier on features
+    [ ] Use Optuna to tune basic hyperparameters
+
+[ ] 6. Evaluation
+    [ ] Track classification metrics (accuracy, precision/recall)
+    [ ] Compare ML-driven backtest vs rule-only backtest
+
+[ ] 7. Integration
+    [ ] Modify backtest.py to accept ML signals in place of rule entry
+    [ ] Re-run backtest; log results to reports/
+
+[ ] 8. Commit Phase 3 code & findings
+
+🔄 Phase 4 – Walk-Forward & Risk Enhancement
+[ ] 1. Automated Walk-Forward
+    [ ] Wrap backtest + train/test in quarterly loops
+
+[ ] 2. Advanced Risk Checks
+    [ ] Global max-drawdown < 10% abort flag
+    [ ] Pre-order correlation check (avoid > 0.6 corr pairs)
+
+[ ] 3. Performance Dashboard
+    [ ] Script to generate summary tables & equity-curve plots
+    [ ] Save plots in reports/
+
+[ ] 4. Code Refactoring
+    [ ] Modularize into clear packages (data/, features/, models/, backtest/, risk/)
+
+[ ] 5. Commit Phase 4 code & dashboard
+
+🖥️ Phase 5 – GUI & Reporting
+[ ] 1. Select GUI Framework
+    [ ] PySimpleGUI (or tkinter)
+
+[ ] 2. Wireframe Mockup
+    [ ] Design windows: signal list, P&L chart, logs, buttons
+
+[ ] 3. Implement UI
+    [ ] Build app.py that:
+        [ ] Loads latest signals & equity data
+        [ ] Displays in tables/plots
+        [ ] Triggers desktop alerts on new signals or drawdown > 5%
+
+[ ] 4. Reporting Automation
+    [ ] Add daily “Export Summary” button (CSV/PDF)
+    [ ] Schedule weekly/monthly report generators
+
+[ ] 5. Commit Phase 5 code & UI demo
+
+🚀 Phase 6 – Semi-Automated Execution (Alpaca)
+[ ] 1. Alpaca Setup
+    [ ] Create paper-trading account, obtain API keys
+
+[ ] 2. Execution Module
+    [ ] execute.py to:
+        [ ] Read signal CSV
+        [ ] Place market orders via Alpaca
+        [ ] Confirm fills and log to data/execution_log.csv
+
+[ ] 3. Risk Pre-Checks
+    [ ] Reject orders breaching size/sector limits
+
+[ ] 4. Integration into GUI
+    [ ] Add “Auto-Trade” toggle and status indicators
+
+[ ] 5. End-to-End Test
+    [ ] Simulate a full signal → order → fill cycle
+
+[ ] 6. Commit Phase 6 code & logs
+
+🔮 Phase 7 – Phase-2 Expansion: Fundamentals & Sentiment
+[ ] 1. Fundamental Data
+    [ ] Ingest P/E, earnings surprises from yfinance or free API
+
+[ ] 2. Sentiment Scores
+    [ ] Wire in NewsAPI (or similar) for simple sentiment per ticker/day
+
+[ ] 3. Feature Merge
+    [ ] Extend features.py to include these
+
+[ ] 4. Retrain & Evaluate
+    [ ] Re-run ML pipeline, compare lift in backtest metrics
+
+[ ] 5. Commit Phase 7 code & analysis
+
+📦 Phase 8 – Deployment & Maintenance
+[ ] 1. Dockerize
+    [ ] Write Dockerfile and docker-compose.yml
+
+[ ] 2. Scheduling
+    [ ] Set up cron (or Windows Task Scheduler) for daily data pulls & retrains
+
+[ ] 3. Backup & Logging
+    [ ] Automate backups of data/ folder
+    [ ] Centralize logs (rotate monthly)
+
+[ ] 4. User Guide
+    [ ] Finalize README with step-by-step usage and troubleshooting
+
+[ ] 5. Commit Phase 8 artifacts
+
+--- 
+✅ Future Pulses & Enhancements
+- Expand to custom ticker lists beyond S&P 500
+- Add short-selling capability
+- Explore advanced ML (LSTM, ensembles)
+- Migrate to cloud for scale
