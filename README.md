@@ -12,7 +12,7 @@ SwingTradeV1/
 │   ├── raw/           # Downloaded “as-is” CSVs from data provider
 │   └── clean/         # Post-processed CSVs, ready for analysis
 ├── src/
-│   ├── download_data.py   # Ingest raw price data for a list of tickers
+│   ├── download_data.py   # Download raw price data for a list of tickers
 │   └── clean_data.py      # Clean, fill, adjust, and save CSVs
 ├── tests/
 │   └── test_pipeline.py   # Integration tests for download + cleaning
@@ -67,14 +67,12 @@ SwingTradeV1/
 
 ---
 
-## 💾 Data Ingestion
+## 💾 Data Download
 
 Downloads raw CSVs into `data/raw/`.
 
 ```bash
-python src/download_data.py \
-  --tickers AAPL MSFT AMZN GOOGL \
-  --output-dir data/raw/
+python src/download_data.py   --tickers AAPL MSFT AMZN GOOGL   --output-dir data/raw/
 ```
 
 - `--tickers`  
@@ -89,9 +87,7 @@ python src/download_data.py \
 Processes every CSV in `data/raw/` and writes clean versions to `data/clean/`.
 
 ```bash
-python src/clean_data.py \
-  --input-dir data/raw/ \
-  --output-dir data/clean/
+python src/clean_data.py   --input-dir data/raw/   --output-dir data/clean/
 ```
 
 Cleans in three main steps:
@@ -110,7 +106,7 @@ Cleans in three main steps:
 
 ## ✅ Testing
 
-Run the integration tests (downloads + cleaning) on a small set of tickers:
+Run the integration tests (download + cleaning) on a small set of tickers:
 
 ```bash
 pytest
@@ -146,7 +142,7 @@ pip install -r requirements.txt
 
 ## 🛣️ Next Steps (Phase 1)
 
-- [x] Data ingestion (`download_data.py`)
+- [x] Data download (`download_data.py`)
 - [x] Data cleaning (`clean_data.py`)
 - [x] Validate on sample tickers (AAPL, MSFT, AMZN, GOOGL)
 - [x] Write README instructions
