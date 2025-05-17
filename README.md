@@ -1,6 +1,6 @@
 # SwingTradeV1
 
-A lightweight pipeline to download, clean, and validate historical stock data for algorithmic trading research.
+A lightweight pipeline to download, clean, backtest, and (soon) model historical stock data for algorithmic trading research.
 
 ---
 
@@ -10,12 +10,21 @@ A lightweight pipeline to download, clean, and validate historical stock data fo
 SwingTradeV1/
 ├── data/
 │   ├── raw/           # Downloaded “as-is” CSVs from data provider
-│   └── clean/         # Post-processed CSVs, ready for analysis
+│   ├── clean/         # Post-processed CSVs, ready for analysis
+│   └── tickers/       # Ticker lists and sector mappings
+├── reports/
+│   ├── trade_logs/           # Generated trade logs CSVs
+│   ├── performance_metrics/  # Backtest evaluation metrics & reports
+│   └── plots/                # Performance charts (PNG)
 ├── src/
-│   ├── download_data.py   # Download raw price data for a list of tickers
-│   └── clean_data.py      # Clean, fill, adjust, and save CSVs
+│   ├── download_data.py      # Ingest raw price data and write sector lookup
+│   ├── clean_data.py         # Clean, fill, adjust, and save CSVs
+│   ├── feature_engineering.py# Compute technical indicator features
+│   ├── backtest.py           # Rule-based backtesting engine
+│   ├── evaluate.py           # Performance metrics calculator
+│   └── plot_performance.py   # Static performance chart generator
 ├── tests/
-│   └── test_pipeline.py   # Integration tests for download + cleaning
+│   └── test_pipeline.py      # Integration tests for download + cleaning
 ├── README.md
 └── requirements.txt
 ```
@@ -35,7 +44,7 @@ SwingTradeV1/
 1. **Clone the repo**  
    ```bash
    git clone https://github.com/<your-username>/SwingTradev1.git
-   cd SwingTradev1
+   cd SwingTradeV1
    ```
 
 2. **Create & activate a virtual environment**  
@@ -63,95 +72,76 @@ SwingTradeV1/
   (Or set the equivalent in your OS.)
 
 - **Ticker list**  
-  By default, the scripts use the tickers defined in `src/download_data.py`. You can override on the command line.
+  By default, the scripts use the tickers defined in `data/tickers/sp500_tickers.csv`.
 
 ---
 
-## 💾 Data Download
+## 💾 Phase 1 – Data Ingestion & Cleaning
 
-Downloads raw CSVs into `data/raw/`.
+1. **Download raw data**  
+   ```bash
+   python src/download_data.py      -f data/tickers/sp500_tickers.csv      -s 2008-01-01      -e 2025-05-17      -r data/raw      -o data/tickers/sectors.csv
+   ```
 
-```bash
-python src/download_data.py   --tickers AAPL MSFT AMZN GOOGL   --output-dir data/raw/
-```
+2. **Clean data**  
+   ```bash
+   python src/clean_data.py      -i data/raw      -o data/clean
+   ```
 
-- `--tickers`  
-  Space-separated list of symbols you want to download.  
-- `--output-dir`  
-  Where to save the raw files.
-
----
-
-## 🧹 Data Cleaning
-
-Processes every CSV in `data/raw/` and writes clean versions to `data/clean/`.
-
-```bash
-python src/clean_data.py   --input-dir data/raw/   --output-dir data/clean/
-```
-
-Cleans in three main steps:
-
-1. **Index & type normalization**  
-   - Parse date column to `DatetimeIndex`  
-   - Enforce numeric dtypes on OHLCV columns  
-2. **Dedup & sort**  
-   - Drop exact duplicates  
-   - Sort by timestamp  
-3. **Fill & adjust**  
-   - Forward/backfill missing bars  
-   - Apply split/dividend adjustment (if available)  
+3. **Validate**  
+   ```bash
+   pytest
+   ```
 
 ---
 
-## ✅ Testing
+## 📊 Phase 2 – Rule-Based Backtester
 
-Run the integration tests (download + cleaning) on a small set of tickers:
+1. **Backtest**  
+   ```bash
+   python src/backtest.py      -t AAPL MSFT AMZN GOOGL      --clean-dir data/clean      --sectors-file data/tickers/sectors.csv      --momentum-threshold 0.05      --stop-loss-atr-mult 2      --time-exit-days 5      --slippage 0      --commission-per-trade 0      --commission-per-share 0      -i 100000      --max-positions 8      --max-sector-exposure 0.25      -o reports/trade_logs/trade_log.csv
+   ```
 
-```bash
-pytest
-```
+2. **Evaluate**  
+   ```bash
+   python src/evaluate.py      -l reports/trade_logs/trade_log.csv      -i 100000      -o reports/performance_metrics/performance_metrics.csv
+   ```
 
-You should see something like:
-
-```
-8 passed in 0.70s
-```
-
-> **Tip**: If you remove symbols (e.g. TSLA) from your default list, tests will adapt automatically.
-
----
-
-## 📦 requirements.txt
-
-```text
-pandas>=1.3
-numpy>=1.21
-requests>=2.25
-pytest>=7.0
-python-dotenv>=0.19
-```
-
-Install with:
-
-```bash
-pip install -r requirements.txt
-```
+3. **Plot**  
+   ```bash
+   python src/plot_performance.py      -l reports/trade_logs/trade_log.csv      -m reports/performance_metrics/performance_metrics.csv      -o reports/plots
+   ```
 
 ---
 
-## 🛣️ Next Steps (Phase 1)
+## 🤖 Phase 3 – Feature Engineering & Basic ML
 
-- [x] Data download (`download_data.py`)
-- [x] Data cleaning (`clean_data.py`)
-- [x] Validate on sample tickers (AAPL, MSFT, AMZN, GOOGL)
-- [x] Write README instructions
-- [x] Commit all Phase 1 code
+1. **Feature List**  
+   - 5-day return, 10-day return  
+   - ATR(14), Bollinger Band width  
+   - EMA(12/26) crossover value  
+   - OBV, RSI(14)
 
-With Phase 1 complete, you can now move on to:
+2. **Engineering Script**  
+   Build `src/feature_engineering.py` to compute & merge features per ticker/day, and save the feature matrix + future-return label to `data/clean/features.parquet`.
 
-> **Phase 2: Feature Engineering**  
-> Derive technical indicators, rolling statistics, and feature sets for modeling.
+3. **Labeling**  
+   Define target = 1 if return over next 5 days > 0%; else 0.
+
+4. **Train/Test Splits**  
+   Implement walk-forward splits (e.g. train on 2008–2015, test 2016; slide quarterly).
+
+5. **Model Training**  
+   Train an XGBoost classifier on features. Use Optuna to tune basic hyperparameters.
+
+6. **Evaluation**  
+   Track classification metrics (accuracy, precision/recall), and compare ML-driven backtest vs rule-only backtest.
+
+7. **Integration**  
+   Modify `src/backtest.py` to accept ML signals in place of rule entry and re-run backtest; log results to reports/.
+
+8. **Commit**  
+   Commit Phase 3 code & findings.
 
 ---
 

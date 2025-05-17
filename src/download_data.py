@@ -1,80 +1,118 @@
-import argparse
-import os
-import pandas as pd
-import yfinance as yf
-import logging
+#!/usr/bin/env python3
+"""
+download_data.py
 
-def download_ticker_data(ticker, start_date, end_date, raw_folder):
+Downloads raw historical OHLCV data for a list of tickers using yfinance,
+and writes out a sectors.csv mapping each ticker to its sector.
+"""
+
+import argparse
+import logging
+import os
+import csv
+import yfinance as yf
+
+
+def download_data(tickers, start_date, end_date, raw_folder):
     """
-    Download OHLCV data for a single ticker and save to CSV.
+    Downloads price data for each ticker and saves to raw_folder/<ticker>.csv.
+    Also collects sector info to write to sectors.csv.
     """
-    try:
+    os.makedirs(raw_folder, exist_ok=True)
+    sectors = []
+    total = len(tickers)
+    for i, ticker in enumerate(tickers, start=1):
+        out_path = os.path.join(raw_folder, f"{ticker}.csv")
+        logging.info(f"[{i}/{total}] Downloading {ticker} to {out_path}")
+        # Download historical data
         df = yf.download(
             ticker,
             start=start_date,
             end=end_date,
-            interval="1d",
-            auto_adjust=True,
+            auto_adjust=False,
             progress=False
         )
-        if df.empty:
-            logging.warning(f"No data for {ticker}")
-            return
-        file_path = os.path.join(raw_folder, f"{ticker}.csv")
-        df.to_csv(file_path)
-        logging.info(f"Saved data for {ticker} to {file_path}")
-    except Exception as e:
-        logging.error(f"Error downloading {ticker}: {e}")
+        # Save to CSV
+        df.to_csv(out_path)
+        # Fetch sector info
+        try:
+            info = yf.Ticker(ticker).info
+            sector = info.get("sector", "Unknown")
+        except Exception:
+            sector = "Unknown"
+        sectors.append((ticker, sector))
+    return sectors
+
+
+def write_sectors_csv(sectors, sectors_file):
+    """
+    Writes sectors.csv with columns: ticker,sector
+    """
+    os.makedirs(os.path.dirname(sectors_file), exist_ok=True)
+    with open(sectors_file, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["ticker", "sector"])
+        for ticker, sector in sectors:
+            writer.writerow([ticker, sector])
+    logging.info(f"Wrote sector lookup to {sectors_file}")
+
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Download OHLCV data for a list of tickers"
+        description="Download raw price data and sector info"
     )
     parser.add_argument(
-        "--tickers-file",
+        "--tickers-file", "-f",
         default="data/tickers/sp500_tickers.csv",
-        help="Path to CSV file containing tickers (comma-separated or one per line)"
+        help="One ticker per line"
     )
     parser.add_argument(
-        "--start-date",
+        "--start-date", "-s",
         default="2008-01-01",
-        help="Start date for historical data (YYYY-MM-DD)"
+        help="Start date for historical download (YYYY-MM-DD)"
     )
     parser.add_argument(
-        "--end-date",
+        "--end-date", "-e",
         default=None,
-        help="End date for historical data (YYYY-MM-DD). Default is today"
+        help="End date for historical download (YYYY-MM-DD), defaults to today"
     )
     parser.add_argument(
-        "--raw-folder",
+        "--raw-folder", "-r",
         default="data/raw",
-        help="Folder to save raw ticker CSV files"
+        help="Directory to save raw CSV files"
+    )
+    parser.add_argument(
+        "--sectors-file", "-o",
+        default="data/tickers/sectors.csv",
+        help="Output CSV file for ticker–sector mapping"
     )
     args = parser.parse_args()
 
-    # Ensure the raw data directory exists
-    os.makedirs(args.raw_folder, exist_ok=True)
-
-    # Set up logging
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s: %(message)s"
     )
 
-    # Read tickers (handles both comma-separated or one-per-line)
-    with open(args.tickers_file, "r") as f:
-        text = f.read()
-    # Normalize newlines to commas, split, strip whitespace, and drop empties
-    tickers = [t.strip() for t in text.replace("\n", ",").split(",") if t.strip()]
-    # Remove duplicates while preserving order
-    tickers = list(dict.fromkeys(tickers))
+    # Read tickers
+    if not os.path.isfile(args.tickers_file):
+        logging.error(f"Tickers file not found: {args.tickers_file}")
+        return
+    with open(args.tickers_file, "r", encoding="utf-8") as f:
+        tickers = [line.strip() for line in f if line.strip()]
 
-    logging.info(f"Found {len(tickers)} tickers to download")
+    # Download data and collect sectors
+    sectors = download_data(
+        tickers=tickers,
+        start_date=args.start_date,
+        end_date=args.end_date,
+        raw_folder=args.raw_folder
+    )
 
-    # Download data for each ticker
-    for idx, ticker in enumerate(tickers, 1):
-        logging.info(f"[{idx}/{len(tickers)}] Downloading {ticker}")
-        download_ticker_data(ticker, args.start_date, args.end_date, args.raw_folder)
+    # Write sectors CSV
+    write_sectors_csv(sectors, args.sectors_file)
+
+    logging.info("Done!")
+
 
 if __name__ == "__main__":
     main()
