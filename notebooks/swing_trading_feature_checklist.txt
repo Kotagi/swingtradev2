@@ -1,0 +1,61 @@
+[ ] Moving Averages (5-day, 10-day, 50-day SMA/EMA)
+[ ] ADX, Ichimoku Cloud (trend strength)
+[ ] Relative Strength Index (RSI)
+[ ] Stochastic Oscillator
+[ ] MACD
+[ ] Average True Range (ATR)
+[ ] Bollinger Bands
+[ ] Historical Price Standard Deviation
+[ ] Daily Volume & Volume Moving Averages
+[ ] Relative Volume (current vs. average)
+[ ] On-Balance Volume (OBV)
+[ ] Accumulation/Distribution Line
+[ ] Support/Resistance Levels (swing highs/lows, pivot points, Fibonacci)
+[ ] Chart Patterns (flags, head-and-shoulders, double bottom/top)
+[ ] Candlestick Patterns (doji, engulfing, hammer)
+[ ] Price-to-Earnings (P/E) Ratio
+[ ] Price-to-Book (P/B) Ratio
+[ ] PEG Ratio
+[ ] EV/EBITDA Ratio
+[ ] Earnings Growth (QoQ, YoY)
+[ ] Revenue Growth & Profit Margins
+[ ] Earnings Surprise Magnitude
+[ ] Debt-to-Equity Ratio
+[ ] Current Ratio
+[ ] Free Cash Flow
+[ ] Dividend Yield & Ex-Dividend Date
+[ ] Sector/Industry Performance
+[ ] Analyst Upgrades/Downgrades & Price Target Changes
+[ ] Institutional Ownership & Recent Changes
+[ ] Earnings Calendar Proximity
+[ ] Insider Buying/Selling Activity
+[ ] News Sentiment Score (NLP)
+[ ] Social Media Sentiment & Mention Volume
+[ ] Analyst/Expert Sentiment Trends
+[ ] Options Put/Call Ratio & Implied Volatility Skew
+[ ] Sentiment Momentum (change over time)
+[ ] Event-Specific Sentiment (e.g. earnings call tone)
+[ ] Broad Market Trend (index performance & MA signals)
+[ ] CBOE Volatility Index (VIX)
+[ ] Interest Rate Trends (10-year Treasury yield)
+[ ] Inflation Rate (CPI)
+[ ] Unemployment Rate & GDP Data
+[ ] Sector Relative Strength vs. S&P 500
+[ ] Market Breadth Indicators (Advance/Decline line)
+[ ] New 52-week Highs vs. Lows
+[ ] Currency & Commodity Trends (e.g. USD Index, oil prices)
+[ ] Major Macro Event Flags (FOMC, jobs report)
+[ ] Average Daily Volume & Float
+[ ] Bid-Ask Spread (% of price)
+[ ] Market Capitalization & Beta
+[ ] Short Interest & Days-to-Cover Ratio
+[ ] Order Book Imbalance & Block Trades
+[ ] Historical Trading Range Position (52-week high/low percentile)
+[ ] Volume Profile Support/Resistance Levels
+[ ] Google Search & Web Traffic Trends
+[ ] News Article Volume Spike Detection
+[ ] App Download & Website Traffic Metrics
+[ ] Satellite Imagery Store Traffic
+[ ] Environmental, Social, & Governance (ESG) Scores
+[ ] Unusual Options Activity (big block trades)
+[ ] Cross-Asset Indicators (related commodity/FX)

@@ -1,0 +1,545 @@
+C:\Users\brandona\OneDrive - Security Solutions NW\Desktop\Stocks\SwingTradeApp\SwingTradeV1>run_all.bat
+
+==============================================================
+STEP 1: Downloading raw data
+==============================================================
+2025-05-18 01:50:51,682 INFO: [1/445] Downloading MMM to data\raw\MMM.csv
+2025-05-18 01:50:57,305 INFO: [2/445] Downloading AOS to data\raw\AOS.csv
+2025-05-18 01:51:01,491 INFO: [3/445] Downloading ABT to data\raw\ABT.csv
+2025-05-18 01:51:05,906 INFO: [4/445] Downloading ABBV to data\raw\ABBV.csv
+2025-05-18 01:51:11,870 INFO: [5/445] Downloading ACN to data\raw\ACN.csv
+2025-05-18 01:51:15,696 INFO: [6/445] Downloading ADBE to data\raw\ADBE.csv
+2025-05-18 01:51:19,264 INFO: [7/445] Downloading AMD to data\raw\AMD.csv
+2025-05-18 01:51:22,881 INFO: [8/445] Downloading AES to data\raw\AES.csv
+2025-05-18 01:51:26,746 INFO: [9/445] Downloading AFL to data\raw\AFL.csv
+2025-05-18 01:51:30,385 INFO: [10/445] Downloading A to data\raw\A.csv
+2025-05-18 01:51:34,315 INFO: [11/445] Downloading APD to data\raw\APD.csv
+2025-05-18 01:51:38,141 INFO: [12/445] Downloading ABNB to data\raw\ABNB.csv
+2025-05-18 01:51:41,630 INFO: [13/445] Downloading AKAM to data\raw\AKAM.csv
+2025-05-18 01:51:45,169 INFO: [14/445] Downloading ALB to data\raw\ALB.csv
+2025-05-18 01:51:48,878 INFO: [15/445] Downloading ARE to data\raw\ARE.csv
+2025-05-18 01:51:52,497 INFO: [16/445] Downloading ALGN to data\raw\ALGN.csv
+2025-05-18 01:51:56,801 INFO: [17/445] Downloading ALLE to data\raw\ALLE.csv
+2025-05-18 01:52:00,330 INFO: [18/445] Downloading LNT to data\raw\LNT.csv
+2025-05-18 01:52:03,998 INFO: [19/445] Downloading ALL to data\raw\ALL.csv
+2025-05-18 01:52:07,645 INFO: [20/445] Downloading GOOGL to data\raw\GOOGL.csv
+2025-05-18 01:52:13,390 INFO: [21/445] Downloading GOOG to data\raw\GOOG.csv
+2025-05-18 01:52:17,164 INFO: [22/445] Downloading MO to data\raw\MO.csv
+2025-05-18 01:52:20,905 INFO: [23/445] Downloading AMZN to data\raw\AMZN.csv
+2025-05-18 01:52:24,543 INFO: [24/445] Downloading AMCR to data\raw\AMCR.csv
+2025-05-18 01:52:28,123 INFO: [25/445] Downloading AEE to data\raw\AEE.csv
+2025-05-18 01:52:32,065 INFO: [26/445] Downloading AAL to data\raw\AAL.csv
+2025-05-18 01:52:35,815 INFO: [27/445] Downloading AEP to data\raw\AEP.csv
+2025-05-18 01:52:39,510 INFO: [28/445] Downloading AXP to data\raw\AXP.csv
+2025-05-18 01:52:43,300 INFO: [29/445] Downloading AIG to data\raw\AIG.csv
+2025-05-18 01:52:46,965 INFO: [30/445] Downloading AMT to data\raw\AMT.csv
+2025-05-18 01:52:50,587 INFO: [31/445] Downloading AWK to data\raw\AWK.csv
+2025-05-18 01:52:54,742 INFO: [32/445] Downloading AMP to data\raw\AMP.csv
+2025-05-18 01:52:58,428 INFO: [33/445] Downloading ABC to data\raw\ABC.csv
+2025-05-18 01:53:00,887 ERROR:
+1 Failed download:
+2025-05-18 01:53:00,887 ERROR: ['ABC']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 01:53:02,322 INFO: [34/445] Downloading AME to data\raw\AME.csv
+2025-05-18 01:53:06,061 INFO: [35/445] Downloading AMGN to data\raw\AMGN.csv
+2025-05-18 01:53:11,999 INFO: [36/445] Downloading APH to data\raw\APH.csv
+2025-05-18 01:53:15,744 INFO: [37/445] Downloading ADI to data\raw\ADI.csv
+2025-05-18 01:53:19,385 INFO: [38/445] Downloading ANSS to data\raw\ANSS.csv
+2025-05-18 01:53:23,184 INFO: [39/445] Downloading ANTM to data\raw\ANTM.csv
+2025-05-18 01:53:25,601 ERROR:
+1 Failed download:
+2025-05-18 01:53:25,601 ERROR: ['ANTM']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 01:53:27,021 INFO: [40/445] Downloading AON to data\raw\AON.csv
+2025-05-18 01:53:30,760 INFO: [41/445] Downloading APA to data\raw\APA.csv
+2025-05-18 01:53:35,113 INFO: [42/445] Downloading AAPL to data\raw\AAPL.csv
+2025-05-18 01:53:38,861 INFO: [43/445] Downloading AMAT to data\raw\AMAT.csv
+2025-05-18 01:53:42,549 INFO: [44/445] Downloading APTV to data\raw\APTV.csv
+2025-05-18 01:53:46,201 INFO: [45/445] Downloading ADM to data\raw\ADM.csv
+2025-05-18 01:53:49,894 INFO: [46/445] Downloading ANET to data\raw\ANET.csv
+2025-05-18 01:53:53,892 INFO: [47/445] Downloading AJG to data\raw\AJG.csv
+2025-05-18 01:53:57,769 INFO: [48/445] Downloading AIZ to data\raw\AIZ.csv
+2025-05-18 01:54:01,601 INFO: [49/445] Downloading ATO to data\raw\ATO.csv
+2025-05-18 01:54:05,275 INFO: [50/445] Downloading T to data\raw\T.csv
+2025-05-18 01:54:09,027 INFO: [51/445] Downloading ADSK to data\raw\ADSK.csv
+2025-05-18 01:54:13,746 INFO: [52/445] Downloading ADP to data\raw\ADP.csv
+2025-05-18 01:54:17,568 INFO: [53/445] Downloading AZO to data\raw\AZO.csv
+2025-05-18 01:54:21,159 INFO: [54/445] Downloading AVB to data\raw\AVB.csv
+2025-05-18 01:54:24,792 INFO: [55/445] Downloading AVY to data\raw\AVY.csv
+2025-05-18 01:54:28,580 INFO: [56/445] Downloading BKR to data\raw\BKR.csv
+2025-05-18 01:54:32,304 INFO: [57/445] Downloading BALL to data\raw\BALL.csv
+2025-05-18 01:54:36,017 INFO: [58/445] Downloading BAC to data\raw\BAC.csv
+2025-05-18 01:54:39,741 INFO: [59/445] Downloading BK to data\raw\BK.csv
+2025-05-18 01:54:43,388 INFO: [60/445] Downloading BAX to data\raw\BAX.csv
+2025-05-18 01:54:47,181 INFO: [61/445] Downloading BDX to data\raw\BDX.csv
+2025-05-18 01:54:50,902 INFO: [62/445] Downloading BRK.B to data\raw\BRK.B.csv
+2025-05-18 01:54:52,134 ERROR:
+1 Failed download:
+2025-05-18 01:54:52,134 ERROR: ['BRK.B']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 01:54:54,076 INFO: [63/445] Downloading BBY to data\raw\BBY.csv
+2025-05-18 01:54:58,120 INFO: [64/445] Downloading BIO to data\raw\BIO.csv
+2025-05-18 01:55:02,039 INFO: [65/445] Downloading BIIB to data\raw\BIIB.csv
+2025-05-18 01:55:05,631 INFO: [66/445] Downloading BLK to data\raw\BLK.csv
+2025-05-18 01:55:10,538 INFO: [67/445] Downloading BA to data\raw\BA.csv
+2025-05-18 01:55:14,967 INFO: [68/445] Downloading BKNG to data\raw\BKNG.csv
+2025-05-18 01:55:18,630 INFO: [69/445] Downloading BWA to data\raw\BWA.csv
+2025-05-18 01:55:22,656 INFO: [70/445] Downloading BXP to data\raw\BXP.csv
+2025-05-18 01:55:26,480 INFO: [71/445] Downloading BSX to data\raw\BSX.csv
+2025-05-18 01:55:30,046 INFO: [72/445] Downloading BR to data\raw\BR.csv
+2025-05-18 01:55:33,658 INFO: [73/445] Downloading CHRW to data\raw\CHRW.csv
+2025-05-18 01:55:37,383 INFO: [74/445] Downloading COG to data\raw\COG.csv
+2025-05-18 01:55:38,613 ERROR:
+1 Failed download:
+2025-05-18 01:55:38,615 ERROR: ['COG']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 01:55:40,313 INFO: [75/445] Downloading CDNS to data\raw\CDNS.csv
+2025-05-18 01:55:43,952 INFO: [76/445] Downloading CPB to data\raw\CPB.csv
+2025-05-18 01:55:47,627 INFO: [77/445] Downloading COF to data\raw\COF.csv
+2025-05-18 01:55:51,541 INFO: [78/445] Downloading CAH to data\raw\CAH.csv
+2025-05-18 01:55:55,402 INFO: [79/445] Downloading KMX to data\raw\KMX.csv
+2025-05-18 01:55:59,264 INFO: [80/445] Downloading CCL to data\raw\CCL.csv
+2025-05-18 01:56:02,961 INFO: [81/445] Downloading CARR to data\raw\CARR.csv
+2025-05-18 01:56:06,262 INFO: [82/445] Downloading CTLT to data\raw\CTLT.csv
+2025-05-18 01:56:07,494 ERROR:
+1 Failed download:
+2025-05-18 01:56:07,494 ERROR: ['CTLT']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 01:56:09,192 INFO: [83/445] Downloading CAT to data\raw\CAT.csv
+2025-05-18 01:56:14,945 INFO: [84/445] Downloading CBOE to data\raw\CBOE.csv
+2025-05-18 01:56:18,679 INFO: [85/445] Downloading CBRE to data\raw\CBRE.csv
+2025-05-18 01:56:22,318 INFO: [86/445] Downloading CDW to data\raw\CDW.csv
+2025-05-18 01:56:25,815 INFO: [87/445] Downloading CE to data\raw\CE.csv
+2025-05-18 01:56:29,809 INFO: [88/445] Downloading CNC to data\raw\CNC.csv
+2025-05-18 01:56:33,538 INFO: [89/445] Downloading CNP to data\raw\CNP.csv
+2025-05-18 01:56:37,298 INFO: [90/445] Downloading CF to data\raw\CF.csv
+2025-05-18 01:56:40,984 INFO: [91/445] Downloading CRL to data\raw\CRL.csv
+2025-05-18 01:56:44,589 INFO: [92/445] Downloading SCHW to data\raw\SCHW.csv
+2025-05-18 01:56:48,212 INFO: [93/445] Downloading CHTR to data\raw\CHTR.csv
+2025-05-18 01:56:51,880 INFO: [94/445] Downloading CVX to data\raw\CVX.csv
+2025-05-18 01:56:56,080 INFO: [95/445] Downloading CMG to data\raw\CMG.csv
+2025-05-18 01:56:59,807 INFO: [96/445] Downloading CB to data\raw\CB.csv
+2025-05-18 01:57:03,564 INFO: [97/445] Downloading CHD to data\raw\CHD.csv
+2025-05-18 01:57:07,212 INFO: [98/445] Downloading CI to data\raw\CI.csv
+2025-05-18 01:57:13,162 INFO: [99/445] Downloading CINF to data\raw\CINF.csv
+2025-05-18 01:57:16,782 INFO: [100/445] Downloading CTL to data\raw\CTL.csv
+2025-05-18 01:57:18,027 ERROR:
+1 Failed download:
+2025-05-18 01:57:18,027 ERROR: ['CTL']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 01:57:19,725 INFO: [101/445] Downloading CME to data\raw\CME.csv
+2025-05-18 01:57:23,501 INFO: [102/445] Downloading CMS to data\raw\CMS.csv
+2025-05-18 01:57:27,129 INFO: [103/445] Downloading COO to data\raw\COO.csv
+2025-05-18 01:57:30,867 INFO: [104/445] Downloading COP to data\raw\COP.csv
+2025-05-18 01:57:34,875 INFO: [105/445] Downloading ED to data\raw\ED.csv
+2025-05-18 01:57:38,647 INFO: [106/445] Downloading STZ to data\raw\STZ.csv
+2025-05-18 01:57:42,297 INFO: [107/445] Downloading CPRT to data\raw\CPRT.csv
+2025-05-18 01:57:45,986 INFO: [108/445] Downloading GLW to data\raw\GLW.csv
+2025-05-18 01:57:49,670 INFO: [109/445] Downloading CTVA to data\raw\CTVA.csv
+2025-05-18 01:57:53,045 INFO: [110/445] Downloading COST to data\raw\COST.csv
+2025-05-18 01:57:57,129 INFO: [111/445] Downloading COTY to data\raw\COTY.csv
+2025-05-18 01:58:00,852 INFO: [112/445] Downloading CCI to data\raw\CCI.csv
+2025-05-18 01:58:04,497 INFO: [113/445] Downloading CSX to data\raw\CSX.csv
+2025-05-18 01:58:08,213 INFO: [114/445] Downloading CMCSA to data\raw\CMCSA.csv
+2025-05-18 01:58:13,510 INFO: [115/445] Downloading CMA to data\raw\CMA.csv
+2025-05-18 01:58:17,635 INFO: [116/445] Downloading CAG to data\raw\CAG.csv
+2025-05-18 01:58:21,419 INFO: [117/445] Downloading CFG to data\raw\CFG.csv
+2025-05-18 01:58:25,007 INFO: [118/445] Downloading CVS to data\raw\CVS.csv
+2025-05-18 01:58:28,861 INFO: [119/445] Downloading DHI to data\raw\DHI.csv
+2025-05-18 01:58:32,943 INFO: [120/445] Downloading DHR to data\raw\DHR.csv
+2025-05-18 01:58:36,774 INFO: [121/445] Downloading DRI to data\raw\DRI.csv
+2025-05-18 01:58:40,559 INFO: [122/445] Downloading DVA to data\raw\DVA.csv
+2025-05-18 01:58:44,099 INFO: [123/445] Downloading DE to data\raw\DE.csv
+2025-05-18 01:58:47,853 INFO: [124/445] Downloading DAL to data\raw\DAL.csv
+2025-05-18 01:58:51,464 INFO: [125/445] Downloading XRAY to data\raw\XRAY.csv
+2025-05-18 01:58:55,528 INFO: [126/445] Downloading DVN to data\raw\DVN.csv
+2025-05-18 01:58:59,282 INFO: [127/445] Downloading DXCM to data\raw\DXCM.csv
+2025-05-18 01:59:02,915 INFO: [128/445] Downloading FANG to data\raw\FANG.csv
+2025-05-18 01:59:06,443 INFO: [129/445] Downloading DLR to data\raw\DLR.csv
+2025-05-18 01:59:12,428 INFO: [130/445] Downloading DFS to data\raw\DFS.csv
+2025-05-18 01:59:16,337 INFO: [131/445] Downloading DISCA to data\raw\DISCA.csv
+2025-05-18 01:59:18,076 ERROR:
+1 Failed download:
+2025-05-18 01:59:18,076 ERROR: ['DISCA']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 01:59:19,787 INFO: [132/445] Downloading DISCK to data\raw\DISCK.csv
+2025-05-18 01:59:21,024 ERROR:
+1 Failed download:
+2025-05-18 01:59:21,025 ERROR: ['DISCK']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 01:59:22,711 INFO: [133/445] Downloading D to data\raw\D.csv
+2025-05-18 01:59:26,435 INFO: [134/445] Downloading DLTR to data\raw\DLTR.csv
+2025-05-18 01:59:30,081 INFO: [135/445] Downloading DPZ to data\raw\DPZ.csv
+2025-05-18 01:59:33,829 INFO: [136/445] Downloading DOV to data\raw\DOV.csv
+2025-05-18 01:59:37,782 INFO: [137/445] Downloading DOW to data\raw\DOW.csv
+2025-05-18 01:59:41,127 INFO: [138/445] Downloading DTE to data\raw\DTE.csv
+2025-05-18 01:59:44,853 INFO: [139/445] Downloading DUK to data\raw\DUK.csv
+2025-05-18 01:59:48,537 INFO: [140/445] Downloading DRE to data\raw\DRE.csv
+2025-05-18 01:59:49,779 ERROR:
+1 Failed download:
+2025-05-18 01:59:49,780 ERROR: ['DRE']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 01:59:51,467 INFO: [141/445] Downloading DD to data\raw\DD.csv
+2025-05-18 01:59:55,493 INFO: [142/445] Downloading DXC to data\raw\DXC.csv
+2025-05-18 01:59:59,829 INFO: [143/445] Downloading EMN to data\raw\EMN.csv
+2025-05-18 02:00:03,560 INFO: [144/445] Downloading ETN to data\raw\ETN.csv
+2025-05-18 02:00:07,296 INFO: [145/445] Downloading EBAY to data\raw\EBAY.csv
+2025-05-18 02:00:12,617 INFO: [146/445] Downloading ECL to data\raw\ECL.csv
+2025-05-18 02:00:16,307 INFO: [147/445] Downloading EIX to data\raw\EIX.csv
+2025-05-18 02:00:20,094 INFO: [148/445] Downloading EW to data\raw\EW.csv
+2025-05-18 02:00:23,722 INFO: [149/445] Downloading EA to data\raw\EA.csv
+2025-05-18 02:00:27,383 INFO: [150/445] Downloading EMR to data\raw\EMR.csv
+2025-05-18 02:00:31,097 INFO: [151/445] Downloading ETR to data\raw\ETR.csv
+2025-05-18 02:00:34,889 INFO: [152/445] Downloading ESS to data\raw\ESS.csv
+2025-05-18 02:00:38,831 INFO: [153/445] Downloading RE to data\raw\RE.csv
+2025-05-18 02:00:40,514 ERROR:
+1 Failed download:
+2025-05-18 02:00:40,514 ERROR: ['RE']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:00:42,214 INFO: [154/445] Downloading EXC to data\raw\EXC.csv
+2025-05-18 02:00:45,972 INFO: [155/445] Downloading EXPE to data\raw\EXPE.csv
+2025-05-18 02:00:49,722 INFO: [156/445] Downloading EXPD to data\raw\EXPD.csv
+2025-05-18 02:00:53,404 INFO: [157/445] Downloading EXR to data\raw\EXR.csv
+2025-05-18 02:00:57,106 INFO: [158/445] Downloading XOM to data\raw\XOM.csv
+2025-05-18 02:01:01,361 INFO: [159/445] Downloading FFIV to data\raw\FFIV.csv
+2025-05-18 02:01:04,988 INFO: [160/445] Downloading FB to data\raw\FB.csv
+2025-05-18 02:01:06,453 ERROR:
+1 Failed download:
+2025-05-18 02:01:06,453 ERROR: ['FB']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:01:08,167 INFO: [161/445] Downloading FAST to data\raw\FAST.csv
+2025-05-18 02:01:13,746 INFO: [162/445] Downloading FRT to data\raw\FRT.csv
+2025-05-18 02:01:17,883 INFO: [163/445] Downloading FDX to data\raw\FDX.csv
+2025-05-18 02:01:21,660 INFO: [164/445] Downloading FE to data\raw\FE.csv
+2025-05-18 02:01:25,324 INFO: [165/445] Downloading FIS to data\raw\FIS.csv
+2025-05-18 02:01:28,993 INFO: [166/445] Downloading FITB to data\raw\FITB.csv
+2025-05-18 02:01:32,677 INFO: [167/445] Downloading FLT to data\raw\FLT.csv
+2025-05-18 02:01:34,575 ERROR:
+1 Failed download:
+2025-05-18 02:01:34,575 ERROR: ['FLT']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:01:36,272 INFO: [168/445] Downloading FMC to data\raw\FMC.csv
+2025-05-18 02:01:40,395 INFO: [169/445] Downloading F to data\raw\F.csv
+2025-05-18 02:01:44,245 INFO: [170/445] Downloading FTNT to data\raw\FTNT.csv
+2025-05-18 02:01:47,875 INFO: [171/445] Downloading FTV to data\raw\FTV.csv
+2025-05-18 02:01:51,387 INFO: [172/445] Downloading FBHS to data\raw\FBHS.csv
+2025-05-18 02:01:52,630 ERROR:
+1 Failed download:
+2025-05-18 02:01:52,630 ERROR: ['FBHS']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:01:54,347 INFO: [173/445] Downloading FOXA to data\raw\FOXA.csv
+2025-05-18 02:01:57,894 INFO: [174/445] Downloading FOX to data\raw\FOX.csv
+2025-05-18 02:02:01,482 INFO: [175/445] Downloading BEN to data\raw\BEN.csv
+2025-05-18 02:02:05,504 INFO: [176/445] Downloading FCX to data\raw\FCX.csv
+2025-05-18 02:02:09,301 INFO: [177/445] Downloading GPS to data\raw\GPS.csv
+2025-05-18 02:02:12,330 ERROR:
+1 Failed download:
+2025-05-18 02:02:12,330 ERROR: ['GPS']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:02:14,083 INFO: [178/445] Downloading GRMN to data\raw\GRMN.csv
+2025-05-18 02:02:17,787 INFO: [179/445] Downloading GD to data\raw\GD.csv
+2025-05-18 02:02:21,513 INFO: [180/445] Downloading GE to data\raw\GE.csv
+2025-05-18 02:02:25,381 INFO: [181/445] Downloading GIS to data\raw\GIS.csv
+2025-05-18 02:02:29,089 INFO: [182/445] Downloading GM to data\raw\GM.csv
+2025-05-18 02:02:32,788 INFO: [183/445] Downloading GPC to data\raw\GPC.csv
+2025-05-18 02:02:36,504 INFO: [184/445] Downloading GILD to data\raw\GILD.csv
+2025-05-18 02:02:40,267 INFO: [185/445] Downloading GL to data\raw\GL.csv
+2025-05-18 02:02:44,026 INFO: [186/445] Downloading GPN to data\raw\GPN.csv
+2025-05-18 02:02:47,806 INFO: [187/445] Downloading GS to data\raw\GS.csv
+2025-05-18 02:02:51,567 INFO: [188/445] Downloading HAL to data\raw\HAL.csv
+2025-05-18 02:02:55,539 INFO: [189/445] Downloading HBI to data\raw\HBI.csv
+2025-05-18 02:02:59,700 INFO: [190/445] Downloading HOG to data\raw\HOG.csv
+2025-05-18 02:03:03,667 INFO: [191/445] Downloading HIG to data\raw\HIG.csv
+2025-05-18 02:03:07,362 INFO: [192/445] Downloading HAS to data\raw\HAS.csv
+2025-05-18 02:03:13,210 INFO: [193/445] Downloading HCA to data\raw\HCA.csv
+2025-05-18 02:03:16,808 INFO: [194/445] Downloading PEAK to data\raw\PEAK.csv
+2025-05-18 02:03:18,056 ERROR:
+1 Failed download:
+2025-05-18 02:03:18,057 ERROR: ['PEAK']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:03:19,794 INFO: [195/445] Downloading HSIC to data\raw\HSIC.csv
+2025-05-18 02:03:23,439 INFO: [196/445] Downloading HSY to data\raw\HSY.csv
+2025-05-18 02:03:27,144 INFO: [197/445] Downloading HES to data\raw\HES.csv
+2025-05-18 02:03:31,057 INFO: [198/445] Downloading HLT to data\raw\HLT.csv
+2025-05-18 02:03:34,679 INFO: [199/445] Downloading HFC to data\raw\HFC.csv
+2025-05-18 02:03:36,394 ERROR:
+1 Failed download:
+2025-05-18 02:03:36,395 ERROR: ['HFC']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:03:38,104 INFO: [200/445] Downloading HOLX to data\raw\HOLX.csv
+2025-05-18 02:03:41,722 INFO: [201/445] Downloading HD to data\raw\HD.csv
+2025-05-18 02:03:45,412 INFO: [202/445] Downloading HON to data\raw\HON.csv
+2025-05-18 02:03:49,337 INFO: [203/445] Downloading HRL to data\raw\HRL.csv
+2025-05-18 02:03:53,027 INFO: [204/445] Downloading HST to data\raw\HST.csv
+2025-05-18 02:03:57,013 INFO: [205/445] Downloading HPQ to data\raw\HPQ.csv
+2025-05-18 02:04:00,884 INFO: [206/445] Downloading HUM to data\raw\HUM.csv
+2025-05-18 02:04:04,709 INFO: [207/445] Downloading HBAN to data\raw\HBAN.csv
+2025-05-18 02:04:08,364 INFO: [208/445] Downloading IDXX to data\raw\IDXX.csv
+2025-05-18 02:04:13,127 INFO: [209/445] Downloading ITW to data\raw\ITW.csv
+2025-05-18 02:04:16,815 INFO: [210/445] Downloading ILMN to data\raw\ILMN.csv
+2025-05-18 02:04:20,541 INFO: [211/445] Downloading INCY to data\raw\INCY.csv
+2025-05-18 02:04:24,375 INFO: [212/445] Downloading IR to data\raw\IR.csv
+2025-05-18 02:04:27,814 INFO: [213/445] Downloading INTC to data\raw\INTC.csv
+2025-05-18 02:04:31,975 INFO: [214/445] Downloading ICE to data\raw\ICE.csv
+2025-05-18 02:04:35,696 INFO: [215/445] Downloading IBM to data\raw\IBM.csv
+2025-05-18 02:04:39,500 INFO: [216/445] Downloading IP to data\raw\IP.csv
+2025-05-18 02:04:43,330 INFO: [217/445] Downloading IPG to data\raw\IPG.csv
+2025-05-18 02:04:47,085 INFO: [218/445] Downloading IFF to data\raw\IFF.csv
+2025-05-18 02:04:51,208 INFO: [219/445] Downloading INTU to data\raw\INTU.csv
+2025-05-18 02:04:54,929 INFO: [220/445] Downloading ISRG to data\raw\ISRG.csv
+2025-05-18 02:04:58,929 INFO: [221/445] Downloading IVZ to data\raw\IVZ.csv
+2025-05-18 02:05:02,566 INFO: [222/445] Downloading IPGP to data\raw\IPGP.csv
+2025-05-18 02:05:06,141 INFO: [223/445] Downloading IQV to data\raw\IQV.csv
+2025-05-18 02:05:09,763 INFO: [224/445] Downloading IRM to data\raw\IRM.csv
+2025-05-18 02:05:14,912 INFO: [225/445] Downloading JKHY to data\raw\JKHY.csv
+2025-05-18 02:05:18,732 INFO: [226/445] Downloading J to data\raw\J.csv
+2025-05-18 02:05:22,545 INFO: [227/445] Downloading JNJ to data\raw\JNJ.csv
+2025-05-18 02:05:26,368 INFO: [228/445] Downloading JCI to data\raw\JCI.csv
+2025-05-18 02:05:30,166 INFO: [229/445] Downloading JW.A to data\raw\JW.A.csv
+2025-05-18 02:05:32,427 ERROR:
+1 Failed download:
+2025-05-18 02:05:32,428 ERROR: ['JW.A']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:05:34,243 INFO: [230/445] Downloading JPM to data\raw\JPM.csv
+2025-05-18 02:05:37,958 INFO: [231/445] Downloading KSU to data\raw\KSU.csv
+2025-05-18 02:05:39,659 ERROR:
+1 Failed download:
+2025-05-18 02:05:39,660 ERROR: ['KSU']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:05:41,423 INFO: [232/445] Downloading K to data\raw\K.csv
+2025-05-18 02:05:45,374 INFO: [233/445] Downloading KEY to data\raw\KEY.csv
+2025-05-18 02:05:49,071 INFO: [234/445] Downloading KEYS to data\raw\KEYS.csv
+2025-05-18 02:05:52,522 INFO: [235/445] Downloading KMB to data\raw\KMB.csv
+2025-05-18 02:05:56,309 INFO: [236/445] Downloading KIM to data\raw\KIM.csv
+2025-05-18 02:06:00,230 INFO: [237/445] Downloading KMI to data\raw\KMI.csv
+2025-05-18 02:06:03,886 INFO: [238/445] Downloading KLAC to data\raw\KLAC.csv
+2025-05-18 02:06:07,664 INFO: [239/445] Downloading KHC to data\raw\KHC.csv
+2025-05-18 02:06:13,143 INFO: [240/445] Downloading KR to data\raw\KR.csv
+2025-05-18 02:06:16,906 INFO: [241/445] Downloading LHX to data\raw\LHX.csv
+2025-05-18 02:06:20,669 INFO: [242/445] Downloading LH to data\raw\LH.csv
+2025-05-18 02:06:24,654 INFO: [243/445] Downloading LRCX to data\raw\LRCX.csv
+2025-05-18 02:06:28,678 INFO: [244/445] Downloading LW to data\raw\LW.csv
+2025-05-18 02:06:32,154 INFO: [245/445] Downloading LVS to data\raw\LVS.csv
+2025-05-18 02:06:36,039 INFO: [246/445] Downloading LEG to data\raw\LEG.csv
+2025-05-18 02:06:40,253 INFO: [247/445] Downloading LDOS to data\raw\LDOS.csv
+2025-05-18 02:06:43,977 INFO: [248/445] Downloading LLY to data\raw\LLY.csv
+2025-05-18 02:06:47,790 INFO: [249/445] Downloading LNC to data\raw\LNC.csv
+2025-05-18 02:06:51,883 INFO: [250/445] Downloading LIN to data\raw\LIN.csv
+2025-05-18 02:06:55,573 INFO: [251/445] Downloading LYV to data\raw\LYV.csv
+2025-05-18 02:06:59,164 INFO: [252/445] Downloading LKQ to data\raw\LKQ.csv
+2025-05-18 02:07:02,787 INFO: [253/445] Downloading LMT to data\raw\LMT.csv
+2025-05-18 02:07:06,560 INFO: [254/445] Downloading L to data\raw\L.csv
+2025-05-18 02:07:13,155 INFO: [255/445] Downloading LOW to data\raw\LOW.csv
+2025-05-18 02:07:16,887 INFO: [256/445] Downloading LYB to data\raw\LYB.csv
+2025-05-18 02:07:20,510 INFO: [257/445] Downloading MTB to data\raw\MTB.csv
+2025-05-18 02:07:24,191 INFO: [258/445] Downloading MRO to data\raw\MRO.csv
+2025-05-18 02:07:25,702 ERROR:
+1 Failed download:
+2025-05-18 02:07:25,702 ERROR: ['MRO']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:07:27,656 INFO: [259/445] Downloading MPC to data\raw\MPC.csv
+2025-05-18 02:07:31,328 INFO: [260/445] Downloading MKTX to data\raw\MKTX.csv
+2025-05-18 02:07:35,459 INFO: [261/445] Downloading MAR to data\raw\MAR.csv
+2025-05-18 02:07:39,214 INFO: [262/445] Downloading MMC to data\raw\MMC.csv
+2025-05-18 02:07:43,099 INFO: [263/445] Downloading MLM to data\raw\MLM.csv
+2025-05-18 02:07:46,857 INFO: [264/445] Downloading MAS to data\raw\MAS.csv
+2025-05-18 02:07:50,667 INFO: [265/445] Downloading MA to data\raw\MA.csv
+2025-05-18 02:07:54,368 INFO: [266/445] Downloading MTCH to data\raw\MTCH.csv
+2025-05-18 02:07:58,249 INFO: [267/445] Downloading MKC to data\raw\MKC.csv
+2025-05-18 02:08:01,965 INFO: [268/445] Downloading MCD to data\raw\MCD.csv
+2025-05-18 02:08:05,715 INFO: [269/445] Downloading MCK to data\raw\MCK.csv
+2025-05-18 02:08:10,574 INFO: [270/445] Downloading MDT to data\raw\MDT.csv
+2025-05-18 02:08:14,890 INFO: [271/445] Downloading MRK to data\raw\MRK.csv
+2025-05-18 02:08:18,663 INFO: [272/445] Downloading MET to data\raw\MET.csv
+2025-05-18 02:08:22,648 INFO: [273/445] Downloading MTD to data\raw\MTD.csv
+2025-05-18 02:08:26,529 INFO: [274/445] Downloading MGM to data\raw\MGM.csv
+2025-05-18 02:08:30,875 INFO: [275/445] Downloading MCHP to data\raw\MCHP.csv
+2025-05-18 02:08:34,686 INFO: [276/445] Downloading MU to data\raw\MU.csv
+2025-05-18 02:08:38,414 INFO: [277/445] Downloading MSFT to data\raw\MSFT.csv
+2025-05-18 02:08:42,148 INFO: [278/445] Downloading MAA to data\raw\MAA.csv
+2025-05-18 02:08:45,881 INFO: [279/445] Downloading MHK to data\raw\MHK.csv
+2025-05-18 02:08:49,489 INFO: [280/445] Downloading TAP to data\raw\TAP.csv
+2025-05-18 02:08:53,200 INFO: [281/445] Downloading MDLZ to data\raw\MDLZ.csv
+2025-05-18 02:08:56,876 INFO: [282/445] Downloading MNST to data\raw\MNST.csv
+2025-05-18 02:09:00,486 INFO: [283/445] Downloading MCO to data\raw\MCO.csv
+2025-05-18 02:09:04,238 INFO: [284/445] Downloading MS to data\raw\MS.csv
+2025-05-18 02:09:07,901 INFO: [285/445] Downloading MOS to data\raw\MOS.csv
+2025-05-18 02:09:13,482 INFO: [286/445] Downloading MSI to data\raw\MSI.csv
+2025-05-18 02:09:17,506 INFO: [287/445] Downloading MSCI to data\raw\MSCI.csv
+2025-05-18 02:09:21,243 INFO: [288/445] Downloading MYL to data\raw\MYL.csv
+2025-05-18 02:09:22,474 ERROR:
+1 Failed download:
+2025-05-18 02:09:22,475 ERROR: ['MYL']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:09:24,407 INFO: [289/445] Downloading NDAQ to data\raw\NDAQ.csv
+2025-05-18 02:09:28,106 INFO: [290/445] Downloading NOV to data\raw\NOV.csv
+2025-05-18 02:09:32,279 INFO: [291/445] Downloading NTAP to data\raw\NTAP.csv
+2025-05-18 02:09:36,034 INFO: [292/445] Downloading NFLX to data\raw\NFLX.csv
+2025-05-18 02:09:39,703 INFO: [293/445] Downloading NWL to data\raw\NWL.csv
+2025-05-18 02:09:43,378 INFO: [294/445] Downloading NEM to data\raw\NEM.csv
+2025-05-18 02:09:47,287 INFO: [295/445] Downloading NWSA to data\raw\NWSA.csv
+2025-05-18 02:09:50,821 INFO: [296/445] Downloading NWS to data\raw\NWS.csv
+2025-05-18 02:09:54,335 INFO: [297/445] Downloading NEE to data\raw\NEE.csv
+2025-05-18 02:09:58,069 INFO: [298/445] Downloading NLSN to data\raw\NLSN.csv
+2025-05-18 02:09:59,287 ERROR:
+1 Failed download:
+2025-05-18 02:09:59,287 ERROR: ['NLSN']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:10:00,987 INFO: [299/445] Downloading NKE to data\raw\NKE.csv
+2025-05-18 02:10:04,746 INFO: [300/445] Downloading NI to data\raw\NI.csv
+2025-05-18 02:10:08,489 INFO: [301/445] Downloading NSC to data\raw\NSC.csv
+2025-05-18 02:10:12,661 INFO: [302/445] Downloading NTRS to data\raw\NTRS.csv
+2025-05-18 02:10:16,339 INFO: [303/445] Downloading NOC to data\raw\NOC.csv
+2025-05-18 02:10:20,086 INFO: [304/445] Downloading NLOK to data\raw\NLOK.csv
+2025-05-18 02:10:21,360 ERROR:
+1 Failed download:
+2025-05-18 02:10:21,360 ERROR: ['NLOK']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:10:23,309 INFO: [305/445] Downloading NCLH to data\raw\NCLH.csv
+2025-05-18 02:10:26,838 INFO: [306/445] Downloading NRG to data\raw\NRG.csv
+2025-05-18 02:10:30,547 INFO: [307/445] Downloading NUE to data\raw\NUE.csv
+2025-05-18 02:10:34,633 INFO: [308/445] Downloading NVDA to data\raw\NVDA.csv
+2025-05-18 02:10:38,488 INFO: [309/445] Downloading NVR to data\raw\NVR.csv
+2025-05-18 02:10:42,328 INFO: [310/445] Downloading ORLY to data\raw\ORLY.csv
+2025-05-18 02:10:46,007 INFO: [311/445] Downloading OXY to data\raw\OXY.csv
+2025-05-18 02:10:49,886 INFO: [312/445] Downloading OMC to data\raw\OMC.csv
+2025-05-18 02:10:53,568 INFO: [313/445] Downloading OKE to data\raw\OKE.csv
+2025-05-18 02:10:57,588 INFO: [314/445] Downloading ORCL to data\raw\ORCL.csv
+2025-05-18 02:11:01,276 INFO: [315/445] Downloading OGN to data\raw\OGN.csv
+2025-05-18 02:11:04,845 INFO: [316/445] Downloading PCAR to data\raw\PCAR.csv
+2025-05-18 02:11:08,607 INFO: [317/445] Downloading PKG to data\raw\PKG.csv
+2025-05-18 02:11:13,434 INFO: [318/445] Downloading PH to data\raw\PH.csv
+2025-05-18 02:11:17,197 INFO: [319/445] Downloading PAYX to data\raw\PAYX.csv
+2025-05-18 02:11:20,870 INFO: [320/445] Downloading PYPL to data\raw\PYPL.csv
+2025-05-18 02:11:24,300 INFO: [321/445] Downloading PNR to data\raw\PNR.csv
+2025-05-18 02:11:28,120 INFO: [322/445] Downloading PBCT to data\raw\PBCT.csv
+2025-05-18 02:11:29,371 ERROR:
+1 Failed download:
+2025-05-18 02:11:29,371 ERROR: ['PBCT']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:11:31,104 INFO: [323/445] Downloading PEP to data\raw\PEP.csv
+2025-05-18 02:11:35,358 INFO: [324/445] Downloading PKI to data\raw\PKI.csv
+2025-05-18 02:11:36,597 ERROR:
+1 Failed download:
+2025-05-18 02:11:36,597 ERROR: ['PKI']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:11:38,297 INFO: [325/445] Downloading PRGO to data\raw\PRGO.csv
+2025-05-18 02:11:42,514 INFO: [326/445] Downloading PFE to data\raw\PFE.csv
+2025-05-18 02:11:46,314 INFO: [327/445] Downloading PCG to data\raw\PCG.csv
+2025-05-18 02:11:50,052 INFO: [328/445] Downloading PM to data\raw\PM.csv
+2025-05-18 02:11:53,700 INFO: [329/445] Downloading PSX to data\raw\PSX.csv
+2025-05-18 02:11:57,285 INFO: [330/445] Downloading PNW to data\raw\PNW.csv
+2025-05-18 02:12:00,985 INFO: [331/445] Downloading PXD to data\raw\PXD.csv
+2025-05-18 02:12:02,703 ERROR:
+1 Failed download:
+2025-05-18 02:12:02,704 ERROR: ['PXD']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:12:04,441 INFO: [332/445] Downloading PNC to data\raw\PNC.csv
+2025-05-18 02:12:08,195 INFO: [333/445] Downloading POOL to data\raw\POOL.csv
+2025-05-18 02:12:13,276 INFO: [334/445] Downloading PPG to data\raw\PPG.csv
+2025-05-18 02:12:17,008 INFO: [335/445] Downloading PPL to data\raw\PPL.csv
+2025-05-18 02:12:20,834 INFO: [336/445] Downloading PFG to data\raw\PFG.csv
+2025-05-18 02:12:24,559 INFO: [337/445] Downloading PG to data\raw\PG.csv
+2025-05-18 02:12:28,495 INFO: [338/445] Downloading PGR to data\raw\PGR.csv
+2025-05-18 02:12:33,230 INFO: [339/445] Downloading PLD to data\raw\PLD.csv
+2025-05-18 02:12:36,967 INFO: [340/445] Downloading PRU to data\raw\PRU.csv
+2025-05-18 02:12:40,692 INFO: [341/445] Downloading PEG to data\raw\PEG.csv
+2025-05-18 02:12:44,390 INFO: [342/445] Downloading PSA to data\raw\PSA.csv
+2025-05-18 02:12:48,065 INFO: [343/445] Downloading PHM to data\raw\PHM.csv
+2025-05-18 02:12:51,801 INFO: [344/445] Downloading PVH to data\raw\PVH.csv
+2025-05-18 02:12:56,130 INFO: [345/445] Downloading QRVO to data\raw\QRVO.csv
+2025-05-18 02:12:59,804 INFO: [346/445] Downloading QCOM to data\raw\QCOM.csv
+2025-05-18 02:13:03,571 INFO: [347/445] Downloading PWR to data\raw\PWR.csv
+2025-05-18 02:13:07,283 INFO: [348/445] Downloading DGX to data\raw\DGX.csv
+2025-05-18 02:13:12,038 INFO: [349/445] Downloading RL to data\raw\RL.csv
+2025-05-18 02:13:15,792 INFO: [350/445] Downloading RJF to data\raw\RJF.csv
+2025-05-18 02:13:19,753 INFO: [351/445] Downloading RTX to data\raw\RTX.csv
+2025-05-18 02:13:23,549 INFO: [352/445] Downloading O to data\raw\O.csv
+2025-05-18 02:13:27,434 INFO: [353/445] Downloading REG to data\raw\REG.csv
+2025-05-18 02:13:31,145 INFO: [354/445] Downloading REGN to data\raw\REGN.csv
+2025-05-18 02:13:34,950 INFO: [355/445] Downloading RF to data\raw\RF.csv
+2025-05-18 02:13:38,719 INFO: [356/445] Downloading RSG to data\raw\RSG.csv
+2025-05-18 02:13:42,491 INFO: [357/445] Downloading RIO to data\raw\RIO.csv
+2025-05-18 02:13:46,507 INFO: [358/445] Downloading SPGI to data\raw\SPGI.csv
+2025-05-18 02:13:50,202 INFO: [359/445] Downloading SLB to data\raw\SLB.csv
+2025-05-18 02:13:53,966 INFO: [360/445] Downloading STX to data\raw\STX.csv
+2025-05-18 02:13:58,339 INFO: [361/445] Downloading SEE to data\raw\SEE.csv
+2025-05-18 02:14:02,361 INFO: [362/445] Downloading SRE to data\raw\SRE.csv
+2025-05-18 02:14:06,122 INFO: [363/445] Downloading NOW to data\raw\NOW.csv
+2025-05-18 02:14:11,198 INFO: [364/445] Downloading SHW to data\raw\SHW.csv
+2025-05-18 02:14:15,147 INFO: [365/445] Downloading SPG to data\raw\SPG.csv
+2025-05-18 02:14:18,921 INFO: [366/445] Downloading SWKS to data\raw\SWKS.csv
+2025-05-18 02:14:22,658 INFO: [367/445] Downloading SLG to data\raw\SLG.csv
+2025-05-18 02:14:27,061 INFO: [368/445] Downloading SNA to data\raw\SNA.csv
+2025-05-18 02:14:30,752 INFO: [369/445] Downloading SO to data\raw\SO.csv
+2025-05-18 02:14:34,550 INFO: [370/445] Downloading LUV to data\raw\LUV.csv
+2025-05-18 02:14:38,265 INFO: [371/445] Downloading SWK to data\raw\SWK.csv
+2025-05-18 02:14:42,059 INFO: [372/445] Downloading SBUX to data\raw\SBUX.csv
+2025-05-18 02:14:45,894 INFO: [373/445] Downloading STT to data\raw\STT.csv
+2025-05-18 02:14:49,655 INFO: [374/445] Downloading STE to data\raw\STE.csv
+2025-05-18 02:14:53,451 INFO: [375/445] Downloading SYK to data\raw\SYK.csv
+2025-05-18 02:14:57,441 INFO: [376/445] Downloading SIVB to data\raw\SIVB.csv
+2025-05-18 02:14:58,666 ERROR:
+1 Failed download:
+2025-05-18 02:14:58,666 ERROR: ['SIVB']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:15:00,378 INFO: [377/445] Downloading SYF to data\raw\SYF.csv
+2025-05-18 02:15:03,870 INFO: [378/445] Downloading SNPS to data\raw\SNPS.csv
+2025-05-18 02:15:07,899 INFO: [379/445] Downloading SYY to data\raw\SYY.csv
+2025-05-18 02:15:13,431 INFO: [380/445] Downloading TMUS to data\raw\TMUS.csv
+2025-05-18 02:15:17,136 INFO: [381/445] Downloading TROW to data\raw\TROW.csv
+2025-05-18 02:15:20,798 INFO: [382/445] Downloading TTWO to data\raw\TTWO.csv
+2025-05-18 02:15:24,398 INFO: [383/445] Downloading TPR to data\raw\TPR.csv
+2025-05-18 02:15:28,092 INFO: [384/445] Downloading TGT to data\raw\TGT.csv
+2025-05-18 02:15:31,799 INFO: [385/445] Downloading TEL to data\raw\TEL.csv
+2025-05-18 02:15:35,527 INFO: [386/445] Downloading FTI to data\raw\FTI.csv
+2025-05-18 02:15:39,597 INFO: [387/445] Downloading TXN to data\raw\TXN.csv
+2025-05-18 02:15:43,341 INFO: [388/445] Downloading TXT to data\raw\TXT.csv
+2025-05-18 02:15:47,143 INFO: [389/445] Downloading TMO to data\raw\TMO.csv
+2025-05-18 02:15:50,856 INFO: [390/445] Downloading TJX to data\raw\TJX.csv
+2025-05-18 02:15:54,670 INFO: [391/445] Downloading TSCO to data\raw\TSCO.csv
+2025-05-18 02:15:58,625 INFO: [392/445] Downloading TT to data\raw\TT.csv
+2025-05-18 02:16:02,419 INFO: [393/445] Downloading TDG to data\raw\TDG.csv
+2025-05-18 02:16:06,117 INFO: [394/445] Downloading TRV to data\raw\TRV.csv
+2025-05-18 02:16:12,053 INFO: [395/445] Downloading TRMB to data\raw\TRMB.csv
+2025-05-18 02:16:15,668 INFO: [396/445] Downloading TFC to data\raw\TFC.csv
+2025-05-18 02:16:19,320 INFO: [397/445] Downloading TWTR to data\raw\TWTR.csv
+2025-05-18 02:16:21,040 ERROR:
+1 Failed download:
+2025-05-18 02:16:21,040 ERROR: ['TWTR']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:16:22,739 INFO: [398/445] Downloading TSN to data\raw\TSN.csv
+2025-05-18 02:16:26,407 INFO: [399/445] Downloading UDR to data\raw\UDR.csv
+2025-05-18 02:16:30,171 INFO: [400/445] Downloading ULTA to data\raw\ULTA.csv
+2025-05-18 02:16:34,048 INFO: [401/445] Downloading USB to data\raw\USB.csv
+2025-05-18 02:16:37,724 INFO: [402/445] Downloading UAA to data\raw\UAA.csv
+2025-05-18 02:16:41,868 INFO: [403/445] Downloading UA to data\raw\UA.csv
+2025-05-18 02:16:45,567 INFO: [404/445] Downloading UNP to data\raw\UNP.csv
+2025-05-18 02:16:49,412 INFO: [405/445] Downloading UAL to data\raw\UAL.csv
+2025-05-18 02:16:52,997 INFO: [406/445] Downloading UNH to data\raw\UNH.csv
+2025-05-18 02:16:56,768 INFO: [407/445] Downloading UPS to data\raw\UPS.csv
+2025-05-18 02:17:00,501 INFO: [408/445] Downloading URI to data\raw\URI.csv
+2025-05-18 02:17:04,161 INFO: [409/445] Downloading UTX to data\raw\UTX.csv
+2025-05-18 02:17:05,867 ERROR:
+1 Failed download:
+2025-05-18 02:17:05,867 ERROR: ['UTX']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:17:07,554 INFO: [410/445] Downloading UHAL to data\raw\UHAL.csv
+2025-05-18 02:17:13,856 INFO: [411/445] Downloading VLO to data\raw\VLO.csv
+2025-05-18 02:17:17,625 INFO: [412/445] Downloading VTR to data\raw\VTR.csv
+2025-05-18 02:17:22,008 INFO: [413/445] Downloading VZ to data\raw\VZ.csv
+2025-05-18 02:17:25,752 INFO: [414/445] Downloading VRTX to data\raw\VRTX.csv
+2025-05-18 02:17:29,436 INFO: [415/445] Downloading VFC to data\raw\VFC.csv
+2025-05-18 02:17:33,668 INFO: [416/445] Downloading VIAC to data\raw\VIAC.csv
+2025-05-18 02:17:34,988 ERROR:
+1 Failed download:
+2025-05-18 02:17:34,988 ERROR: ['VIAC']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:17:36,727 INFO: [417/445] Downloading VTRS to data\raw\VTRS.csv
+2025-05-18 02:17:40,635 INFO: [418/445] Downloading V to data\raw\V.csv
+2025-05-18 02:17:44,322 INFO: [419/445] Downloading VRSN to data\raw\VRSN.csv
+2025-05-18 02:17:47,999 INFO: [420/445] Downloading VRSK to data\raw\VRSK.csv
+2025-05-18 02:17:51,596 INFO: [421/445] Downloading VNT to data\raw\VNT.csv
+2025-05-18 02:17:55,235 INFO: [422/445] Downloading VMC to data\raw\VMC.csv
+2025-05-18 02:17:58,988 INFO: [423/445] Downloading WRB to data\raw\WRB.csv
+2025-05-18 02:18:02,732 INFO: [424/445] Downloading WAB to data\raw\WAB.csv
+2025-05-18 02:18:06,427 INFO: [425/445] Downloading WMT to data\raw\WMT.csv
+2025-05-18 02:18:12,305 INFO: [426/445] Downloading WBA to data\raw\WBA.csv
+2025-05-18 02:18:16,205 INFO: [427/445] Downloading DIS to data\raw\DIS.csv
+2025-05-18 02:18:19,995 INFO: [428/445] Downloading WM to data\raw\WM.csv
+2025-05-18 02:18:23,872 INFO: [429/445] Downloading WAT to data\raw\WAT.csv
+2025-05-18 02:18:27,910 INFO: [430/445] Downloading WEC to data\raw\WEC.csv
+2025-05-18 02:18:31,743 INFO: [431/445] Downloading WFC to data\raw\WFC.csv
+2025-05-18 02:18:35,705 INFO: [432/445] Downloading WTW to data\raw\WTW.csv
+2025-05-18 02:18:39,413 INFO: [433/445] Downloading WPZ to data\raw\WPZ.csv
+2025-05-18 02:18:40,984 ERROR:
+1 Failed download:
+2025-05-18 02:18:40,985 ERROR: ['WPZ']: ValueError('Length mismatch: Expected axis has 2 elements, new values have 1 elements')
+2025-05-18 02:18:43,217 INFO: [434/445] Downloading WRK to data\raw\WRK.csv
+2025-05-18 02:18:44,492 ERROR:
+1 Failed download:
+2025-05-18 02:18:44,492 ERROR: ['WRK']: YFTzMissingError('possibly delisted; no timezone found')
+2025-05-18 02:18:46,239 INFO: [435/445] Downloading WY to data\raw\WY.csv
+2025-05-18 02:18:49,951 INFO: [436/445] Downloading WHR to data\raw\WHR.csv
+2025-05-18 02:18:54,069 INFO: [437/445] Downloading WMB to data\raw\WMB.csv
+2025-05-18 02:18:57,775 INFO: [438/445] Downloading WDAY to data\raw\WDAY.csv
+2025-05-18 02:19:01,320 INFO: [439/445] Downloading WYNN to data\raw\WYNN.csv
+2025-05-18 02:19:05,034 INFO: [440/445] Downloading XEL to data\raw\XEL.csv
+2025-05-18 02:19:08,979 INFO: [441/445] Downloading XYL to data\raw\XYL.csv
+2025-05-18 02:19:13,298 INFO: [442/445] Downloading YUM to data\raw\YUM.csv
+2025-05-18 02:19:17,287 INFO: [443/445] Downloading ZBRA to data\raw\ZBRA.csv
+2025-05-18 02:19:20,903 INFO: [444/445] Downloading ZBH to data\raw\ZBH.csv
+2025-05-18 02:19:24,675 INFO: [445/445] Downloading ZTS to data\raw\ZTS.csv
+2025-05-18 02:19:28,567 INFO: Wrote sector lookup to data\tickers\sectors.csv
+2025-05-18 02:19:28,568 INFO: Done!

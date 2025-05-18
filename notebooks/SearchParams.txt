@@ -1,0 +1,22 @@
+✅ Grid‐search complete. Results saved to reports/param_sweep\param_sweep_results.csv
+
+🏆 Best parameter set by sharpe:
+   • momentum_threshold: 0.02
+   • stop_loss_atr_mult: 1.5
+   • time_exit_days: 7.0
+   • risk_percentage: 0.01
+   • total_return: 53.283743063255045
+   • num_trades: 7686.0
+   • win_rate: 0.5325266718709342
+   • sharpe: 1.6701476298808997
+
+2025-05-18 23:09:13,558 INFO ✅ Grid-search complete. Results saved to reports/param_sweep\param_sweep_results.csv
+2025-05-18 23:09:13,558 INFO 🏆 Best parameter set by Sharpe:
+2025-05-18 23:09:13,561 INFO    • momentum_threshold: 0.015
+2025-05-18 23:09:13,561 INFO    • stop_loss_atr_mult: 2.0
+2025-05-18 23:09:13,562 INFO    • time_exit_days: 7.0
+2025-05-18 23:09:13,562 INFO    • risk_percentage: 0.01
+2025-05-18 23:09:13,563 INFO    • total_return: 1.1579610334247914
+2025-05-18 23:09:13,563 INFO    • num_trades: 84.0
+2025-05-18 23:09:13,563 INFO    • win_rate: 0.5238095238095238
+2025-05-18 23:09:13,564 INFO    • sharpe: 3.823766753872
