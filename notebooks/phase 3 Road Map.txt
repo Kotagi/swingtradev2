@@ -1,0 +1,201 @@
+Phase 3: Feature Engineering & Basic ML (v3.0-alpha)
+📁 1. Project Scaffolding & Configuration
+ Create features/ directory
+
+ Create features/__init__.py
+
+ Create features/registry.py (holds feature‐name → function map)
+
+ Create features/technical.py (will house our 7 core functions)
+
+ Create config/ directory
+
+ Add config/features.yaml or .json listing enabled features
+
+ Create tests/ directory
+
+ Create tests/test_features.py (unit tests for each feature)
+
+ Set up a central logger
+
+ In utils/logger.py, configure Python’s logging module with console + file handlers
+
+ Define log format (timestamp, level, module, message)
+
+ Update README.md with Phase 3 overview & enable instructions for feature toggles
+
+🛠 2. Feature Registry & Dynamic Loading
+ In features/registry.py:
+
+ Import each feature function by name
+
+ Build FEATURES = { "5d_return": feature_5d_return, … }
+
+ Write load_enabled_features(config_path) to read config and return active feature funcs
+
+ Write smoke test to ensure registry loads without errors
+
+🔎 3. Implement & Test Core Technical Features
+For each of the 7 features below, do the following sub‐steps:
+
+5-Day Return
+
+ Write stub feature_5d_return(df: DataFrame) → Series with docstring
+
+ Add unit test in tests/test_features.py with a small DataFrame and known result
+
+ Implement calculation: (close.shift(-5) / close) - 1
+
+ Run pytest to confirm test passes
+
+ Register in features/registry.py under "5d_return"
+
+ Perform a single-ticker smoke run, check logs for “feature_5d_return succeeded”
+
+10-Day Return
+
+ …repeat stub/test/implement/register/smoke steps…
+
+ATR(14)
+
+ Stub feature_atr(df, period=14) + docstring
+
+ Unit test with sample high/low/close data
+
+ Implement True Range & rolling mean
+
+ Register + smoke test
+
+Bollinger Band Width
+
+ Stub feature_bb_width(df, period=20, std=2) + doc
+
+ Unit test comparing known BB calculations
+
+ Implement (upper – lower) / middle
+
+ Register + smoke test
+
+EMA(12/26) Crossover Value
+
+ Stub feature_ema_cross(df, span_short=12, span_long=26) + doc
+
+ Test: known EMAs on sample series
+
+ Implement ema12 – ema26
+
+ Register + smoke test
+
+On-Balance Volume (OBV)
+
+ Stub feature_obv(df) + doc
+
+ Unit test using a small toy series where OBV is trivial
+
+ Implement cumulative OBV logic
+
+ Register + smoke test
+
+RSI(14)
+
+ Stub feature_rsi(df, period=14) + doc
+
+ Unit test with synthetic up/down series
+
+ Implement gains/losses rolling average, RS → RSI
+
+ Register + smoke test
+
+🔧 4. Feature‐Engineering Pipeline
+ Create scripts/build_features.py (or inside a pipeline/ module)
+
+ Load raw OHLCV data for all tickers (e.g. from data/raw/)
+
+ Call load_enabled_features() to get list of feature funcs
+
+ For each ticker:
+
+ Read raw DataFrame
+
+ Iterate features:
+
+python
+Copy
+Edit
+for name, func in FEATURES.items():
+    try:
+        df[name] = func(df)
+        logger.info(f"{name} succeeded for {ticker}")
+    except Exception as e:
+        logger.error(f"{name} failed for {ticker}: {e}", exc_info=True)
+ Merge all feature columns into one wide DataFrame indexed by date & ticker
+
+ Save to data/clean/features.parquet
+
+ Write a smoke script to run on 1–5 tickers and inspect features.parquet
+
+🏷 5. Labeling
+ In pipeline/build_features.py, add labeling step:
+
+ Compute label_5d = (close.shift(-5) / close) - 1 > 0 → target column (0/1)
+
+ Unit test for labeling logic (edge cases: end of series)
+
+ Verify label distribution (e.g. df.target.value_counts())
+
+🔀 6. Train/Test Splits (Walk-Forward)
+ Implement utils/splits.py with walk_forward_splits(df_dates, train_years=8, test_years=1, step_months=3)
+
+ Unit test:
+
+ No overlap between train/test for each fold
+
+ Expected number of folds (based on data span)
+
+ In build script, save splits to data/splits.json for reproducibility
+
+🤖 7. Basic Model Training & Saving
+ Create scripts/train_model.py
+
+ Load features.parquet and splits.json
+
+ For each fold:
+
+ Train XGBoost classifier on train data (default params)
+
+ Evaluate on test data, log accuracy/precision/recall/F1
+
+ Retrain on full data or best fold, then save model to models/xgb_phase3.pkl
+
+ Unit test:
+
+ Model file exists after run
+
+ Simple sanity check: model.predict on a small batch yields 0/1
+
+📊 8. Evaluation & Baseline Backtest
+ Implement scripts/evaluate_phase3.py
+
+ Use model to generate signals
+
+ Plug signals into backtest.py (time-exit 7 days, 1% risk, ATR stop 2×, mom_thres=0.015)
+
+ Compare P&L/sharpe vs. rule-only baseline
+
+ Save report to reports/phase3_evaluation.md
+
+💾 9. Documentation & Versioning
+ Update top‐level README.md with Phase 3 detailed checklist (link here)
+
+ Bump version in setup.py or __version__ to 3.0-alpha
+
+ Commit all changes in a single PR:
+
+bash
+Copy
+Edit
+git add .
+git commit -m "feat(phase3): implement feature pipeline & basic ML prototype"
+git tag -a v3.0-alpha -m "Phase 3: Feature engineering & basic ML"
+git push origin main --tags
+ Merge PR & ensure CI passes all unit tests

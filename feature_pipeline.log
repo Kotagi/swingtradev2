@@ -1,0 +1,391 @@
+2025-05-19 00:55:06,304 INFO [__main__] Loaded A.csv with 4372 rows
+2025-05-19 00:55:06,471 INFO [__main__] Features written to A.csv
+2025-05-19 00:55:06,498 INFO [__main__] Loaded AAPL.csv with 4372 rows
+2025-05-19 00:55:06,638 INFO [__main__] Features written to AAPL.csv
+2025-05-19 00:55:06,661 INFO [__main__] Loaded ABBV.csv with 3113 rows
+2025-05-19 00:55:06,755 INFO [__main__] Features written to ABBV.csv
+2025-05-19 00:55:06,764 INFO [__main__] Loaded ABNB.csv with 1113 rows
+2025-05-19 00:55:06,810 INFO [__main__] Features written to ABNB.csv
+2025-05-19 00:55:06,827 INFO [__main__] Loaded ABT.csv with 4372 rows
+2025-05-19 00:55:06,972 INFO [__main__] Features written to ABT.csv
+2025-05-19 00:55:06,995 INFO [__main__] Loaded ACN.csv with 4372 rows
+2025-05-19 00:55:07,134 INFO [__main__] Features written to ACN.csv
+2025-05-19 00:55:07,152 INFO [__main__] Loaded ADBE.csv with 4372 rows
+2025-05-19 00:55:07,279 INFO [__main__] Features written to ADBE.csv
+2025-05-19 00:55:07,297 INFO [__main__] Loaded ADI.csv with 4372 rows
+2025-05-19 00:55:07,404 INFO [__main__] Features written to ADI.csv
+2025-05-19 00:55:07,421 INFO [__main__] Loaded ADM.csv with 4372 rows
+2025-05-19 00:55:07,524 INFO [__main__] Features written to ADM.csv
+2025-05-19 00:55:07,538 INFO [__main__] Loaded ADP.csv with 4372 rows
+2025-05-19 00:55:07,667 INFO [__main__] Features written to ADP.csv
+2025-05-19 00:55:07,693 INFO [__main__] Loaded ADSK.csv with 4372 rows
+2025-05-19 00:55:07,802 INFO [__main__] Features written to ADSK.csv
+2025-05-19 00:55:07,821 INFO [__main__] Loaded AEE.csv with 4372 rows
+2025-05-19 00:55:07,899 INFO [__main__] Features written to AEE.csv
+2025-05-19 00:55:07,918 INFO [__main__] Loaded AEP.csv with 4372 rows
+2025-05-19 00:55:08,068 INFO [__main__] Features written to AEP.csv
+2025-05-19 00:55:08,093 INFO [__main__] Loaded AES.csv with 4372 rows
+2025-05-19 00:55:08,249 INFO [__main__] Features written to AES.csv
+2025-05-19 00:55:08,277 INFO [__main__] Loaded AFL.csv with 4372 rows
+2025-05-19 00:55:08,452 INFO [__main__] Features written to AFL.csv
+2025-05-19 00:55:08,475 INFO [__main__] Loaded AIG.csv with 4372 rows
+2025-05-19 00:55:08,599 INFO [__main__] Features written to AIG.csv
+2025-05-19 00:55:08,616 INFO [__main__] Loaded AIZ.csv with 4372 rows
+2025-05-19 00:55:08,708 INFO [__main__] Features written to AIZ.csv
+2025-05-19 00:55:08,723 INFO [__main__] Loaded AJG.csv with 4372 rows
+2025-05-19 00:55:08,855 INFO [__main__] Features written to AJG.csv
+2025-05-19 00:55:08,874 INFO [__main__] Loaded AKAM.csv with 4372 rows
+2025-05-19 00:55:08,982 INFO [__main__] Features written to AKAM.csv
+2025-05-19 00:55:08,998 INFO [__main__] Loaded ALB.csv with 4372 rows
+2025-05-19 00:55:09,121 INFO [__main__] Features written to ALB.csv
+2025-05-19 00:55:09,145 INFO [__main__] Loaded ALGN.csv with 4372 rows
+2025-05-19 00:55:09,354 INFO [__main__] Features written to ALGN.csv
+2025-05-19 00:55:09,377 INFO [__main__] Loaded ALL.csv with 4372 rows
+2025-05-19 00:55:09,488 INFO [__main__] Features written to ALL.csv
+2025-05-19 00:55:09,509 INFO [__main__] Loaded ALLE.csv with 2891 rows
+2025-05-19 00:55:09,659 INFO [__main__] Features written to ALLE.csv
+2025-05-19 00:55:09,685 INFO [__main__] Loaded AMAT.csv with 4372 rows
+2025-05-19 00:55:09,793 INFO [__main__] Features written to AMAT.csv
+2025-05-19 00:55:09,809 INFO [__main__] Loaded AMCR.csv with 3271 rows
+2025-05-19 00:55:09,881 INFO [__main__] Features written to AMCR.csv
+2025-05-19 00:55:09,898 INFO [__main__] Loaded AMD.csv with 4372 rows
+2025-05-19 00:55:09,981 INFO [__main__] Features written to AMD.csv
+2025-05-19 00:55:10,001 INFO [__main__] Loaded AME.csv with 4372 rows
+2025-05-19 00:55:10,177 INFO [__main__] Features written to AME.csv
+2025-05-19 00:55:10,201 INFO [__main__] Loaded AMGN.csv with 4372 rows
+2025-05-19 00:55:10,371 INFO [__main__] Features written to AMGN.csv
+2025-05-19 00:55:10,388 INFO [__main__] Loaded AMP.csv with 4372 rows
+2025-05-19 00:55:10,464 INFO [__main__] Features written to AMP.csv
+2025-05-19 00:55:10,482 INFO [__main__] Loaded AMT.csv with 4372 rows
+2025-05-19 00:55:10,559 INFO [__main__] Features written to AMT.csv
+2025-05-19 00:55:10,582 INFO [__main__] Loaded AMZN.csv with 4372 rows
+2025-05-19 00:55:10,688 INFO [__main__] Features written to AMZN.csv
+2025-05-19 00:55:10,708 INFO [__main__] Loaded ANET.csv with 2754 rows
+2025-05-19 00:55:10,801 INFO [__main__] Features written to ANET.csv
+2025-05-19 00:55:10,818 INFO [__main__] Loaded ANSS.csv with 4372 rows
+2025-05-19 00:55:10,899 INFO [__main__] Features written to ANSS.csv
+2025-05-19 00:55:10,918 INFO [__main__] Loaded AON.csv with 4372 rows
+2025-05-19 00:55:11,002 INFO [__main__] Features written to AON.csv
+2025-05-19 00:55:11,024 INFO [__main__] Loaded AOS.csv with 4372 rows
+2025-05-19 00:55:11,146 INFO [__main__] Features written to AOS.csv
+2025-05-19 00:55:11,162 INFO [__main__] Loaded APA.csv with 4372 rows
+2025-05-19 00:55:11,331 INFO [__main__] Features written to APA.csv
+2025-05-19 00:55:11,356 INFO [__main__] Loaded APD.csv with 4372 rows
+2025-05-19 00:55:11,463 INFO [__main__] Features written to APD.csv
+2025-05-19 00:55:11,487 INFO [__main__] Loaded APH.csv with 4372 rows
+2025-05-19 00:55:11,597 INFO [__main__] Features written to APH.csv
+2025-05-19 00:55:11,613 INFO [__main__] Loaded APTV.csv with 3393 rows
+2025-05-19 00:55:11,687 INFO [__main__] Features written to APTV.csv
+2025-05-19 00:55:11,704 INFO [__main__] Loaded ARE.csv with 4372 rows
+2025-05-19 00:55:11,781 INFO [__main__] Features written to ARE.csv
+2025-05-19 00:55:11,803 INFO [__main__] Loaded ATO.csv with 4372 rows
+2025-05-19 00:55:11,946 INFO [__main__] Features written to ATO.csv
+2025-05-19 00:55:11,973 INFO [__main__] Loaded AVB.csv with 4372 rows
+2025-05-19 00:55:12,134 INFO [__main__] Features written to AVB.csv
+2025-05-19 00:55:12,160 INFO [__main__] Loaded AVGO.csv with 3970 rows
+2025-05-19 00:55:12,334 INFO [__main__] Features written to AVGO.csv
+2025-05-19 00:55:12,362 INFO [__main__] Loaded AVY.csv with 4372 rows
+2025-05-19 00:55:12,465 INFO [__main__] Features written to AVY.csv
+2025-05-19 00:55:12,482 INFO [__main__] Loaded AWK.csv with 4295 rows
+2025-05-19 00:55:12,557 INFO [__main__] Features written to AWK.csv
+2025-05-19 00:55:12,578 INFO [__main__] Loaded AXON.csv with 4372 rows
+2025-05-19 00:55:12,682 INFO [__main__] Features written to AXON.csv
+2025-05-19 00:55:12,705 INFO [__main__] Loaded AXP.csv with 4372 rows
+2025-05-19 00:55:12,809 INFO [__main__] Features written to AXP.csv
+2025-05-19 00:55:12,835 INFO [__main__] Loaded AZO.csv with 4372 rows
+2025-05-19 00:55:12,944 INFO [__main__] Features written to AZO.csv
+2025-05-19 00:55:12,965 INFO [__main__] Loaded BA.csv with 4372 rows
+2025-05-19 00:55:13,050 INFO [__main__] Features written to BA.csv
+2025-05-19 00:55:13,069 INFO [__main__] Loaded BAC.csv with 4372 rows
+2025-05-19 00:55:13,217 INFO [__main__] Features written to BAC.csv
+2025-05-19 00:55:13,237 INFO [__main__] Loaded BALL.csv with 4372 rows
+2025-05-19 00:55:13,393 INFO [__main__] Features written to BALL.csv
+2025-05-19 00:55:13,409 INFO [__main__] Loaded BAX.csv with 4372 rows
+2025-05-19 00:55:13,514 INFO [__main__] Features written to BAX.csv
+2025-05-19 00:55:13,535 INFO [__main__] Loaded BBY.csv with 4372 rows
+2025-05-19 00:55:13,635 INFO [__main__] Features written to BBY.csv
+2025-05-19 00:55:13,652 INFO [__main__] Loaded BDX.csv with 4372 rows
+2025-05-19 00:55:13,729 INFO [__main__] Features written to BDX.csv
+2025-05-19 00:55:13,747 INFO [__main__] Loaded BEN.csv with 4372 rows
+2025-05-19 00:55:13,878 INFO [__main__] Features written to BEN.csv
+2025-05-19 00:55:13,901 INFO [__main__] Loaded BG.csv with 4372 rows
+2025-05-19 00:55:14,014 INFO [__main__] Features written to BG.csv
+2025-05-19 00:55:14,036 INFO [__main__] Loaded BIIB.csv with 4372 rows
+2025-05-19 00:55:14,126 INFO [__main__] Features written to BIIB.csv
+2025-05-19 00:55:14,144 INFO [__main__] Loaded BK.csv with 4372 rows
+2025-05-19 00:55:14,264 INFO [__main__] Features written to BK.csv
+2025-05-19 00:55:14,292 INFO [__main__] Loaded BKNG.csv with 4372 rows
+2025-05-19 00:55:14,381 INFO [__main__] Features written to BKNG.csv
+2025-05-19 00:55:14,401 INFO [__main__] Loaded BKR.csv with 4372 rows
+2025-05-19 00:55:14,490 INFO [__main__] Features written to BKR.csv
+2025-05-19 00:55:14,514 INFO [__main__] Loaded BLDR.csv with 4372 rows
+2025-05-19 00:55:14,611 INFO [__main__] Features written to BLDR.csv
+2025-05-19 00:55:14,627 INFO [__main__] Loaded BLK.csv with 4372 rows
+2025-05-19 00:55:14,767 INFO [__main__] Features written to BLK.csv
+2025-05-19 00:55:14,783 INFO [__main__] Loaded BMY.csv with 4372 rows
+2025-05-19 00:55:14,863 INFO [__main__] Features written to BMY.csv
+2025-05-19 00:55:14,884 INFO [__main__] Loaded BR.csv with 4372 rows
+2025-05-19 00:55:14,990 INFO [__main__] Features written to BR.csv
+2025-05-19 00:55:15,006 INFO [__main__] Loaded BRO.csv with 4372 rows
+2025-05-19 00:55:15,122 INFO [__main__] Features written to BRO.csv
+2025-05-19 00:55:15,142 INFO [__main__] Loaded BSX.csv with 4372 rows
+2025-05-19 00:55:15,224 INFO [__main__] Features written to BSX.csv
+2025-05-19 00:55:15,244 INFO [__main__] Loaded BX.csv with 4372 rows
+2025-05-19 00:55:15,340 INFO [__main__] Features written to BX.csv
+2025-05-19 00:55:15,363 INFO [__main__] Loaded BXP.csv with 4372 rows
+2025-05-19 00:55:15,479 INFO [__main__] Features written to BXP.csv
+2025-05-19 00:55:15,497 INFO [__main__] Loaded C.csv with 4372 rows
+2025-05-19 00:55:15,644 INFO [__main__] Features written to C.csv
+2025-05-19 00:55:15,663 INFO [__main__] Loaded CAG.csv with 4372 rows
+2025-05-19 00:55:15,770 INFO [__main__] Features written to CAG.csv
+2025-05-19 00:55:15,799 INFO [__main__] Loaded CAH.csv with 4372 rows
+2025-05-19 00:55:15,901 INFO [__main__] Features written to CAH.csv
+2025-05-19 00:55:15,912 INFO [__main__] Loaded CARR.csv with 1298 rows
+2025-05-19 00:55:16,012 INFO [__main__] Features written to CARR.csv
+2025-05-19 00:55:16,039 INFO [__main__] Loaded CAT.csv with 4372 rows
+2025-05-19 00:55:16,155 INFO [__main__] Features written to CAT.csv
+2025-05-19 00:55:16,190 INFO [__main__] Loaded CB.csv with 4372 rows
+2025-05-19 00:55:16,355 INFO [__main__] Features written to CB.csv
+2025-05-19 00:55:16,380 INFO [__main__] Loaded CBOE.csv with 3755 rows
+2025-05-19 00:55:16,551 INFO [__main__] Features written to CBOE.csv
+2025-05-19 00:55:16,568 INFO [__main__] Loaded CBRE.csv with 4372 rows
+2025-05-19 00:55:16,645 INFO [__main__] Features written to CBRE.csv
+2025-05-19 00:55:16,660 INFO [__main__] Loaded CCI.csv with 4372 rows
+2025-05-19 00:55:16,736 INFO [__main__] Features written to CCI.csv
+2025-05-19 00:55:16,755 INFO [__main__] Loaded CCL.csv with 4372 rows
+2025-05-19 00:55:16,835 INFO [__main__] Features written to CCL.csv
+2025-05-19 00:55:16,852 INFO [__main__] Loaded CDNS.csv with 4372 rows
+2025-05-19 00:55:16,939 INFO [__main__] Features written to CDNS.csv
+2025-05-19 00:55:16,956 INFO [__main__] Loaded CDW.csv with 2991 rows
+2025-05-19 00:55:17,082 INFO [__main__] Features written to CDW.csv
+2025-05-19 00:55:17,089 INFO [__main__] Loaded CEG.csv with 835 rows
+2025-05-19 00:55:17,183 INFO [__main__] Features written to CEG.csv
+2025-05-19 00:55:17,209 INFO [__main__] Loaded CF.csv with 4372 rows
+2025-05-19 00:55:17,380 INFO [__main__] Features written to CF.csv
+2025-05-19 00:55:17,400 INFO [__main__] Loaded CFG.csv with 2678 rows
+2025-05-19 00:55:17,554 INFO [__main__] Features written to CFG.csv
+2025-05-19 00:55:17,578 INFO [__main__] Loaded CHD.csv with 4372 rows
+2025-05-19 00:55:17,773 INFO [__main__] Features written to CHD.csv
+2025-05-19 00:55:17,788 INFO [__main__] Loaded CHRW.csv with 4372 rows
+2025-05-19 00:55:17,866 INFO [__main__] Features written to CHRW.csv
+2025-05-19 00:55:17,888 INFO [__main__] Loaded CHTR.csv with 3866 rows
+2025-05-19 00:55:17,982 INFO [__main__] Features written to CHTR.csv
+2025-05-19 00:55:18,008 INFO [__main__] Loaded CI.csv with 4372 rows
+2025-05-19 00:55:18,121 INFO [__main__] Features written to CI.csv
+2025-05-19 00:55:18,140 INFO [__main__] Loaded CINF.csv with 4372 rows
+2025-05-19 00:55:18,247 INFO [__main__] Features written to CINF.csv
+2025-05-19 00:55:18,269 INFO [__main__] Loaded CL.csv with 4372 rows
+2025-05-19 00:55:18,376 INFO [__main__] Features written to CL.csv
+2025-05-19 00:55:18,394 INFO [__main__] Loaded CLX.csv with 4372 rows
+2025-05-19 00:56:25,413 INFO [__main__] Loaded A.csv with 4372 rows
+2025-05-19 00:56:25,526 INFO [__main__] Features written to A.csv
+2025-05-19 00:56:25,549 INFO [__main__] Loaded AAPL.csv with 4372 rows
+2025-05-19 00:56:25,657 INFO [__main__] Features written to AAPL.csv
+2025-05-19 00:56:25,676 INFO [__main__] Loaded ABBV.csv with 3113 rows
+2025-05-19 00:56:25,852 INFO [__main__] Features written to ABBV.csv
+2025-05-19 00:56:25,862 INFO [__main__] Loaded ABNB.csv with 1113 rows
+2025-05-19 00:56:25,980 INFO [__main__] Features written to ABNB.csv
+2025-05-19 00:56:25,997 INFO [__main__] Loaded ABT.csv with 4372 rows
+2025-05-19 00:56:26,078 INFO [__main__] Features written to ABT.csv
+2025-05-19 00:56:26,103 INFO [__main__] Loaded ACN.csv with 4372 rows
+2025-05-19 00:56:26,216 INFO [__main__] Features written to ACN.csv
+2025-05-19 00:56:26,236 INFO [__main__] Loaded ADBE.csv with 4372 rows
+2025-05-19 00:56:26,379 INFO [__main__] Features written to ADBE.csv
+2025-05-19 00:56:26,395 INFO [__main__] Loaded ADI.csv with 4372 rows
+2025-05-19 00:56:26,525 INFO [__main__] Features written to ADI.csv
+2025-05-19 00:56:26,551 INFO [__main__] Loaded ADM.csv with 4372 rows
+2025-05-19 00:56:26,715 INFO [__main__] Features written to ADM.csv
+2025-05-19 00:56:26,732 INFO [__main__] Loaded ADP.csv with 4372 rows
+2025-05-19 00:56:26,912 INFO [__main__] Features written to ADP.csv
+2025-05-19 00:56:26,938 INFO [__main__] Loaded ADSK.csv with 4372 rows
+2025-05-19 00:56:27,058 INFO [__main__] Features written to ADSK.csv
+2025-05-19 00:56:27,083 INFO [__main__] Loaded AEE.csv with 4372 rows
+2025-05-19 00:58:48,494 INFO [__main__] Loaded A.csv with 4372 rows
+2025-05-19 00:58:48,679 INFO [__main__] Features written to A.csv
+2025-05-19 00:58:48,697 INFO [__main__] Loaded AAPL.csv with 4372 rows
+2025-05-19 00:58:48,913 INFO [__main__] Features written to AAPL.csv
+2025-05-19 00:58:48,927 INFO [__main__] Loaded ABBV.csv with 3113 rows
+2025-05-19 00:58:49,115 INFO [__main__] Features written to ABBV.csv
+2025-05-19 00:58:49,125 INFO [__main__] Loaded ABNB.csv with 1113 rows
+2025-05-19 00:58:49,330 INFO [__main__] Features written to ABNB.csv
+2025-05-19 00:58:49,351 INFO [__main__] Loaded ABT.csv with 4372 rows
+2025-05-19 00:58:49,550 INFO [__main__] Features written to ABT.csv
+2025-05-19 00:58:49,569 INFO [__main__] Loaded ACN.csv with 4372 rows
+2025-05-19 01:18:13,641 INFO [__main__] Loaded A.csv with 4372 rows
+2025-05-19 01:18:14,006 INFO [__main__] Features written to A.csv
+2025-05-19 01:18:14,023 INFO [__main__] Loaded AAPL.csv with 4372 rows
+2025-05-19 01:18:14,280 INFO [__main__] Features written to AAPL.csv
+2025-05-19 01:18:14,296 INFO [__main__] Loaded ABBV.csv with 3113 rows
+2025-05-19 01:18:14,502 INFO [__main__] Features written to ABBV.csv
+2025-05-19 01:18:14,516 INFO [__main__] Loaded ABNB.csv with 1113 rows
+2025-05-19 01:18:14,631 INFO [__main__] Features written to ABNB.csv
+2025-05-19 01:18:14,652 INFO [__main__] Loaded ABT.csv with 4372 rows
+2025-05-19 01:18:15,004 INFO [__main__] Features written to ABT.csv
+2025-05-19 01:18:15,027 INFO [__main__] Loaded ACN.csv with 4372 rows
+2025-05-19 01:18:15,380 INFO [__main__] Features written to ACN.csv
+2025-05-19 01:18:15,403 INFO [__main__] Loaded ADBE.csv with 4372 rows
+2025-05-19 01:18:15,725 INFO [__main__] Features written to ADBE.csv
+2025-05-19 01:18:15,749 INFO [__main__] Loaded ADI.csv with 4372 rows
+2025-05-19 01:18:16,060 INFO [__main__] Features written to ADI.csv
+2025-05-19 01:18:16,077 INFO [__main__] Loaded ADM.csv with 4372 rows
+2025-05-19 01:18:16,381 INFO [__main__] Features written to ADM.csv
+2025-05-19 01:18:16,404 INFO [__main__] Loaded ADP.csv with 4372 rows
+2025-05-19 01:18:16,688 INFO [__main__] Features written to ADP.csv
+2025-05-19 01:18:16,711 INFO [__main__] Loaded ADSK.csv with 4372 rows
+2025-05-19 01:18:17,052 INFO [__main__] Features written to ADSK.csv
+2025-05-19 01:18:17,068 INFO [__main__] Loaded AEE.csv with 4372 rows
+2025-05-19 01:18:17,318 INFO [__main__] Features written to AEE.csv
+2025-05-19 01:18:17,334 INFO [__main__] Loaded AEP.csv with 4372 rows
+2025-05-19 01:18:17,672 INFO [__main__] Features written to AEP.csv
+2025-05-19 01:18:17,692 INFO [__main__] Loaded AES.csv with 4372 rows
+2025-05-19 01:18:18,073 INFO [__main__] Features written to AES.csv
+2025-05-19 01:18:18,090 INFO [__main__] Loaded AFL.csv with 4372 rows
+2025-05-19 01:18:18,392 INFO [__main__] Features written to AFL.csv
+2025-05-19 01:18:18,411 INFO [__main__] Loaded AIG.csv with 4372 rows
+2025-05-19 01:18:18,729 INFO [__main__] Features written to AIG.csv
+2025-05-19 01:18:18,749 INFO [__main__] Loaded AIZ.csv with 4372 rows
+2025-05-19 01:18:19,156 INFO [__main__] Features written to AIZ.csv
+2025-05-19 01:18:19,173 INFO [__main__] Loaded AJG.csv with 4372 rows
+2025-05-19 01:18:19,475 INFO [__main__] Features written to AJG.csv
+2025-05-19 01:18:19,496 INFO [__main__] Loaded AKAM.csv with 4372 rows
+2025-05-19 01:18:19,817 INFO [__main__] Features written to AKAM.csv
+2025-05-19 01:18:19,832 INFO [__main__] Loaded ALB.csv with 4372 rows
+2025-05-19 01:18:20,209 INFO [__main__] Features written to ALB.csv
+2025-05-19 01:18:20,231 INFO [__main__] Loaded ALGN.csv with 4372 rows
+2025-05-19 01:18:20,516 INFO [__main__] Features written to ALGN.csv
+2025-05-19 01:18:20,540 INFO [__main__] Loaded ALL.csv with 4372 rows
+2025-05-19 01:18:20,839 INFO [__main__] Features written to ALL.csv
+2025-05-19 01:18:20,860 INFO [__main__] Loaded ALLE.csv with 2891 rows
+2025-05-19 01:18:21,090 INFO [__main__] Features written to ALLE.csv
+2025-05-19 01:18:21,114 INFO [__main__] Loaded AMAT.csv with 4372 rows
+2025-05-19 01:18:21,369 INFO [__main__] Features written to AMAT.csv
+2025-05-19 01:18:21,384 INFO [__main__] Loaded AMCR.csv with 3271 rows
+2025-05-19 01:18:21,579 INFO [__main__] Features written to AMCR.csv
+2025-05-19 01:18:21,593 INFO [__main__] Loaded AMD.csv with 4372 rows
+2025-05-19 01:18:21,853 INFO [__main__] Features written to AMD.csv
+2025-05-19 01:18:21,869 INFO [__main__] Loaded AME.csv with 4372 rows
+2025-05-19 01:18:22,131 INFO [__main__] Features written to AME.csv
+2025-05-19 01:18:22,146 INFO [__main__] Loaded AMGN.csv with 4372 rows
+2025-05-19 01:18:22,401 INFO [__main__] Features written to AMGN.csv
+2025-05-19 01:18:22,418 INFO [__main__] Loaded AMP.csv with 4372 rows
+2025-05-19 01:18:22,676 INFO [__main__] Features written to AMP.csv
+2025-05-19 01:18:22,691 INFO [__main__] Loaded AMT.csv with 4372 rows
+2025-05-19 01:18:22,946 INFO [__main__] Features written to AMT.csv
+2025-05-19 01:18:22,963 INFO [__main__] Loaded AMZN.csv with 4372 rows
+2025-05-19 01:18:23,257 INFO [__main__] Features written to AMZN.csv
+2025-05-19 01:18:23,277 INFO [__main__] Loaded ANET.csv with 2754 rows
+2025-05-19 01:18:23,474 INFO [__main__] Features written to ANET.csv
+2025-05-19 01:18:23,496 INFO [__main__] Loaded ANSS.csv with 4372 rows
+2025-05-19 01:18:23,838 INFO [__main__] Features written to ANSS.csv
+2025-05-19 01:18:23,861 INFO [__main__] Loaded AON.csv with 4372 rows
+2025-05-19 01:18:24,222 INFO [__main__] Features written to AON.csv
+2025-05-19 01:18:24,237 INFO [__main__] Loaded AOS.csv with 4372 rows
+2025-05-19 01:18:24,494 INFO [__main__] Features written to AOS.csv
+2025-05-19 01:18:24,510 INFO [__main__] Loaded APA.csv with 4372 rows
+2025-05-19 01:18:24,813 INFO [__main__] Features written to APA.csv
+2025-05-19 01:18:24,830 INFO [__main__] Loaded APD.csv with 4372 rows
+2025-05-19 01:18:25,197 INFO [__main__] Features written to APD.csv
+2025-05-19 01:18:25,216 INFO [__main__] Loaded APH.csv with 4372 rows
+2025-05-19 01:18:25,469 INFO [__main__] Features written to APH.csv
+2025-05-19 01:18:25,483 INFO [__main__] Loaded APTV.csv with 3393 rows
+2025-05-19 01:18:25,694 INFO [__main__] Features written to APTV.csv
+2025-05-19 01:18:25,709 INFO [__main__] Loaded ARE.csv with 4372 rows
+2025-05-19 01:18:25,965 INFO [__main__] Features written to ARE.csv
+2025-05-19 01:18:25,981 INFO [__main__] Loaded ATO.csv with 4372 rows
+2025-05-19 01:18:27,202 INFO [__main__] Features written to ATO.csv
+2025-05-19 01:18:27,226 INFO [__main__] Loaded AVB.csv with 4372 rows
+2025-05-19 01:18:27,562 INFO [__main__] Features written to AVB.csv
+2025-05-19 01:18:27,586 INFO [__main__] Loaded AVGO.csv with 3970 rows
+2025-05-19 01:18:27,885 INFO [__main__] Features written to AVGO.csv
+2025-05-19 01:18:27,902 INFO [__main__] Loaded AVY.csv with 4372 rows
+2025-05-19 01:18:28,191 INFO [__main__] Features written to AVY.csv
+2025-05-19 01:18:28,210 INFO [__main__] Loaded AWK.csv with 4295 rows
+2025-05-19 01:18:28,521 INFO [__main__] Features written to AWK.csv
+2025-05-19 01:18:28,538 INFO [__main__] Loaded AXON.csv with 4372 rows
+2025-05-19 01:18:29,716 INFO [__main__] Features written to AXON.csv
+2025-05-19 01:18:29,731 INFO [__main__] Loaded AXP.csv with 4372 rows
+2025-05-19 01:18:30,049 INFO [__main__] Features written to AXP.csv
+2025-05-19 01:18:30,065 INFO [__main__] Loaded AZO.csv with 4372 rows
+2025-05-19 01:18:30,336 INFO [__main__] Features written to AZO.csv
+2025-05-19 01:18:30,352 INFO [__main__] Loaded BA.csv with 4372 rows
+2025-05-19 01:18:30,611 INFO [__main__] Features written to BA.csv
+2025-05-19 01:18:30,629 INFO [__main__] Loaded BAC.csv with 4372 rows
+2025-05-19 01:18:30,928 INFO [__main__] Features written to BAC.csv
+2025-05-19 01:18:30,955 INFO [__main__] Loaded BALL.csv with 4372 rows
+2025-05-19 01:18:34,428 INFO [__main__] Features written to BALL.csv
+2025-05-19 01:18:34,444 INFO [__main__] Loaded BAX.csv with 4372 rows
+2025-05-19 01:18:34,704 INFO [__main__] Features written to BAX.csv
+2025-05-19 01:18:34,720 INFO [__main__] Loaded BBY.csv with 4372 rows
+2025-05-19 01:18:35,067 INFO [__main__] Features written to BBY.csv
+2025-05-19 01:18:35,089 INFO [__main__] Loaded BDX.csv with 4372 rows
+2025-05-19 01:18:35,449 INFO [__main__] Features written to BDX.csv
+2025-05-19 01:18:35,465 INFO [__main__] Loaded BEN.csv with 4372 rows
+2025-05-19 01:18:35,760 INFO [__main__] Features written to BEN.csv
+2025-05-19 01:18:35,777 INFO [__main__] Loaded BG.csv with 4372 rows
+2025-05-19 01:18:36,072 INFO [__main__] Features written to BG.csv
+2025-05-19 01:18:36,087 INFO [__main__] Loaded BIIB.csv with 4372 rows
+2025-05-19 01:18:36,405 INFO [__main__] Features written to BIIB.csv
+2025-05-19 01:18:36,421 INFO [__main__] Loaded BK.csv with 4372 rows
+2025-05-19 01:18:36,724 INFO [__main__] Features written to BK.csv
+2025-05-19 01:18:36,740 INFO [__main__] Loaded BKNG.csv with 4372 rows
+2025-05-19 01:18:37,086 INFO [__main__] Features written to BKNG.csv
+2025-05-19 01:18:37,111 INFO [__main__] Loaded BKR.csv with 4372 rows
+2025-05-19 01:18:37,437 INFO [__main__] Features written to BKR.csv
+2025-05-19 01:18:37,454 INFO [__main__] Loaded BLDR.csv with 4372 rows
+2025-05-19 01:18:37,788 INFO [__main__] Features written to BLDR.csv
+2025-05-19 01:18:37,805 INFO [__main__] Loaded BLK.csv with 4372 rows
+2025-05-19 01:18:38,164 INFO [__main__] Features written to BLK.csv
+2025-05-19 01:18:38,183 INFO [__main__] Loaded BMY.csv with 4372 rows
+2025-05-19 01:18:38,491 INFO [__main__] Features written to BMY.csv
+2025-05-19 01:18:38,509 INFO [__main__] Loaded BR.csv with 4372 rows
+2025-05-19 01:18:38,791 INFO [__main__] Features written to BR.csv
+2025-05-19 01:18:38,807 INFO [__main__] Loaded BRO.csv with 4372 rows
+2025-05-19 01:18:39,103 INFO [__main__] Features written to BRO.csv
+2025-05-19 01:18:39,124 INFO [__main__] Loaded BSX.csv with 4372 rows
+2025-05-19 01:18:39,486 INFO [__main__] Features written to BSX.csv
+2025-05-19 01:18:39,520 INFO [__main__] Loaded BX.csv with 4372 rows
+2025-05-19 01:23:55,757 INFO [__main__] Loaded A.csv with 4372 rows
+2025-05-19 01:23:56,144 INFO [__main__] Features written to A.csv
+2025-05-19 01:23:56,167 INFO [__main__] Loaded AAPL.csv with 4372 rows
+2025-05-19 01:23:56,473 INFO [__main__] Features written to AAPL.csv
+2025-05-19 01:23:56,486 INFO [__main__] Loaded ABBV.csv with 3113 rows
+2025-05-19 01:23:56,789 INFO [__main__] Features written to ABBV.csv
+2025-05-19 01:23:56,801 INFO [__main__] Loaded ABNB.csv with 1113 rows
+2025-05-19 01:23:56,937 INFO [__main__] Features written to ABNB.csv
+2025-05-19 01:23:56,964 INFO [__main__] Loaded ABT.csv with 4372 rows
+2025-05-19 01:23:57,256 INFO [__main__] Features written to ABT.csv
+2025-05-19 01:23:57,271 INFO [__main__] Loaded ACN.csv with 4372 rows
+2025-05-19 01:23:57,590 INFO [__main__] Features written to ACN.csv
+2025-05-19 01:23:57,614 INFO [__main__] Loaded ADBE.csv with 4372 rows
+2025-05-19 01:23:57,992 INFO [__main__] Features written to ADBE.csv
+2025-05-19 01:23:58,008 INFO [__main__] Loaded ADI.csv with 4372 rows
+2025-05-19 01:23:58,305 INFO [__main__] Features written to ADI.csv
+2025-05-19 01:23:58,321 INFO [__main__] Loaded ADM.csv with 4372 rows
+2025-05-19 01:23:58,619 INFO [__main__] Features written to ADM.csv
+2025-05-19 01:23:58,643 INFO [__main__] Loaded ADP.csv with 4372 rows
+2025-05-19 01:23:59,015 INFO [__main__] Features written to ADP.csv
+2025-05-19 01:23:59,038 INFO [__main__] Loaded ADSK.csv with 4372 rows
+2025-05-19 01:23:59,337 INFO [__main__] Features written to ADSK.csv
+2025-05-19 01:23:59,353 INFO [__main__] Loaded AEE.csv with 4372 rows
+2025-05-19 01:23:59,679 INFO [__main__] Features written to AEE.csv
+2025-05-19 01:23:59,698 INFO [__main__] Loaded AEP.csv with 4372 rows
+2025-05-19 01:24:00,019 INFO [__main__] Features written to AEP.csv
+2025-05-19 01:24:00,035 INFO [__main__] Loaded AES.csv with 4372 rows
+2025-05-19 01:24:00,346 INFO [__main__] Features written to AES.csv
+2025-05-19 01:24:00,368 INFO [__main__] Loaded AFL.csv with 4372 rows
+2025-05-19 01:24:00,801 INFO [__main__] Features written to AFL.csv
+2025-05-19 01:24:00,828 INFO [__main__] Loaded AIG.csv with 4372 rows
+2025-05-19 01:24:01,204 INFO [__main__] Features written to AIG.csv
+2025-05-19 01:24:01,220 INFO [__main__] Loaded AIZ.csv with 4372 rows
+2025-05-19 01:24:01,655 INFO [__main__] Features written to AIZ.csv
+2025-05-19 01:24:01,680 INFO [__main__] Loaded AJG.csv with 4372 rows
+2025-05-19 01:24:02,138 INFO [__main__] Features written to AJG.csv
+2025-05-19 01:24:02,158 INFO [__main__] Loaded AKAM.csv with 4372 rows
+2025-05-19 01:24:02,519 INFO [__main__] Features written to AKAM.csv
+2025-05-19 01:24:02,543 INFO [__main__] Loaded ALB.csv with 4372 rows
+2025-05-19 01:27:55,694 INFO [__main__] Loaded AAPL.csv with 4372 rows
+2025-05-19 01:27:55,993 INFO [__main__] Features written to AAPL.csv
+2025-05-19 01:37:37,530 INFO [__main__] Loaded AAPL.csv with 4372 rows
+2025-05-19 01:37:37,946 INFO [__main__] Features written to AAPL.csv
+2025-05-19 01:38:25,544 INFO [__main__] Loaded AAPL.csv with 4372 rows
+2025-05-19 01:38:25,971 INFO [__main__] Features written to AAPL.csv

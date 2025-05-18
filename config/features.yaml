@@ -1,0 +1,19 @@
+# config/features.yaml
+
+features:
+  5d_return: 1
+  10d_return: 1
+  atr: 0
+  bb_width: 0
+  ema_cross: 0
+  obv: 0
+  rsi: 0
+
+  # Phase-4+ features (disabled for now)
+  sma_20:     0
+  ema_ribbon: 0
+  roc:        0
+  rel_vol:    0
+  mfi:        0
+  vwap:       0
+  # …and so on for every feature you plan to add
