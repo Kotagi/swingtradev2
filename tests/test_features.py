@@ -51,6 +51,21 @@ def test_feature_atr():
     result = feature_atr(df, period=3)
     pd.testing.assert_series_equal(result, expected, check_names=False)
 
+def test_feature_bb_width():
+    # Example DataFrame
+    data = {'close': [1, 2, 3, 4, 5, 6, 7]}
+    df = pd.DataFrame(data)
+    # period=3, std_dev=2
+    # middle = [NaN, NaN, 2,3,4,5,6]
+    # std =   [NaN, NaN, 0.816,0.816,0.816,0.816,0.816]
+    # width = 2*2*std / middle
+    expected = pd.Series([np.nan, np.nan] + [
+        (2*2*0.816496580927726) / m
+        for m in (2,3,4,5,6)
+    ])
+    result = feature_bb_width(df, period=3, std_dev=2.0)
+    pd.testing.assert_series_equal(result, expected, check_names=False)
+
 def test_load_enabled_features(tmp_path):
     # Create a temporary config with mixed flags
     cfg = {

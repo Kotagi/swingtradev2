@@ -409,3 +409,21 @@ PermissionError: [Errno 13] Permission denied: 'data\\feature_tests\\AAPL.csv'
 2025-05-19 14:52:48,470 INFO [__main__] Features written to AAPL.csv
 2025-05-19 14:54:21,316 INFO [__main__] Loaded AAPL.csv with 4372 rows
 2025-05-19 14:54:21,571 INFO [__main__] Features written to AAPL.csv
+2025-05-19 15:16:39,881 INFO [__main__] Loaded AAPL.csv with 4372 rows
+2025-05-19 15:16:40,046 ERROR [__main__] Failed to write AAPL.csv: [Errno 13] Permission denied: 'data\\feature_tests\\AAPL.csv'
+Traceback (most recent call last):
+  File "C:\Users\brandona\OneDrive - Security Solutions NW\Desktop\Stocks\SwingTradeApp\SwingTradeV1\src\feature_pipeline.py", line 53, in main
+    df_feat.to_csv(out_file)
+  File "C:\Users\brandona\AppData\Roaming\Python\Python310\site-packages\pandas\util\_decorators.py", line 333, in wrapper
+    return func(*args, **kwargs)
+  File "C:\Users\brandona\AppData\Roaming\Python\Python310\site-packages\pandas\core\generic.py", line 3967, in to_csv
+    return DataFrameRenderer(formatter).to_csv(
+  File "C:\Users\brandona\AppData\Roaming\Python\Python310\site-packages\pandas\io\formats\format.py", line 1014, in to_csv
+    csv_formatter.save()
+  File "C:\Users\brandona\AppData\Roaming\Python\Python310\site-packages\pandas\io\formats\csvs.py", line 251, in save
+    with get_handle(
+  File "C:\Users\brandona\AppData\Roaming\Python\Python310\site-packages\pandas\io\common.py", line 873, in get_handle
+    handle = open(
+PermissionError: [Errno 13] Permission denied: 'data\\feature_tests\\AAPL.csv'
+2025-05-19 15:17:22,246 INFO [__main__] Loaded AAPL.csv with 4372 rows
+2025-05-19 15:17:22,495 INFO [__main__] Features written to AAPL.csv

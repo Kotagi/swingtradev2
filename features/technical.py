@@ -70,12 +70,12 @@ def feature_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     atr = tr.rolling(window=period).mean()
     return atr
 
-def feature_bb_width(df: pd.DataFrame, period: int = 20, std_dev: float = 2.0) -> pd.Series:
-    """
-    Compute Bollinger Band width: (upper_band - lower_band) / middle_band
-    where upper/lower are mean ± std_dev * std.
-    """
-    raise NotImplementedError
+def feature_bb_width(df, period=20, std_dev=2.0):
+    close = _get_close_series(df)
+    m = close.rolling(window=period).mean()
+    s = close.rolling(window=period).std(ddof=0)  # population std
+    width = (2 * std_dev * s) / m
+    return width
 
 def feature_ema_cross(df: pd.DataFrame, span_short: int = 12, span_long: int = 26) -> pd.Series:
     """
