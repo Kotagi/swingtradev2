@@ -5,60 +5,53 @@ import pandas as pd
 
 from utils.logger import setup_logger
 from features.registry import load_enabled_features
+from utils.labeling import label_future_return
 
-def apply_features(df: pd.DataFrame, features: dict, logger) -> pd.DataFrame:
+def apply_features(df: pd.DataFrame, enabled_features: dict, logger) -> pd.DataFrame:
     """
-    Apply each feature function to the DataFrame.
-    Features: dict of feature_name -> function.
-    Returns the DataFrame with new feature columns.
+    Apply each enabled feature function to the DataFrame.
     """
-    for name, func in features.items():
+    df_feat = df.copy()
+    for name, func in enabled_features.items():
         try:
-            df[name] = func(df)
-            logger.info(f"✅ {name} computed")
+            df_feat[name] = func(df_feat)
+            logger.info(f"{name} computed")
         except Exception as e:
-            logger.error(f"❌ {name} failed: {e}", exc_info=True)
-    return df
+            logger.error(f"{name} failed: {e}", exc_info=True)
+    return df_feat
 
-def main(input_dir: str, output_dir: str, config_path: str) -> None:
-    # Setup logger
-    logger = setup_logger(__name__, log_file="feature_pipeline.log")
-
-    # Paths
+def main(input_dir: str, output_dir: str, config: str, 
+         label_horizon: int, label_threshold: float) -> None:
     input_path = Path(input_dir)
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # Load enabled feature functions
-    enabled = load_enabled_features(config_path)
-    if not enabled:
-        logger.warning("No features enabled in config; exiting.")
-        return
+    logger = setup_logger("feature_pipeline.log")
+    enabled = load_enabled_features(config)
+    logger.info(f"Enabled features: {list(enabled.keys())}")
 
-    # Process each CSV
     for csv_file in sorted(input_path.glob("*.csv")):
-        try:
-            df = pd.read_csv(csv_file, parse_dates=True, index_col=0)
-            logger.info(f"Loaded {csv_file.name} with {len(df)} rows")
-        except Exception as e:
-            logger.error(f"Failed to load {csv_file.name}: {e}", exc_info=True)
-            continue
-
-        # Apply features
+        ticker = csv_file.stem
+        logger.info(f"Processing {ticker}")
+        df = pd.read_csv(csv_file, parse_dates=True, index_col=0)
         df_feat = apply_features(df, enabled, logger)
-
-        # Save output
-        out_file = output_path / csv_file.name
-        try:
-            df_feat.to_csv(out_file)
-            logger.info(f"Features written to {out_file.name}")
-        except Exception as e:
-            logger.error(f"Failed to write {out_file.name}: {e}", exc_info=True)
+        # Labeling integration:
+        df_labeled = label_future_return(
+            df_feat,
+            close_col='Close' if 'Close' in df_feat.columns else 'close',
+            horizon=label_horizon,
+            threshold=label_threshold,
+            label_name=f"label_{label_horizon}d"
+        )
+        df_labeled.to_csv(output_path / csv_file.name)
+        logger.info(f"Features + labels written to {csv_file.name}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Apply feature functions to cleaned CSVs.")
+    parser = argparse.ArgumentParser(description="Compute features and labels.")
     parser.add_argument("--input-dir",  required=True, help="Directory of cleaned CSVs")
     parser.add_argument("--output-dir", required=True, help="Directory to write feature CSVs")
-    parser.add_argument("--config",     required=True, help="Path to features config YAML")
+    parser.add_argument("--config",     required=True, help="Path to feature toggles YAML")
+    parser.add_argument("--horizon",    type=int, default=5, help="Label horizon in days")
+    parser.add_argument("--threshold",  type=float, default=0.0, help="Return threshold for labeling")
     args = parser.parse_args()
-    main(args.input_dir, args.output_dir, args.config)
+    main(args.input_dir, args.output_dir, args.config, args.horizon, args.threshold)
