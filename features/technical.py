@@ -111,9 +111,22 @@ def feature_obv(df: pd.DataFrame) -> pd.Series:
             obv.append(obv[-1])
 
     return pd.Series(obv, index=df.index)
+
 def feature_rsi(df: pd.DataFrame, period: int = 14) -> pd.Series:
     """
-    Compute Relative Strength Index (RSI).
-    Stub for future implementation.
+    Compute Relative Strength Index over `period`:
+      RSI = 100 - 100/(1 + RS), where
+      RS = avg_gain / avg_loss (rolling means)
     """
-    raise NotImplementedError
+    close = _get_close_series(df)
+    delta = close.diff()
+
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+
+    avg_gain = gain.rolling(window=period).mean()
+    avg_loss = loss.rolling(window=period).mean()
+
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi

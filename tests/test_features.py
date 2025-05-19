@@ -83,6 +83,22 @@ def test_feature_obv():
     result = feature_obv(df)
     pd.testing.assert_series_equal(result, expected, check_names=False)
 
+def test_feature_rsi():
+    # Build a small series with known gains/losses
+    df = pd.DataFrame({'close': [1, 2, 3, 2, 1, 2, 3, 4]})
+    # Manually compute via pandas:
+    delta = df['close'].diff()
+    gains = delta.clip(lower=0)
+    losses = -delta.clip(upper=0)
+    avg_gain = gains.rolling(window=3).mean()
+    avg_loss = losses.rolling(window=3).mean()
+    rs = avg_gain / avg_loss
+    expected = 100 - (100 / (1 + rs))
+
+    result = feature_rsi(df, period=3)
+    pd.testing.assert_series_equal(result, expected, check_names=False)
+
+
 
 def test_load_enabled_features(tmp_path):
     # Config with mixed flags

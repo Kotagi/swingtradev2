@@ -1,8 +1,8 @@
 # Swing Trading System
 
-## Version 3.0-rc3
+## Version 3.0-rc4
 
-Phase 3 update: Core return features, ATR, Bollinger Band width, EMA crossover, and OBV fully implemented and validated.
+Phase 3 update: Core return features, ATR, Bollinger Band width, EMA crossover, OBV, and RSI fully implemented and validated.
 
 ### Phase 3 – Feature Engineering & Basic ML
 
@@ -12,7 +12,7 @@ Phase 3 update: Core return features, ATR, Bollinger Band width, EMA crossover,
    - `config/features.yaml` feature toggles  
    - `utils/logger.py` for console & file logging  
    - `src/feature_pipeline.py` dynamic pipeline script  
-   - Unit tests in `tests/test_features.py` for return, ATR, BB width, EMA crossover, OBV  
+   - Unit tests in `tests/test_features.py` for return, ATR, BB width, EMA crossover, OBV, RSI  
    - Integration tests in `tests/test_features_integration.py` with live data  
 
 2. **Implemented & Validated Features**  
@@ -22,16 +22,13 @@ Phase 3 update: Core return features, ATR, Bollinger Band width, EMA crossover,
    - **Bollinger Band Width** (`feature_bb_width`)  
    - **EMA(12/26) Crossover** (`feature_ema_cross`)  
    - **On-Balance Volume (OBV)** (`feature_obv`)  
+   - **Relative Strength Index (RSI)** (`feature_rsi`)  
 
 #### 🔜 Next Steps
-3. **Relative Strength Index (RSI)**  
-   - Write unit test for `feature_rsi`  
-   - Implement calculation and confirm test passes  
-   - Run integration tests
-
-4. **Finalize Phase 3**  
+3. **Finalize Phase 3**  
+   - Review and polish documentation  
    - Commit all changes  
-   - Tag release `v3.0-rc3`  
+   - Tag release `v3.0-rc4`  
    - Push to GitHub  
 
 ### Usage
@@ -61,4 +58,4 @@ Phase 3 update: Core return features, ATR, Bollinger Band width, EMA crossover,
 
 ---
 
-*End of README for Version 3.0-rc3*  
+*End of README for Version 3.0-rc4*  

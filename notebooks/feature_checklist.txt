@@ -1,14 +1,16 @@
+[X] Return (5-day, 10-day)
 [ ] Moving Averages (5-day, 10-day, 50-day SMA/EMA)
 [ ] ADX, Ichimoku Cloud (trend strength)
 [ ] Relative Strength Index (RSI)
 [ ] Stochastic Oscillator
 [ ] MACD
-[ ] Average True Range (ATR)
+[X] Average True Range (ATR)
 [ ] Bollinger Bands
+[X] Bollinger Band Width
 [ ] Historical Price Standard Deviation
 [ ] Daily Volume & Volume Moving Averages
 [ ] Relative Volume (current vs. average)
-[ ] On-Balance Volume (OBV)
+[X] On-Balance Volume (OBV) - #Break down into percentages before feeding into learning algorithm?
 [ ] Accumulation/Distribution Line
 [ ] Support/Resistance Levels (swing highs/lows, pivot points, Fibonacci)
 [ ] Chart Patterns (flags, head-and-shoulders, double bottom/top)
