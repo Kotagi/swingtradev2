@@ -82,11 +82,35 @@ def feature_ema_cross(df: pd.DataFrame, span_short: int = 12, span_long: int = 2
 
 def feature_obv(df: pd.DataFrame) -> pd.Series:
     """
-    Compute On-Balance Volume (OBV).
-    Stub for future implementation.
+    Compute On‐Balance Volume (OBV):
+    OBV[0] = volume[0]
+    For i > 0:
+        if close[i] > close[i-1]:  OBV[i] = OBV[i-1] + volume[i]
+        elif close[i] < close[i-1]: OBV[i] = OBV[i-1] - volume[i]
+        else:                       OBV[i] = OBV[i-1]
     """
-    raise NotImplementedError
+    close = _get_close_series(df)
 
+    # fetch volume with case‐insensitivity
+    if 'volume' in df.columns:
+        vol = df['volume']
+    elif 'Volume' in df.columns:
+        vol = df['Volume']
+    else:
+        raise KeyError("DataFrame must contain 'volume' or 'Volume' column")
+
+    # seed OBV with the first day's volume
+    obv = [vol.iloc[0]]
+
+    for i in range(1, len(close)):
+        if close.iloc[i] > close.iloc[i-1]:
+            obv.append(obv[-1] + vol.iloc[i])
+        elif close.iloc[i] < close.iloc[i-1]:
+            obv.append(obv[-1] - vol.iloc[i])
+        else:
+            obv.append(obv[-1])
+
+    return pd.Series(obv, index=df.index)
 def feature_rsi(df: pd.DataFrame, period: int = 14) -> pd.Series:
     """
     Compute Relative Strength Index (RSI).

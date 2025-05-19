@@ -68,6 +68,22 @@ def test_feature_ema_cross():
     expected = close.ewm(span=12, adjust=False).mean() - close.ewm(span=26, adjust=False).mean()
     pd.testing.assert_series_equal(result, expected, check_names=False)
 
+def test_feature_obv():
+    # Build a tiny price + volume series
+    data = {
+        'close': [10, 12, 11, 13, 13],
+        'volume': [100, 200, 150, 300, 250]
+    }
+    df = pd.DataFrame(data)
+    # Manually compute OBV:
+    #  start at 0,
+    #  close↑: add vol, close↓: subtract vol, equal: no change.
+    #  steps: +100, +200, -150, +300, 0 → [100, 300, 150, 450, 450]
+    expected = pd.Series([100, 300, 150, 450, 450], index=df.index)
+    result = feature_obv(df)
+    pd.testing.assert_series_equal(result, expected, check_names=False)
+
+
 def test_load_enabled_features(tmp_path):
     # Config with mixed flags
     cfg = {

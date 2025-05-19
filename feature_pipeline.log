@@ -429,3 +429,5 @@ PermissionError: [Errno 13] Permission denied: 'data\\feature_tests\\AAPL.csv'
 2025-05-19 15:17:22,495 INFO [__main__] Features written to AAPL.csv
 2025-05-19 15:49:03,068 INFO [__main__] Loaded AAPL.csv with 4372 rows
 2025-05-19 15:49:03,170 INFO [__main__] Features written to AAPL.csv
+2025-05-19 19:54:11,089 INFO [__main__] Loaded AAPL.csv with 4372 rows
+2025-05-19 19:54:11,255 INFO [__main__] Features written to AAPL.csv

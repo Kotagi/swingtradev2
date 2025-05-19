@@ -6,7 +6,7 @@ features:
   atr: 1
   bb_width: 1
   ema_cross: 1
-  obv: 0
+  obv: 1
   rsi: 0
 
   # Phase-4+ features (disabled for now)
