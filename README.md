@@ -1,44 +1,61 @@
 # Swing Trading System
 
-## Version 3.0-alpha
+## Version 3.0-beta
 
-Initial Phase 3 snapshot: Core return features and pipeline scaffold implemented.
+Phase 3 update: Core return features and ATR fully implemented and validated.
 
-### Phase 3 – Feature Engineering & Basic ML
+### Phase 3 – Feature Engineering & Basic ML
 
 #### ✅ Completed
 1. **Project Scaffolding & Configuration**  
-   - Created `features/` package with `technical.py` and `registry.py`  
-   - Added `config/features.yaml` for feature toggles  
-   - Set up `tests/test_features.py` with unit tests for 5d and 10d returns  
-   - Added `utils/logger.py` for console & file logging  
-   - Created `src/feature_pipeline.py` to dynamically load and apply features  
+   - `features/` package with `technical.py`, `registry.py`  
+   - `config/features.yaml` toggles for all features  
+   - Unit tests in `tests/test_features.py` for return and ATR features  
+   - `tests/test_features_integration.py` for real-data smoke tests  
+   - `utils/logger.py` for consistent logging  
+   - `src/feature_pipeline.py` dynamic pipeline script
 
-2. **Implemented Core Return Features**  
-   - `feature_5d_return(df)`  
-   - `feature_10d_return(df)`  
-   - Unit tests passing and integration tests on real tickers (AAPL, MSFT, GOOGL, AMZN)  
+2. **Implemented & Validated Features**  
+   - **5-Day Return** (`feature_5d_return`)  
+   - **10-Day Return** (`feature_10d_return`)  
+   - **Average True Range (ATR)** (`feature_atr`)  
 
 #### 🔜 Next Steps
-3. **Average True Range (ATR)**  
-   - [ ] Write unit test for `feature_atr` (period=3 example)  
-   - [ ] Implement `feature_atr(df, period)` in `features/technical.py`  
-   - [ ] Confirm test passes (`pytest tests/test_features.py::test_feature_atr`)  
-   - [ ] Run integration tests to verify on real data (`pytest tests/test_features_integration.py`)  
-   - [ ] Spot-check `data/features/*.csv` for `atr` column  
+3. **Bollinger Band Width**  
+   - Write unit test for `feature_bb_width`  
+   - Implement calculation and confirm test passes  
+   - Run integration tests
 
-4. **Continue Feature Rollout**  
-   - Follow the established workflow for each new indicator:  
-     - Unit test → Implementation → Registration → Integration test → Smoke-run → Spot-check → Commit  
+4. **EMA(12/26) Crossover**  
+   - Unit test for `feature_ema_cross`  
+   - Implementation and validation  
+
+5. **On-Balance Volume (OBV)**  
+   - Unit test for `feature_obv`  
+   - Implementation and validation  
+
+6. **Relative Strength Index (RSI)**  
+   - Unit test for `feature_rsi`  
+   - Implementation and validation  
+
+7. **Finalize Phase 3**  
+   - Commit all changes  
+   - Tag release `v3.0-beta`  
+   - Push to GitHub
 
 ### Usage
 
 1. **Run unit tests**  
    ```bash
-   pytest -q
+   pytest tests/test_features.py -q
    ```
 
-2. **Generate features**  
+2. **Run integration smoke tests**  
+   ```bash
+   pytest tests/test_features_integration.py -q
+   ```
+
+3. **Generate features**  
    ```bash
    python -m src.feature_pipeline \
      --input-dir data/clean \
@@ -46,11 +63,11 @@ Initial Phase 3 snapshot: Core return features and pipeline scaffold implemented
      --config config/features.yaml
    ```
 
-3. **Inspect sample output**  
+4. **Inspect sample output**  
    ```bash
    python inspect_returns.py
    ```
 
 ---
 
-*End of README for Version 3.0-alpha*  
+*End of README for Version 3.0-beta*  
