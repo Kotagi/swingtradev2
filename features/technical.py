@@ -14,83 +14,82 @@ def _get_close_series(df: pd.DataFrame) -> pd.Series:
 
 def feature_5d_return(df: pd.DataFrame) -> pd.Series:
     """
-    Compute 5-day return:
-    (close_{t+4} / close_t) - 1 for t = 0..len(df)-5
+    Compute true 5-day forward return:
+      (close_{t+5} / close_t) - 1
     """
     close = _get_close_series(df)
-    n = 5
-    out = pd.Series(np.nan, index=df.index)
-    valid_count = len(close) - n + 1
-    for i in range(valid_count):
-        out.iloc[i] = close.iloc[i + n - 1] / close.iloc[i] - 1
-    return out
+    # shift(-5) looks exactly 5 rows ahead
+    return close.shift(-5) / close - 1
 
 def feature_10d_return(df: pd.DataFrame) -> pd.Series:
     """
-    Compute 10-day forward return:
-      (close_{t+10} / close_t) - 1
-    for every t where close_{t+10} exists.
+    Compute 10-day forward return: (close_{t+10} / close_t) - 1.
     """
     close = _get_close_series(df)
-    # This will produce NaN for the final 10 rows automatically.
     return close.shift(-10) / close - 1
 
 def feature_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     """
     Compute Average True Range (ATR) over the given period.
-    ATR is the rolling mean of True Range (TR), where
-      TR = max(high-low, abs(high-prev_close), abs(low-prev_close))
+    TR = max(high-low, abs(high-prev_close), abs(low-prev_close))
+    ATR = rolling mean of TR.
     """
-    # Retrieve high series
+    # High series
     if 'High' in df.columns:
         high = df['High']
     elif 'high' in df.columns:
         high = df['high']
     else:
         raise KeyError("DataFrame must contain 'High' or 'high' column")
-    # Retrieve low series
+    # Low series
     if 'Low' in df.columns:
         low = df['Low']
     elif 'low' in df.columns:
         low = df['low']
     else:
         raise KeyError("DataFrame must contain 'Low' or 'low' column")
-    # Retrieve close series
+    # Close series
     close = _get_close_series(df)
 
     prev_close = close.shift(1)
     tr1 = high - low
     tr2 = (high - prev_close).abs()
     tr3 = (low - prev_close).abs()
-
-    # Combine into one DataFrame and take the row-wise max
     tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
 
-    # Simple rolling mean for ATR
     atr = tr.rolling(window=period).mean()
     return atr
 
-def feature_bb_width(df, period=20, std_dev=2.0):
+def feature_bb_width(df: pd.DataFrame, period: int = 20, std_dev: float = 2.0) -> pd.Series:
+    """
+    Compute Bollinger Band width:
+      width = (upper - lower) / middle = (2 * std_dev * std) / sma
+    """
     close = _get_close_series(df)
-    m = close.rolling(window=period).mean()
-    s = close.rolling(window=period).std(ddof=0)  # population std
-    width = (2 * std_dev * s) / m
+    sma = close.rolling(window=period).mean()
+    std = close.rolling(window=period).std(ddof=0)
+    width = (2 * std_dev * std) / sma
     return width
 
 def feature_ema_cross(df: pd.DataFrame, span_short: int = 12, span_long: int = 26) -> pd.Series:
     """
-    Compute EMA(span_short) - EMA(span_long)
+    Compute EMA(span_short) - EMA(span_long).
     """
-    raise NotImplementedError
+    close = _get_close_series(df)
+    ema_short = close.ewm(span=span_short, adjust=False).mean()
+    ema_long  = close.ewm(span=span_long,  adjust=False).mean()
+    return ema_short - ema_long
 
 def feature_obv(df: pd.DataFrame) -> pd.Series:
     """
-    Compute On-Balance Volume (OBV)
+    Compute On-Balance Volume (OBV).
+    Stub for future implementation.
     """
     raise NotImplementedError
 
 def feature_rsi(df: pd.DataFrame, period: int = 14) -> pd.Series:
     """
-    Compute Relative Strength Index (RSI)
+    Compute Relative Strength Index (RSI).
+    Stub for future implementation.
     """
     raise NotImplementedError

@@ -5,7 +5,7 @@ features:
   10d_return: 1
   atr: 1
   bb_width: 1
-  ema_cross: 0
+  ema_cross: 1
   obv: 0
   rsi: 0
 
