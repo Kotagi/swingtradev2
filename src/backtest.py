@@ -48,7 +48,12 @@ def run_backtest(
     data = {}
     for t in tickers:
         df = load_data(t, clean_dir)
-        data[t] = compute_indicators(df)
+        # If this DataFrame already has our engineered columns (including 'momentum' and 'atr'),
+        # skip recomputing; otherwise compute indicators.
+        if {'momentum', 'atr'}.issubset(df.columns):
+            data[t] = df
+        else:
+            data[t] = compute_indicators(df)
 
     all_dates = sorted({d for df in data.values() for d in df.index})
     equity = initial_capital

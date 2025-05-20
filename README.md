@@ -1,50 +1,109 @@
-# Swing Trading System
+# SwingTradeV1 – Phase 3 Baseline (v3.0-alpha)
 
-## Version 3.0-rc6
+This commit captures the working end-to-end baseline for Phase 3:  
+– Core technical features (5d/10d returns, ATR, BB-width, EMA crossover, OBV, RSI)  
+– Feature-engineering pipeline with per-feature toggles  
+– Labeling (5-day future return > 0 → 1/0)  
+– Walk-forward train/test splits  
+– XGBoost model training  
+– Evaluation & backtest scaffolding
 
-Phase 3 update: Completed labeling and walk‐forward splits.
+---
 
-### Phase 3 – Feature Engineering & Basic ML
+## 📂 Project Structure
 
-#### ✅ Completed
-1. **Project Scaffolding & Configuration**  
-   - `features/` package with `technical.py`, `registry.py`  
-   - `config/features.yaml` feature toggles  
-   - `utils/logger.py` for logging  
-2. **Feature Engineering & Labeling Pipeline**  
-   - `src/feature_pipeline.py` dynamic pipeline for features + labels  
-   - **Labeling** in `utils/labeling.py` with `label_future_return`  
-3. **Walk-Forward Splits**  
-   - `utils/splits.py` with `walk_forward_splits` & `save_splits`  
-   - `tests/test_splits.py` unit tests for split logic  
-   - `scripts/generate_splits.py` to serialize splits to `data/splits.json`  
+```
+.
+├── src/
+│   ├── features/
+│   │   ├── technical.py
+│   │   └── registry.py
+│   └── feature_pipeline.py
+├── utils/
+│   ├── logger.py
+│   └── splits.py
+├── config/
+│   └── features.yaml
+├── data/
+│   ├── raw/
+│   ├── clean/
+│   ├── features_labeled/
+│   └── tickers/
+│       ├── sp_500_tickers.csv
+│       └── sectors.csv
+├── scripts/
+│   ├── download_data.py
+│   ├── clean_data.py
+│   ├── train_model.py
+│   └── evaluate_phase3.py
+├── tests/
+│   ├── test_features.py
+│   ├── test_splits.py
+│   └── test_train_model.py
+├── models/
+│   └── xgb_phase3.pkl
+├── reports/
+│   ├── phase3_train_results.csv
+│   └── phase3_evaluation.md
+├── run_features_labels.bat
+├── run_generate_splits.bat
+├── run_train_model.bat
+├── run_evaluate.bat
+├── run_full_pipeline.bat
+└── README.md
+```
 
-#### 🔜 Next Steps
-4. **Basic Model Training & Saving**  
-   - `scripts/train_model.py` to train XGBoost on splits  
-   - Record metrics per fold; save final model  
+---
 
-5. **Evaluation & Baseline Backtest**  
-   - `scripts/evaluate_phase3.py` for comparing ML vs. rule baseline  
-   - Generate report (`reports/phase3_evaluation.md`)
+## ⚙️ Prerequisites
 
-### Usage
+```bash
+pip install -r requirements.txt
+```
 
-1. **Run unit tests**  
-   ```bash
-   pytest tests/test_features.py tests/test_labeling.py tests/test_splits.py -q
+---
+
+## ▶️ Full Phase 3 Pipeline
+
+1. **(Re-)Download & Clean Data**  
+   ```bat
+   redownload_and_clean.bat
    ```
-
-2. **Generate splits**  
-   ```bash
+2. **Build Features & Labels**  
+   ```bat
+   run_features_labels.bat
+   ```
+3. **Generate Splits**  
+   ```bat
    run_generate_splits.bat
    ```
-
-3. **Inspect splits**  
-   ```bash
-   python inspect_splits.py
+4. **Train Model**  
+   ```bat
+   run_train_model.bat
+   ```
+5. **Evaluate & Backtest**  
+   ```bat
+   run_evaluate.bat
+   ```
+6. **Or do all at once**:  
+   ```bat
+   run_full_pipeline.bat
    ```
 
 ---
 
-*End of README for Version 3.0-rc6*  
+## 📈 Outputs
+
+- **Model:** `models/xgb_phase3.pkl`  
+- **Train metrics:** `reports/phase3_train_results.csv`  
+- **Evaluation:** `reports/phase3_evaluation.md`
+
+---
+
+## 🔜 Next Steps
+
+- Wire the ML `signal` into the backtester entry logic  
+- Tune hyperparameters & feature set  
+- Analyze P&L, feature importances, and robustness
+
+*v3.0-alpha – commit this baseline before further enhancements*
