@@ -1,191 +1,148 @@
 #!/usr/bin/env python3
-import argparse
-import logging
-import os
+"""
+backtest.py
+
+Backtester with RSI oversold test.
+"""
+
 import pandas as pd
-import numpy as np
+from pathlib import Path
+from typing import List
 
-def load_data(ticker, clean_dir):
-    path = os.path.join(clean_dir, f"{ticker}.csv")
-    # parse first column as the date index
-    df = pd.read_csv(path, index_col=0, parse_dates=True)
-    # lowercase column names
-    df.columns = [c.strip().lower() for c in df.columns]
-    return df
+# —— CONFIGURATION —— #
+PROJECT_ROOT  = Path.cwd()
+DATA_DIR      = PROJECT_ROOT / "data" / "features_labeled"
+TICKERS_CSV   = PROJECT_ROOT / "data" / "tickers" / "sp500_tickers.csv"
+POSITION_SIZE = 1000.0  # dollars per trade
+HORIZON       = 5       # days to hold
+LABEL_COL     = f"label_{HORIZON}d"
 
-def compute_indicators(df, atr_window=14, momentum_window=5):
-    high = df['high']; low = df['low']; close = df['close']
-    tr1 = high - low
-    tr2 = (high - close.shift()).abs()
-    tr3 = (low - close.shift()).abs()
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    atr = tr.rolling(atr_window, min_periods=1).mean().rename('atr')
-    momentum = close.pct_change(momentum_window).rename('momentum')
-    return pd.concat([df, atr, momentum], axis=1)
+# —— UNIVERSE LOADING —— #
+def load_universe() -> List[str]:
+    df = pd.read_csv(TICKERS_CSV, header=None)
+    return df.iloc[:, 0].astype(str).tolist()
 
-def run_backtest(
-    tickers,
-    clean_dir,
-    sectors_file,
-    momentum_threshold,
-    stop_loss_atr_mult,
-    time_exit_days,
-    initial_capital,
-    risk_percentage,
-    slippage,
-    commission_per_trade,
-    commission_per_share,
-    max_positions=8,
-    max_sector_exposure=0.25,
-    output=None,                # <-- now optional
-):
-    # load sectors (lowercase headers)
-    sectors_df = pd.read_csv(sectors_file)
-    sectors_df.columns = [c.strip().lower() for c in sectors_df.columns]
-    sector_map = dict(zip(sectors_df['ticker'], sectors_df['sector']))
+# —— SIGNAL BACKTESTER —— #
+def backtest_signals(df: pd.DataFrame, signal_col: str) -> pd.DataFrame:
+    """
+    Given a DataFrame and a boolean signal column, return a trades DataFrame with:
+      - entry (next-day open)
+      - exit  (close after HORIZON days)
+      - ret   (exit/entry - 1)
+      - pnl   (ret * POSITION_SIZE)
+    """
+    open_col  = "Open"  if "Open" in df.columns  else "open"
+    close_col = "Close" if "Close" in df.columns else "close"
 
-    logging.info("Caching data in memory…")
-    data = {}
-    for t in tickers:
-        df = load_data(t, clean_dir)
-        # If this DataFrame already has our engineered columns (including 'momentum' and 'atr'),
-        # skip recomputing; otherwise compute indicators.
-        if {'momentum', 'atr'}.issubset(df.columns):
-            data[t] = df
-        else:
-            data[t] = compute_indicators(df)
+    df = df.sort_index().copy()
+    df["exit_price"] = df[close_col].shift(-HORIZON)
 
-    all_dates = sorted({d for df in data.values() for d in df.index})
-    equity = initial_capital
-    sector_counts = {s:0 for s in set(sector_map.values())}
-    positions = []
     trades = []
+    for dt, row in df.iterrows():
+        if row.get(signal_col) and not pd.isna(row["exit_price"]):
+            entry_price = row[open_col]
+            exit_price  = row["exit_price"]
+            ret         = exit_price / entry_price - 1
+            pnl         = ret * POSITION_SIZE
+            trades.append({
+                "date":  dt,
+                "entry": entry_price,
+                "exit":  exit_price,
+                "ret":   ret,
+                "pnl":   pnl
+            })
 
-    for i, current_date in enumerate(all_dates, 1):
-        logging.info(f"[{i}/{len(all_dates)}] {current_date.date()}")
+    if not trades:
+        return pd.DataFrame()
+    return pd.DataFrame(trades).set_index("date")
 
-        # EXIT LOGIC
-        new_positions = []
-        for pos in positions:
-            df = data[pos['ticker']]
-            if current_date not in df.index:
-                new_positions.append(pos)
-                continue
+# —— METRICS AGGREGATOR —— #
+def aggregate_results(trades: pd.DataFrame) -> pd.Series:
+    """
+    Compute summary metrics for a set of trades.
+    """
+    if trades.empty:
+        return pd.Series(dtype=float)
 
-            days = (current_date - pos['entry_date']).days
-            price = df.at[current_date, 'close']
-            exit_price = None
+    n_trades      = len(trades)
+    hit_rate      = (trades["ret"] > 0).mean()
+    avg_ret       = trades["ret"].mean()
+    total_pnl     = trades["pnl"].sum()
+    avg_pnl       = trades["pnl"].mean()
 
-            if price <= pos['stop_price']:
-                exit_price = pos['stop_price']
-            elif days >= time_exit_days:
-                exit_price = price
+    equity_curve  = trades.sort_index()["pnl"].cumsum()
+    max_drawdown  = (equity_curve.cummax() - equity_curve).max()
 
-            if exit_price is not None:
-                pnl = (exit_price - pos['entry_price']) * pos['shares']
-                trades.append({
-                    'ticker': pos['ticker'],
-                    'entry_date': pos['entry_date'],
-                    'exit_date': current_date,
-                    'entry_price': pos['entry_price'],
-                    'exit_price': exit_price,
-                    'shares': pos['shares'],
-                    'pnl': pnl,
-                })
-                equity += pnl
-                sector_counts[pos['sector']] -= 1
-            else:
-                new_positions.append(pos)
+    return pd.Series({
+        "n_trades":  n_trades,
+        "hit_rate":  hit_rate,
+        "avg_ret":   avg_ret,
+        "total_pnl": total_pnl,
+        "avg_pnl":   avg_pnl,
+        "max_dd":    max_drawdown
+    })
 
-        positions = new_positions
-
-        # ENTRY LOGIC
-        if len(positions) < max_positions:
-            for t in tickers:
-                if len(positions) >= max_positions:
-                    break
-                sector = sector_map.get(t)
-                if sector and sector_counts[sector] >= max_sector_exposure * max_positions:
-                    continue
-
-                df = data[t]
-                if current_date not in df.index:
-                    continue
-                row = df.loc[current_date]
-                if row['momentum'] <= momentum_threshold:
-                    continue
-
-                atr = row['atr'] * stop_loss_atr_mult
-                stop_price = row['close'] - atr
-                dollar_risk = risk_percentage * equity
-                risk_per_share = row['close'] - stop_price
-                if risk_per_share <= 0:
-                    continue
-
-                qty = int(dollar_risk // risk_per_share)
-                if qty <= 0:
-                    continue
-
-                buy_price = row['close'] * (1 + slippage)
-                commission = commission_per_trade + commission_per_share * qty
-
-                positions.append({
-                    'ticker': t,
-                    'entry_date': current_date,
-                    'entry_price': buy_price,
-                    'shares': qty,
-                    'stop_price': stop_price,
-                    'sector': sector
-                })
-                sector_counts[sector] += 1
-                equity -= buy_price * qty + commission
-
-    trades_df = pd.DataFrame(trades)
-
-    # only write if user supplied an output path
-    if output:
-        os.makedirs(os.path.dirname(output), exist_ok=True)
-        trades_df.to_csv(output, index=False)
-        logging.info(f"{len(trades_df)} trades saved to {output}")
-
-    return trades_df
-
+# —— MAIN —— #
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument('-t','--tickers', nargs='+', required=True)
-    p.add_argument('--clean-dir', default='data/clean')
-    p.add_argument('--sectors-file', required=True)
-    p.add_argument('--momentum-threshold', type=float, default=0.02)
-    p.add_argument('--stop-loss-atr-mult', type=float, default=2.0)
-    p.add_argument('--time-exit-days', type=int, default=5)
-    p.add_argument('-i','--initial-capital', type=float, default=100_000)
-    p.add_argument('--risk-percentage', type=float, default=0.01)
-    p.add_argument('--slippage', type=float, default=0.0005)
-    p.add_argument('--commission-per-trade', type=float, default=0.0)
-    p.add_argument('--commission-per-share', type=float, default=0.0)
-    p.add_argument('--max-positions', type=int, default=8)
-    p.add_argument('--max-sector-exposure', type=float, default=0.25)
-    p.add_argument('-o','--output', help="Where to write trade log CSV")
+    universe      = load_universe()
+    oracle_trades = []
+    rsi_trades    = []
 
-    args = p.parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
+    for ticker in universe:
+        path = DATA_DIR / f"{ticker}.csv"
+        if not path.exists():
+            continue
 
-    run_backtest(
-        tickers=args.tickers,
-        clean_dir=args.clean_dir,
-        sectors_file=args.sectors_file,
-        momentum_threshold=args.momentum_threshold,
-        stop_loss_atr_mult=args.stop_loss_atr_mult,
-        time_exit_days=args.time_exit_days,
-        initial_capital=args.initial_capital,
-        risk_percentage=args.risk_percentage,
-        slippage=args.slippage,
-        commission_per_trade=args.commission_per_trade,
-        commission_per_share=args.commission_per_share,
-        max_positions=args.max_positions,
-        max_sector_exposure=args.max_sector_exposure,
-        output=args.output,    # optional now
-    )
+        df = (
+            pd.read_csv(path, index_col=0, parse_dates=True)
+              .sort_index()
+              .rename_axis("date")
+        )
 
-if __name__=="__main__":
+        # Oracle (perfect foresight) signal
+        if LABEL_COL in df.columns:
+            df_o = df.copy()
+            df_o["oracle_signal"] = df_o[LABEL_COL] == 1
+            t_o = backtest_signals(df_o, "oracle_signal")
+            if not t_o.empty:
+                oracle_trades.append(t_o)
+
+        # RSI oversold signal (RSI < 30)
+        if "rsi" in df.columns:
+            df_r = df.copy()
+            df_r["rsi_signal"] = df_r["rsi"] < 30
+            t_r = backtest_signals(df_r, "rsi_signal")
+            if not t_r.empty:
+                rsi_trades.append(t_r)
+
+    oracle_df = pd.concat(oracle_trades) if oracle_trades else pd.DataFrame()
+    rsi_df    = pd.concat(rsi_trades)    if rsi_trades    else pd.DataFrame()
+
+    oracle_summary = aggregate_results(oracle_df) if not oracle_df.empty else None
+    rsi_summary    = aggregate_results(rsi_df)    if not rsi_df.empty    else None
+
+    print("\n=== ORACLE BACKTEST SUMMARY ===")
+    if oracle_summary is not None:
+        print(f"Trades:        {oracle_summary['n_trades']}")
+        print(f"Hit rate:      {oracle_summary['hit_rate']:.2%}")
+        print(f"Avg return:    {oracle_summary['avg_ret']:.2%}")
+        print(f"Total P&L:     ${oracle_summary['total_pnl']:,.2f}")
+        print(f"Avg P&L/trade: ${oracle_summary['avg_pnl']:,.2f}")
+        print(f"Max drawdown:  ${oracle_summary['max_dd']:,.2f}")
+    else:
+        print("No oracle trades to report.")
+
+    print("\n=== RSI OVERSOLD BACKTEST SUMMARY ===")
+    if rsi_summary is not None:
+        print(f"Trades:        {rsi_summary['n_trades']}")
+        print(f"Hit rate:      {rsi_summary['hit_rate']:.2%}")
+        print(f"Avg return:    {rsi_summary['avg_ret']:.2%}")
+        print(f"Total P&L:     ${rsi_summary['total_pnl']:,.2f}")
+        print(f"Avg P&L/trade: ${rsi_summary['avg_pnl']:,.2f}")
+        print(f"Max drawdown:  ${rsi_summary['max_dd']:,.2f}")
+    else:
+        print("No RSI oversold trades to report.")
+
+if __name__ == "__main__":
     main()
+

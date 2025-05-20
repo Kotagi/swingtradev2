@@ -1,132 +1,155 @@
+# src/features/technical.py
+
 import pandas as pd
 import numpy as np
 
 def _get_close_series(df: pd.DataFrame) -> pd.Series:
-    """
-    Return the 'close' series, handling different casing.
-    """
     if 'close' in df.columns:
-        return df['close']
+        s = df['close']
     elif 'Close' in df.columns:
-        return df['Close']
+        s = df['Close']
     else:
-        raise KeyError("DataFrame must contain 'close' or 'Close' column")
+        raise KeyError("DataFrame must contain 'close' or 'Close'")
+    return s
 
 def feature_5d_return(df: pd.DataFrame) -> pd.Series:
-    """
-    Compute true 5-day forward return:
-      (close_{t+5} / close_t) - 1
-    """
     close = _get_close_series(df)
-    # shift(-5) looks exactly 5 rows ahead
-    return close.shift(-5) / close - 1
+    s = close.shift(-5) / close - 1
+    s.name = "5d_return"
+    return s
 
 def feature_10d_return(df: pd.DataFrame) -> pd.Series:
-    """
-    Compute 10-day forward return: (close_{t+10} / close_t) - 1.
-    """
     close = _get_close_series(df)
-    return close.shift(-10) / close - 1
+    s = close.shift(-10) / close - 1
+    s.name = "10d_return"
+    return s
 
 def feature_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    """
-    Compute Average True Range (ATR) over the given period.
-    TR = max(high-low, abs(high-prev_close), abs(low-prev_close))
-    ATR = rolling mean of TR.
-    """
-    # High series
-    if 'High' in df.columns:
-        high = df['High']
-    elif 'high' in df.columns:
-        high = df['high']
-    else:
-        raise KeyError("DataFrame must contain 'High' or 'high' column")
-    # Low series
-    if 'Low' in df.columns:
-        low = df['Low']
-    elif 'low' in df.columns:
-        low = df['low']
-    else:
-        raise KeyError("DataFrame must contain 'Low' or 'low' column")
-    # Close series
+    high  = df.get('High', df.get('high'))
+    low   = df.get('Low',  df.get('low'))
     close = _get_close_series(df)
 
-    prev_close = close.shift(1)
-    tr1 = high - low
-    tr2 = (high - prev_close).abs()
-    tr3 = (low - prev_close).abs()
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    prev = close.shift(1)
+    tr1  = high - low
+    tr2  = (high - prev).abs()
+    tr3  = (low  - prev).abs()
+    tr   = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
 
-    atr = tr.rolling(window=period).mean()
+    atr = tr.rolling(window=period, min_periods=period).mean()
+    atr.name = f"atr_{period}"
     return atr
 
 def feature_bb_width(df: pd.DataFrame, period: int = 20, std_dev: float = 2.0) -> pd.Series:
-    """
-    Compute Bollinger Band width:
-      width = (upper - lower) / middle = (2 * std_dev * std) / sma
-    """
     close = _get_close_series(df)
-    sma = close.rolling(window=period).mean()
-    std = close.rolling(window=period).std(ddof=0)
+    sma   = close.rolling(window=period, min_periods=period).mean()
+    std   = close.rolling(window=period, min_periods=period).std(ddof=0)
     width = (2 * std_dev * std) / sma
+    width.name = f"bb_width_{period}"
     return width
 
 def feature_ema_cross(df: pd.DataFrame, span_short: int = 12, span_long: int = 26) -> pd.Series:
-    """
-    Compute EMA(span_short) - EMA(span_long).
-    """
-    close = _get_close_series(df)
-    ema_short = close.ewm(span=span_short, adjust=False).mean()
-    ema_long  = close.ewm(span=span_long,  adjust=False).mean()
-    return ema_short - ema_long
+    close     = _get_close_series(df)
+    ema_short = close.ewm(span=span_short, adjust=False, min_periods=span_short).mean()
+    ema_long  = close.ewm(span=span_long,  adjust=False, min_periods=span_long).mean()
+    diff      = ema_short - ema_long
+    diff.name = f"ema_cross_{span_short}_{span_long}"
+    return diff
 
 def feature_obv(df: pd.DataFrame) -> pd.Series:
-    """
-    Compute On‐Balance Volume (OBV):
-    OBV[0] = volume[0]
-    For i > 0:
-        if close[i] > close[i-1]:  OBV[i] = OBV[i-1] + volume[i]
-        elif close[i] < close[i-1]: OBV[i] = OBV[i-1] - volume[i]
-        else:                       OBV[i] = OBV[i-1]
-    """
     close = _get_close_series(df)
+    vol   = df.get('volume', df.get('Volume'))
+    dir   = np.sign(close.diff().fillna(0))
+    obv   = (dir * vol).cumsum()
+    obv.name = "obv"
+    return obv
 
-    # fetch volume with case‐insensitivity
-    if 'volume' in df.columns:
-        vol = df['volume']
-    elif 'Volume' in df.columns:
-        vol = df['Volume']
-    else:
-        raise KeyError("DataFrame must contain 'volume' or 'Volume' column")
+def feature_obv_pct(df: pd.DataFrame) -> pd.Series:
+    """
+    Daily percent change of OBV.
+    Replace infinities (from divide-by-zero) with NaN.
+    """
+    obv = feature_obv(df)
+    pct = obv.pct_change()
+    pct = pct.replace([np.inf, -np.inf], np.nan)
+    pct.name = "obv_pct"
+    return pct
 
-    # seed OBV with the first day's volume
-    obv = [vol.iloc[0]]
-
-    for i in range(1, len(close)):
-        if close.iloc[i] > close.iloc[i-1]:
-            obv.append(obv[-1] + vol.iloc[i])
-        elif close.iloc[i] < close.iloc[i-1]:
-            obv.append(obv[-1] - vol.iloc[i])
-        else:
-            obv.append(obv[-1])
-
-    return pd.Series(obv, index=df.index)
+def feature_obv_zscore(df: pd.DataFrame, window: int = 20) -> pd.Series:
+    """
+    OBV relative to rolling mean.
+    Replace infinities (from divide-by-zero) with NaN.
+    """
+    obv = feature_obv(df)
+    ma  = obv.rolling(window=window, min_periods=window).mean()
+    rel = (obv - ma) / ma
+    rel = rel.replace([np.inf, -np.inf], np.nan)
+    rel.name = f"obv_z{window}"
+    return rel
 
 def feature_rsi(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    close     = _get_close_series(df)
+    delta     = close.diff()
+    gain      = delta.clip(lower=0)
+    loss      = -delta.clip(upper=0)
+    avg_gain  = gain.ewm(alpha=1/period, min_periods=period).mean()
+    avg_loss  = loss.ewm(alpha=1/period, min_periods=period).mean()
+    rs        = avg_gain / avg_loss
+    rsi       = 100 - (100 / (1 + rs))
+    rsi.name = f"rsi_{period}"
+    return rsi
+
+def feature_sma_5(df: pd.DataFrame) -> pd.Series:
     """
-    Compute Relative Strength Index over `period`:
-      RSI = 100 - 100/(1 + RS), where
-      RS = avg_gain / avg_loss (rolling means)
+    5-day simple moving average of close.
     """
     close = _get_close_series(df)
-    delta = close.diff()
+    sma5  = close.rolling(window=5, min_periods=5).mean()
+    sma5.name = "sma_5"
+    return sma5
 
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
+def feature_ema_5(df: pd.DataFrame) -> pd.Series:
+    """
+    5-day exponential moving average of close.
+    """
+    close = _get_close_series(df)
+    ema5  = close.ewm(span=5, adjust=False, min_periods=5).mean()
+    ema5.name = "ema_5"
+    return ema5
 
-    avg_gain = gain.rolling(window=period).mean()
-    avg_loss = loss.rolling(window=period).mean()
+def feature_sma_10(df: pd.DataFrame) -> pd.Series:
+    """
+    10-day simple moving average of close.
+    """
+    close = _get_close_series(df)
+    sma10 = close.rolling(window=10, min_periods=10).mean()
+    sma10.name = "sma_10"
+    return sma10
 
-    rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
+def feature_ema_10(df: pd.DataFrame) -> pd.Series:
+    """
+    10-day exponential moving average of close.
+    """
+    close = _get_close_series(df)
+    ema10 = close.ewm(span=10, adjust=False, min_periods=10).mean()
+    ema10.name = "ema_10"
+    return ema10
+
+def feature_sma_50(df: pd.DataFrame) -> pd.Series:
+    """
+    50-day simple moving average of close.
+    """
+    close = _get_close_series(df)
+    sma50 = close.rolling(window=50, min_periods=50).mean()
+    sma50.name = "sma_50"
+    return sma50
+
+def feature_ema_50(df: pd.DataFrame) -> pd.Series:
+    """
+    50-day exponential moving average of close.
+    """
+    close = _get_close_series(df)
+    ema50 = close.ewm(span=50, adjust=False, min_periods=50).mean()
+    ema50.name = "ema_50"
+    return ema50
+
+

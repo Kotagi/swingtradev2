@@ -2,7 +2,7 @@ import pandas as pd
 
 def label_future_return(df: pd.DataFrame, 
                         close_col: str = 'close',
-                        horizon: int = 5,
+                        horizon: int = 6,
                         threshold: float = 0.0,
                         label_name: str = 'label_5d') -> pd.DataFrame:
     """
