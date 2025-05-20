@@ -8,47 +8,71 @@ import pandas as pd
 RAW_DIR   = Path(__file__).parent.parent / "data" / "raw"
 CLEAN_DIR = Path(__file__).parent.parent / "data" / "clean"
 
+# Expected dtypes after cleaning
+EXPECTED_DTYPES = {
+    "volume": "int64",
+    "open":   "float64",
+    "high":   "float64",
+    "low":    "float64",
+    "close":  "float64"
+}
+
 def clean_file(path: Path):
-    # read
+    """
+    Clean a single CSV file. Returns a list of integrity issues (empty if none).
+    """
     df = pd.read_csv(path)
 
-    # identify the date column (first column)
-    date_col = df.columns[0]
+    # Rename first column to 'date'
+    first_col = df.columns[0]
+    if first_col.lower() != "date":
+        df = df.rename(columns={first_col: "date"})
 
-    # parse dates with explicit format
-    df[date_col] = pd.to_datetime(
-        df[date_col],
-        format="%Y-%m-%d",
-        errors="coerce"
-    )
+    # Parse dates
+    df["date"] = pd.to_datetime(df["date"], format="%Y-%m-%d", errors="coerce")
 
-    # drop rows where date failed + full‐row duplicates
-    df = df.dropna(subset=[date_col]).drop_duplicates()
+    # Drop bad rows & duplicates
+    df = df.dropna(subset=["date"]).drop_duplicates()
 
-    # set date index and sort
-    df = df.set_index(date_col).sort_index()
+    # Set index and sort
+    df = df.set_index("date").sort_index()
 
-    # cast types
-    df["Volume"] = df["Volume"].astype(int)
-    for col in ["Open", "High", "Low", "Close"]:
+    # Lowercase columns
+    df.columns = [c.lower() for c in df.columns]
+
+    # Cast types
+    df["volume"] = df["volume"].astype(int)
+    for col in ["open", "high", "low", "close"]:
         df[col] = df[col].astype(float)
 
-    # collect stats
+    # Integrity checks
+    issues = []
+
     nat_count = df.index.isnull().sum()
+    if nat_count:
+        issues.append(f"Null dates: {nat_count}")
+
     dup_count = df.index.duplicated().sum()
-    is_mono   = df.index.is_monotonic_increasing
-    dtypes    = df.dtypes.to_dict()
+    if dup_count:
+        issues.append(f"Duplicate dates: {dup_count}")
 
-    # log them
-    logging.info(
-        f"{path.name} | NaT={nat_count} | Dups={dup_count} | "
-        f"Monotonic={is_mono} | dtypes={dtypes}"
-    )
+    if not df.index.is_monotonic_increasing:
+        issues.append("Index not monotonic")
 
-    # save to clean folder
+    # Dtype mismatches
+    dtypes = df.dtypes.to_dict()
+    mismatches = [col for col, exp in EXPECTED_DTYPES.items() if dtypes.get(col) != exp]
+    if mismatches:
+        issues.append(f"Dtype mismatch in: {', '.join(mismatches)}")
+
+    # Ensure index name
+    df.index.name = "date"
+
+    # Save cleaned file
     output_path = CLEAN_DIR / path.name
     df.to_csv(output_path)
 
+    return issues
 
 def main():
     logging.basicConfig(
@@ -61,14 +85,34 @@ def main():
     files = list(RAW_DIR.glob("*.csv"))
     logging.info(f"Found {len(files)} files to clean in {RAW_DIR}")
 
+    failures = []
+
     for f in files:
         logging.info(f"Cleaning {f.name}")
         try:
-            clean_file(f)
-            logging.info(f"Cleaned data saved for {f.stem}: {CLEAN_DIR/f.name}")
+            issues = clean_file(f)
+            if issues:
+                logging.warning(f"{f.name} integrity issues: {'; '.join(issues)}")
+                failures.append((f.name, issues))
+            else:
+                logging.info(f"{f.name} passes all integrity checks")
         except Exception as e:
             logging.error(f"Failed cleaning {f.name}: {e}")
+            failures.append((f.name, [str(e)]))
 
+    # Summary
+    total = len(files)
+    failed = len(failures)
+    passed = total - failed
+
+    logging.info("=== Clean Data Summary ===")
+    if failed == 0:
+        logging.info(f"All {total} files passed integrity checks.")
+    else:
+        logging.warning(f"{failed}/{total} files failed integrity checks:")
+        for name, issues in failures:
+            logging.warning(f" - {name}: {', '.join(issues)}")
 
 if __name__ == "__main__":
     main()
+

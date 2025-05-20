@@ -14,7 +14,8 @@ features:
   ema_5: 0
   sma_10: 0
   ema_10: 0
-  sma_50: 1
-  ema_50: 1
+  sma_50: 0
+  ema_50: 0
+  adx_14: 1
 
 

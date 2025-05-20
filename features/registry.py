@@ -15,6 +15,7 @@ from features.technical import (
     feature_ema_10,
     feature_sma_50,
     feature_ema_50,
+    feature_adx_14,
     
 )
 
@@ -34,6 +35,7 @@ FEATURES = {
     "ema_10":       feature_ema_10,
     "sma_50":       feature_sma_50,
     "ema_50":       feature_ema_50,
+    "adx_14":          feature_adx_14,
 
 
 }

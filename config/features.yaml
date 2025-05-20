@@ -16,5 +16,6 @@ features:
   ema_10: 1
   sma_50: 1
   ema_50: 1
+  adx_14: 1
 
 

@@ -53,6 +53,7 @@ utils/
   ├─ __init__.py
   ├─ labeling.py
   ├─ logger.py
+clean_data.bat
 clean_features.bat
 readme_generator.py
 redownload_and_clean.bat
@@ -115,7 +116,8 @@ backtest.py
 
 ### `src\clean_data.py`
 **Functions:**
-- `clean_file(path)`
+- `clean_file(path)`  
+  Clean a single CSV file. Returns a list of integrity issues (empty if none).
 - `main()`
 
 ### `src\clean_features_labeled.py`
@@ -190,12 +192,15 @@ Logging configuration for feature pipeline and other modules.
   50-day simple moving average of close.
 - `feature_ema_50(df)`  
   50-day exponential moving average of close.
+- `feature_adx_14(df, period)`  
+  Compute Average Directional Index (ADX) over the given period.
 
 ---
 ## Enabled Features
 
 - **10d_return**: ✅
 - **5d_return**: ✅
+- **adx_14**: ✅
 - **atr**: ✅
 - **bb_width**: ✅
 - **ema_10**: ✅

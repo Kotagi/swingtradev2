@@ -53,7 +53,7 @@ def prepare(df):
     # drop leakage of forward returns
     feats = [c for c in feats if "_return" not in c]
     # drop raw price columns
-    raw_price_cols = {"Open", "High", "Low", "Close", "Adj Close"}
+    raw_price_cols = {"open", "high", "low", "close", "adj close"}
     feats = [c for c in feats if c not in raw_price_cols]
     # split
     X = df_clean[feats]

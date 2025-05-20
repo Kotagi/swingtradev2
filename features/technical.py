@@ -152,4 +152,29 @@ def feature_ema_50(df: pd.DataFrame) -> pd.Series:
     ema50.name = "ema_50"
     return ema50
 
+def feature_adx_14(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    """
+    Compute Average Directional Index (ADX) over the given period.
+    Measures trend strength (higher = stronger trend).
+    """
+    high  = df.get('High', df['high'])
+    low   = df.get('Low',  df['low'])
+    close = _get_close_series(df)
+
+    # +DI and –DI steps (using Wilder’s smoothing)
+    plus_dm  = high.diff().clip(lower=0)
+    minus_dm = low.diff().clip(upper=0).abs()
+    tr1 = high - low
+    tr2 = (high - close.shift()).abs()
+    tr3 = (low  - close.shift()).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+    atr    = tr.ewm(alpha=1/period, min_periods=period).mean()
+    plus_di  = 100 * (plus_dm.ewm(alpha=1/period, min_periods=period).mean() / atr)
+    minus_di = 100 * (minus_dm.ewm(alpha=1/period, min_periods=period).mean() / atr)
+
+    dx = (abs(plus_di - minus_di) / (plus_di + minus_di)) * 100
+    adx = dx.ewm(alpha=1/period, min_periods=period).mean()
+    adx.name = f"adx_{period}"
+    return adx
 
