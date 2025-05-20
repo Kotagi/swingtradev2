@@ -2,6 +2,7 @@
 
 import pandas as pd
 import numpy as np
+import pandas_ta as ta
 
 def _get_close_series(df: pd.DataFrame) -> pd.Series:
     if 'close' in df.columns:
@@ -87,16 +88,12 @@ def feature_obv_zscore(df: pd.DataFrame, window: int = 20) -> pd.Series:
     return rel
 
 def feature_rsi(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    close     = _get_close_series(df)
-    delta     = close.diff()
-    gain      = delta.clip(lower=0)
-    loss      = -delta.clip(upper=0)
-    avg_gain  = gain.ewm(alpha=1/period, min_periods=period).mean()
-    avg_loss  = loss.ewm(alpha=1/period, min_periods=period).mean()
-    rs        = avg_gain / avg_loss
-    rsi       = 100 - (100 / (1 + rs))
-    rsi.name = f"rsi_{period}"
-    return rsi
+    """
+    Compute Relative Strength Index (RSI) over `period` days via pandas-ta.
+    """
+    s = ta.rsi(df["close"], length=period)       # returns a Series
+    s.name = f"rsi_{period}"
+    return s
 
 def feature_sma_5(df: pd.DataFrame) -> pd.Series:
     """
@@ -154,27 +151,10 @@ def feature_ema_50(df: pd.DataFrame) -> pd.Series:
 
 def feature_adx_14(df: pd.DataFrame, period: int = 14) -> pd.Series:
     """
-    Compute Average Directional Index (ADX) over the given period.
-    Measures trend strength (higher = stronger trend).
+    Compute 14-day Average Directional Index (ADX) via pandas-ta.
     """
-    high  = df.get('High', df['high'])
-    low   = df.get('Low',  df['low'])
-    close = _get_close_series(df)
-
-    # +DI and –DI steps (using Wilder’s smoothing)
-    plus_dm  = high.diff().clip(lower=0)
-    minus_dm = low.diff().clip(upper=0).abs()
-    tr1 = high - low
-    tr2 = (high - close.shift()).abs()
-    tr3 = (low  - close.shift()).abs()
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-
-    atr    = tr.ewm(alpha=1/period, min_periods=period).mean()
-    plus_di  = 100 * (plus_dm.ewm(alpha=1/period, min_periods=period).mean() / atr)
-    minus_di = 100 * (minus_dm.ewm(alpha=1/period, min_periods=period).mean() / atr)
-
-    dx = (abs(plus_di - minus_di) / (plus_di + minus_di)) * 100
-    adx = dx.ewm(alpha=1/period, min_periods=period).mean()
-    adx.name = f"adx_{period}"
-    return adx
-
+    # ta.adx returns a DataFrame with columns: ['ADX_14','DMP_14','DMN_14']
+    adx_df = ta.adx(high=df["high"], low=df["low"], close=df["close"], length=period)
+    s = adx_df[f"ADX_{period}"]
+    s.name = f"adx_{period}"
+    return s
