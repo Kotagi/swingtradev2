@@ -20,6 +20,7 @@ config/
 data/
   ├─ clean/
   ├─ features_labeled/
+  ├─ inspect_parquet/
   ├─ raw/
   ├─ tickers/
     ├─ Archive/
@@ -39,6 +40,7 @@ src/
   ├─ clean_features_labeled.py
   ├─ download_data.py
   ├─ feature_pipeline.py
+  ├─ inspect_parquet.py
   ├─ train_model.py
 tests/
   ├─ archive/
@@ -52,7 +54,11 @@ utils/
   ├─ logger.py
 clean_data.bat
 clean_features.bat
+download_data.bat
+download_data_full.bat
 profile_pipeline.bat
+read_clean_parquet.bat
+read_feature_parquet.bat
 readme_generator.py
 redownload_and_clean.bat
 run_features_labels.bat
@@ -69,6 +75,7 @@ run_features_labels.bat
 - `tabulate>=0.8.9`
 - `matplotlib>=3.4`
 - `pandas-ta>=0.3.14`
+- `pyarrow>=20.0.0`
 
 
 ## Config Files
@@ -85,19 +92,27 @@ run_features_labels.bat
 | ---- | ---- | ------- |
 | `-f, --tickers-file` | Path to a file with one ticker symbol per line | 'data/tickers/sp500_tickers.csv' |
 | `-s, --start-date` | Start date for historical data (YYYY-MM-DD) | '2008-01-01' |
-| `-e, --end-date` | End date for historical data (YYYY-MM-DD); defaults to today | None |
+| `-e, --end-date` | End date (exclusive) for historical data (YYYY-MM-DD); defaults to today | None |
 | `-r, --raw-folder` | Directory to save downloaded raw CSV files | 'data/raw' |
 | `-o, --sectors-file` | Output CSV for ticker–sector mapping | 'data/tickers/sectors.csv' |
+| `--full, --force-full` | Ignore existing files and re-download entire history for every ticker | - |
 
 ### `src\feature_pipeline.py`
 
 | Flag | Help | Default |
 | ---- | ---- | ------- |
-| `--input-dir` | Clean data folder | - |
-| `--output-dir` | Features_labeled output folder | - |
-| `--config` | YAML of feature toggles | - |
-| `--horizon` | Label lookahead days | 5 |
-| `--threshold` | Positive return threshold | 0.0 |
+| `--input-dir` | Cleaned Parquets | - |
+| `--output-dir` | Features_labeled Parquets | - |
+| `--config` | features.yaml | - |
+| `--horizon` | Label days ahead | 5 |
+| `--threshold` | Return thresh. | 0.0 |
+
+### `src\inspect_parquet.py`
+
+| Flag | Help | Default |
+| ---- | ---- | ------- |
+| `parquet_file` | Path to the Parquet file to inspect (e.g. data/clean/AAPL.parquet). | - |
+| `--export-dir, -e` | Directory where the full CSV will be saved (default: data/inspect_parquet) | - |
 
 
 ## Modules
@@ -126,14 +141,14 @@ clean_data.py
 clean_features_labeled.py
 **Functions:**
 - `clean_file(path)`  
-  Read a single features_labeled CSV, drop rows with any NaNs, and overwrite it.
+  Clean a single labeled feature Parquet file in-place.
 - `main()`  
-  Locate all CSV files under DATA_DIR and clean each using clean_file().
+  Locate all Parquet files under DATA_DIR and clean each using clean_file().
 
 ### `src\download_data.py`
 download_data.py
 **Functions:**
-- `download_data(tickers, start_date, end_date, raw_folder)`  
+- `download_data(tickers, start_date, end_date, raw_folder, full_refresh)`  
   Download OHLCV data and fetch sector info for each ticker.
 - `write_sectors_csv(sectors, sectors_file)`  
   Write the ticker-to-sector mapping to a CSV file.
@@ -144,17 +159,22 @@ download_data.py
 feature_pipeline.py
 **Functions:**
 - `apply_features(df, enabled_features, logger)`  
-  Apply all enabled feature functions to a single DataFrame.
-- `process_file(csv_file, output_path, enabled, label_horizon, label_threshold, log_file)`  
-  Worker function to process one ticker's CSV end-to-end.
+  Apply each enabled feature function to the DataFrame.
+- `process_file(file_path, output_path, enabled, label_horizon, label_threshold, log_file)`  
+  Worker: process one ticker end-to-end with caching.
 - `main(input_dir, output_dir, config_path, label_horizon, label_threshold)`  
-  Entry point for the parallelized feature pipeline.
+  Entry point: parallelize processing with caching.
+
+### `src\inspect_parquet.py`
+inspect_parquet.py
+**Functions:**
+- `main()`
 
 ### `src\train_model.py`
 train_model.py
 **Functions:**
 - `load_data()`  
-  Load all ticker feature CSVs into one concatenated DataFrame.
+  Load all ticker feature Parquet files into one concatenated DataFrame.
 - `prepare(df)`  
   Clean and split the raw DataFrame into X (features) and y (target).
 - `main()`  

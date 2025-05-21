@@ -10,7 +10,7 @@ Cleans raw stock CSVs by:
   - Lowercasing all column names
   - Casting volume to int and price columns to float
   - Running data integrity checks (nulls, duplicates, monotonic index, dtype validation)
-  - Saving cleaned CSVs to data/clean/
+  - Saving cleaned data as Parquet files in data/clean/
   - Logging per-file outcomes and a summary of failures
 """
 
@@ -47,18 +47,13 @@ def clean_file(path: Path) -> list:
       7. Cast 'volume' to int and price columns to float.
       8. Check for null dates, duplicate dates, non-monotonic index,
          and unexpected data types.
-      9. Save the cleaned DataFrame to CLEAN_DIR with the same filename.
-
-    Args:
-        path (Path): Path to the raw CSV file.
-
-    Returns:
-        List[str]: Descriptions of any integrity issues (empty if none).
+      9. Save the cleaned DataFrame to Parquet.
+     10. Return list of any integrity issues encountered.
     """
     # Read raw data
     df = pd.read_csv(path)
 
-    # Rename first column to 'date'
+    # Rename first column to 'date' if needed
     first_col = df.columns[0]
     if first_col.lower() != "date":
         df = df.rename(columns={first_col: "date"})
@@ -80,7 +75,7 @@ def clean_file(path: Path) -> list:
     for col in ["open", "high", "low", "close"]:
         df[col] = df[col].astype(float)
 
-    # Gather integrity checks
+    # Initialize list to collect any integrity issues
     issues = []
 
     # 1) Null dates in index?
@@ -104,12 +99,13 @@ def clean_file(path: Path) -> list:
     if bad_types:
         issues.append(f"Dtype mismatch in: {', '.join(bad_types)}")
 
-    # Ensure index is named correctly for CSV output
-    df.index.name = "date"
-
-    # Save cleaned data
+    # Ensure output directory exists
     CLEAN_DIR.mkdir(parents=True, exist_ok=True)
-    df.to_csv(CLEAN_DIR / path.name)
+
+    # 9) Save cleaned data as a Parquet file
+    parquet_path = CLEAN_DIR / f"{path.stem}.parquet"
+    df.to_parquet(parquet_path, index=True)
+    logging.info(f"{path.name} cleaned → {parquet_path}")
 
     return issues
 
@@ -129,11 +125,9 @@ def main() -> None:
         format="%(asctime)s %(levelname)s: %(message)s"
     )
 
-    CLEAN_DIR.mkdir(parents=True, exist_ok=True)
-
     files = sorted(RAW_DIR.glob("*.csv"))
     total_files = len(files)
-    logging.info(f"Found {total_files} files to clean in {RAW_DIR}")
+    logging.info(f"Found {total_files} raw CSV files in {RAW_DIR}")
 
     failures = []
 
@@ -165,4 +159,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

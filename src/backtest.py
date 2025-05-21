@@ -1,28 +1,28 @@
-# src/backtest.py
-
 #!/usr/bin/env python3
 """
 backtest.py
 
-Run backtests on labeled feature data for:
+Run backtests on labeled feature Parquet data for:
   1. Oracle strategy (perfect hindsight on label)
   2. RSI oversold strategy (RSI < 30 entry)
 
 Configurable parameters include position size and holding horizon.
 Outputs summary metrics for each strategy across the S&P 500 universe.
+
+Now reads feature files in Parquet format from data/features_labeled/.
 """
 
 import pandas as pd
 from pathlib import Path
-from typing import List, Union
+from typing import List, Tuple
 
 # —— CONFIGURATION —— #
-PROJECT_ROOT: Path = Path.cwd()
-DATA_DIR: Path = PROJECT_ROOT / "data" / "features_labeled"
-TICKERS_CSV: Path = PROJECT_ROOT / "data" / "tickers" / "sp500_tickers.csv"
-POSITION_SIZE: float = 1000.0  # dollars per trade
-HORIZON: int = 5               # holding period in days
-LABEL_COL: str = f"label_{HORIZON}d"
+PROJECT_ROOT = Path.cwd()
+DATA_DIR      = PROJECT_ROOT / "data" / "features_labeled"
+TICKERS_CSV   = PROJECT_ROOT / "data" / "tickers" / "sp500_tickers.csv"
+POSITION_SIZE = 1000.0           # dollars per trade
+HORIZON       = 5                # holding period in days
+LABEL_COL     = f"label_{HORIZON}d"
 
 
 def load_universe(tickers_csv: Path = TICKERS_CSV) -> List[str]:
@@ -30,13 +30,13 @@ def load_universe(tickers_csv: Path = TICKERS_CSV) -> List[str]:
     Load the list of tickers from a CSV file.
 
     Args:
-        tickers_csv: Path to CSV file with one ticker symbol per line.
+        tickers_csv: Path to a CSV with one ticker symbol per line.
 
     Returns:
         List of ticker symbols as strings.
     """
+    # Read with no header, first column is the ticker
     df = pd.read_csv(tickers_csv, header=None)
-    # First column contains ticker symbols
     return df.iloc[:, 0].astype(str).tolist()
 
 
@@ -49,38 +49,40 @@ def backtest_signals(
     """
     Backtest a boolean entry signal over a fixed holding period.
 
-    For each True signal row, enter at next-day open and exit at close after `horizon` days.
+    For each True in signal_col, enter at next-day open and exit at close after `horizon` days.
 
     Args:
-        df: DataFrame indexed by date, with columns including open/close prices and the signal.
-        signal_col: Name of the boolean column indicating entry occurences.
-        horizon: Holding period in trading days.
-        position_size: Dollar amount allocated per trade.
+        df: DataFrame indexed by date, containing 'open', 'close', and signal_col.
+        signal_col: Name of boolean column indicating entry.
+        horizon: Holding period in days.
+        position_size: Dollar amount per trade.
 
     Returns:
-        DataFrame of individual trades, indexed by entry date, with columns:
+        DataFrame of trades, indexed by entry date, with columns:
           - 'entry': entry price
-          - 'exit': exit price
-          - 'ret': return fraction (exit/entry - 1)
-          - 'pnl': profit/loss in dollars
+          - 'exit' : exit price
+          - 'ret'  : return fraction (exit/entry - 1)
+          - 'pnl'  : profit/loss in dollars
     """
-    # Determine column names for open and close (case-insensitive)
-    open_col = "Open" if "Open" in df.columns else "open"
+    # Determine open/close column names (case-insensitive)
+    open_col  = "Open"  if "Open"  in df.columns else "open"
     close_col = "Close" if "Close" in df.columns else "close"
 
-    # Ensure sorted by date
+    # Sort the DataFrame by date to ensure chronological order
     df_sorted = df.sort_index().copy()
-    # Precompute exit price at horizon
+
+    # Precompute exit prices: shift close price backwards by `horizon` rows
     df_sorted["exit_price"] = df_sorted[close_col].shift(-horizon)
 
     trades = []
+    # Iterate over each date/row
     for date, row in df_sorted.iterrows():
-        # Trigger trade if signal True and exit_price is available
-        if row.get(signal_col) and not pd.isna(row["exit_price"]):
+        # Only enter if signal is True and exit_price is not NaN
+        if row.get(signal_col) and pd.notna(row["exit_price"]):
             entry_price = row[open_col]
-            exit_price = row["exit_price"]
-            ret = exit_price / entry_price - 1
-            pnl = ret * position_size
+            exit_price  = row["exit_price"]
+            ret         = exit_price / entry_price - 1
+            pnl         = ret * position_size
             trades.append({
                 "date": date,
                 "entry": entry_price,
@@ -89,10 +91,11 @@ def backtest_signals(
                 "pnl": pnl
             })
 
+    # If no trades were generated, return empty DataFrame
     if not trades:
-        # No trades generated
         return pd.DataFrame()
 
+    # Build a DataFrame of trades and set 'date' as the index
     trades_df = pd.DataFrame(trades).set_index("date")
     return trades_df
 
@@ -107,22 +110,23 @@ def aggregate_results(trades: pd.DataFrame) -> pd.Series:
     Returns:
         Series with metrics:
           - n_trades: total number of trades
-          - hit_rate: fraction of trades with positive return
+          - hit_rate: fraction of trades with ret > 0
           - avg_ret: average return per trade
-          - total_pnl: total profit/loss across all trades
+          - total_pnl: total P&L across all trades
           - avg_pnl: average P&L per trade
           - max_dd: maximum drawdown on cumulative P&L curve
     """
     if trades.empty:
+        # Return empty Series if no trades
         return pd.Series(dtype=float)
 
     n_trades = len(trades)
     hit_rate = (trades["ret"] > 0).mean()
-    avg_ret = trades["ret"].mean()
+    avg_ret  = trades["ret"].mean()
     total_pnl = trades["pnl"].sum()
-    avg_pnl = trades["pnl"].mean()
+    avg_pnl  = trades["pnl"].mean()
 
-    # Cumulative P&L for drawdown calculation
+    # Compute equity curve and max drawdown
     equity = trades["pnl"].cumsum()
     max_dd = (equity.cummax() - equity).max()
 
@@ -139,26 +143,24 @@ def aggregate_results(trades: pd.DataFrame) -> pd.Series:
 def main() -> None:
     """
     Main entry point: executes backtests for oracle and RSI strategies,
-    then prints summary metrics.
+    then prints summary metrics for each.
     """
-    # Load ticker universe
+    # Load the universe of tickers
     universe = load_universe()
 
-    # Containers for trade DataFrames
-    oracle_trades = []
-    rsi_trades = []
+    oracle_trades: List[pd.DataFrame] = []
+    rsi_trades:    List[pd.DataFrame] = []
 
+    # Process each ticker
     for ticker in universe:
-        path = DATA_DIR / f"{ticker}.csv"
+        # Construct path to the Parquet file
+        path = DATA_DIR / f"{ticker}.parquet"
         if not path.exists():
+            # Skip tickers without data
             continue
 
-        # Load labeled feature CSV
-        df = (
-            pd.read_csv(path, index_col=0, parse_dates=True)
-              .rename_axis("date")
-              .sort_index()
-        )
+        # Load labeled feature data from Parquet
+        df = pd.read_parquet(path).rename_axis("date").sort_index()
 
         # Oracle strategy: use the true label as entry signal
         if LABEL_COL in df.columns:
@@ -168,7 +170,7 @@ def main() -> None:
             if not trades_o.empty:
                 oracle_trades.append(trades_o)
 
-        # RSI oversold strategy: RSI < 30 entry signal
+        # RSI oversold strategy: entry when RSI < 30
         if "rsi" in df.columns:
             df_r = df.copy()
             df_r["rsi_signal"] = df_r["rsi"] < 30
@@ -176,15 +178,15 @@ def main() -> None:
             if not trades_r.empty:
                 rsi_trades.append(trades_r)
 
-    # Concatenate trades for aggregate stats
+    # Concatenate all trades for each strategy
     oracle_df = pd.concat(oracle_trades) if oracle_trades else pd.DataFrame()
-    rsi_df = pd.concat(rsi_trades) if rsi_trades else pd.DataFrame()
+    rsi_df    = pd.concat(rsi_trades)    if rsi_trades    else pd.DataFrame()
 
-    # Compute summaries
+    # Compute summary metrics
     oracle_summary = aggregate_results(oracle_df) if not oracle_df.empty else None
-    rsi_summary = aggregate_results(rsi_df) if not rsi_df.empty else None
+    rsi_summary    = aggregate_results(rsi_df)    if not rsi_df.empty    else None
 
-    # Print results
+    # Print Oracle summary
     print("\n=== ORACLE BACKTEST SUMMARY ===")
     if oracle_summary is not None:
         print(f"Trades:        {int(oracle_summary['n_trades'])}")
@@ -196,6 +198,7 @@ def main() -> None:
     else:
         print("No oracle trades to report.")
 
+    # Print RSI summary
     print("\n=== RSI OVERSOLD BACKTEST SUMMARY ===")
     if rsi_summary is not None:
         print(f"Trades:        {int(rsi_summary['n_trades'])}")
@@ -210,4 +213,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

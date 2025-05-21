@@ -1,73 +1,77 @@
-# src/clean_features_labeled.py
-
+#!/usr/bin/env python3
 """
 clean_features_labeled.py
 
-Scan all CSV files in data/features_labeled/, drop any rows containing NaNs,
-and overwrite the original files with the cleaned data.
+Cleans labeled feature Parquet files by:
+  - Loading each Parquet from data/features_labeled/
+  - Dropping any rows containing NaNs
+  - Overwriting the original Parquet files with the cleaned data
+  - Printing a summary of rows dropped vs. remaining
 
-Each CSV is expected to have a datetime index in its first column.
+Each Parquet file is expected to have a datetime index in its first column.
 """
 
 import pandas as pd
 from pathlib import Path
 
 # —— CONFIGURATION —— #
-# Directory containing labeled feature CSVs to clean
+# Directory containing labeled feature Parquet files
 DATA_DIR = Path.cwd() / "data" / "features_labeled"
 
 
 def clean_file(path: Path) -> None:
     """
-    Read a single features_labeled CSV, drop rows with any NaNs, and overwrite it.
+    Clean a single labeled feature Parquet file in-place.
+
+    Steps:
+      1. Read the Parquet file into a DataFrame (preserving datetime index).
+      2. Count rows before cleaning.
+      3. Drop any row with at least one NaN.
+      4. Count rows after cleaning.
+      5. Overwrite the original Parquet file with cleaned data.
+      6. Print a summary showing dropped vs. remaining rows.
 
     Args:
-        path (Path): Path to the CSV file to clean.
-
-    Behavior:
-        - Reads the CSV with the first column as a datetime index.
-        - Drops all rows that contain at least one NaN value.
-        - Overwrites the original CSV file with the cleaned DataFrame.
-        - Prints a summary of how many rows were dropped and how many remain.
+        path: Path to the Parquet file to clean.
     """
-    # Read CSV, parse index as datetime
-    df = pd.read_csv(path, index_col=0, parse_dates=True)
+    # 1) Load the Parquet file
+    df = pd.read_parquet(path)
 
-    # Count rows before cleaning
+    # 2) Count rows before dropping NaNs
     before = len(df)
 
-    # Drop any row that has at least one NaN value
+    # 3) Drop rows containing any NaN values
     df_clean = df.dropna()
 
-    # Count rows after cleaning
+    # 4) Count rows after cleaning
     after = len(df_clean)
 
-    # Overwrite the original file with cleaned data
-    df_clean.to_csv(path)
+    # 5) Overwrite with the cleaned DataFrame
+    df_clean.to_parquet(path, index=True)
 
-    # Print summary of cleaning
+    # 6) Print summary for quick sanity check
     print(f"{path.name}: dropped {before - after} rows → {after} remaining")
 
 
 def main() -> None:
     """
-    Locate all CSV files under DATA_DIR and clean each using clean_file().
+    Locate all Parquet files under DATA_DIR and clean each using clean_file().
 
     Behavior:
-        - Retrieves all '.csv' files in DATA_DIR.
-        - If no CSVs are found, prints a message and exits.
-        - Otherwise, iterates through each file and calls clean_file().
+      - Retrieves all '*.parquet' files in DATA_DIR.
+      - If none are found, prints a message and exits.
+      - Otherwise, iterates through each file and calls clean_file().
     """
-    # Find all CSV files to clean
-    csvs = sorted(DATA_DIR.glob("*.csv"))
+    # Find all Parquet files to clean
+    files = sorted(DATA_DIR.glob("*.parquet"))
 
     # If none found, notify and exit
-    if not csvs:
-        print("No CSVs found in", DATA_DIR)
+    if not files:
+        print("No Parquet files found in", DATA_DIR)
         return
 
-    # Clean each file in turn
-    for f in csvs:
+    # Clean each file one by one
+    for f in files:
         clean_file(f)
 
 
