@@ -93,11 +93,11 @@ run_features_labels.bat
 
 | Flag | Help | Default |
 | ---- | ---- | ------- |
-| `--input-dir` | Directory of cleaned CSVs | - |
-| `--output-dir` | Directory to write feature CSVs | - |
-| `--config` | Path to feature toggles YAML | - |
-| `--horizon` | Label horizon in days | 5 |
-| `--threshold` | Return threshold for labeling | 0.0 |
+| `--input-dir` | Clean data folder | - |
+| `--output-dir` | Features_labeled output folder | - |
+| `--config` | YAML of feature toggles | - |
+| `--horizon` | Label lookahead days | 5 |
+| `--threshold` | Positive return threshold | 0.0 |
 
 
 ## Modules
@@ -144,9 +144,11 @@ download_data.py
 feature_pipeline.py
 **Functions:**
 - `apply_features(df, enabled_features, logger)`  
-  Apply each enabled feature function to the DataFrame.
+  Apply all enabled feature functions to a single DataFrame.
+- `process_file(csv_file, output_path, enabled, label_horizon, label_threshold, log_file)`  
+  Worker function to process one ticker's CSV end-to-end.
 - `main(input_dir, output_dir, config_path, label_horizon, label_threshold)`  
-  Main pipeline function: loads cleaned CSVs, applies features, labels returns,
+  Entry point for the parallelized feature pipeline.
 
 ### `src\train_model.py`
 train_model.py
