@@ -1,30 +1,58 @@
+# src/download_data.py
+
 #!/usr/bin/env python3
 """
 download_data.py
 
-Downloads raw historical OHLCV data for a list of tickers using yfinance,
-and writes out a sectors.csv mapping each ticker to its sector.
+Downloads historical OHLCV price data and sector information for a list of tickers
+using yfinance, saving each ticker's data to a CSV file and producing a sectors.csv
+mapping each ticker symbol to its sector.
+
+Usage:
+    python src/download_data.py \
+        --tickers-file data/tickers/sp500_tickers.csv \
+        --start-date 2008-01-01 \
+        --end-date 2025-05-19 \
+        --raw-folder data/raw \
+        --sectors-file data/tickers/sectors.csv
 """
 
 import argparse
 import logging
 import os
 import csv
+from typing import List, Tuple, Optional
+
 import yfinance as yf
 
 
-def download_data(tickers, start_date, end_date, raw_folder):
+def download_data(
+    tickers: List[str],
+    start_date: str,
+    end_date: Optional[str],
+    raw_folder: str
+) -> List[Tuple[str, str]]:
     """
-    Downloads price data for each ticker and saves to raw_folder/<ticker>.csv.
-    Also collects sector info to write to sectors.csv.
+    Download OHLCV data and fetch sector info for each ticker.
+
+    Args:
+        tickers: List of ticker symbols to download.
+        start_date: Historical start date (YYYY-MM-DD).
+        end_date: Historical end date (YYYY-MM-DD) or None for today.
+        raw_folder: Directory path to save raw CSV files.
+
+    Returns:
+        A list of (ticker, sector) tuples.
     """
     os.makedirs(raw_folder, exist_ok=True)
-    sectors = []
+    sectors: List[Tuple[str, str]] = []
     total = len(tickers)
-    for i, ticker in enumerate(tickers, start=1):
+
+    for idx, ticker in enumerate(tickers, start=1):
         out_path = os.path.join(raw_folder, f"{ticker}.csv")
-        logging.info(f"[{i}/{total}] Downloading {ticker} to {out_path}")
-        # Download historical data
+        logging.info(f"[{idx}/{total}] Downloading {ticker} to {out_path}")
+
+        # Download historical OHLCV data
         df = yf.download(
             ticker,
             start=start_date,
@@ -32,21 +60,31 @@ def download_data(tickers, start_date, end_date, raw_folder):
             auto_adjust=False,
             progress=False
         )
-        # Save to CSV
         df.to_csv(out_path)
-        # Fetch sector info
+
+        # Fetch sector information
         try:
             info = yf.Ticker(ticker).info
             sector = info.get("sector", "Unknown")
-        except Exception:
+        except Exception as e:
+            logging.warning(f"Sector lookup failed for {ticker}: {e}")
             sector = "Unknown"
+
         sectors.append((ticker, sector))
+
     return sectors
 
 
-def write_sectors_csv(sectors, sectors_file):
+def write_sectors_csv(
+    sectors: List[Tuple[str, str]],
+    sectors_file: str
+) -> None:
     """
-    Writes sectors.csv with columns: ticker,sector
+    Write the ticker-to-sector mapping to a CSV file.
+
+    Args:
+        sectors: List of (ticker, sector) tuples.
+        sectors_file: File path to write the sectors CSV.
     """
     os.makedirs(os.path.dirname(sectors_file), exist_ok=True)
     with open(sectors_file, "w", newline="", encoding="utf-8") as f:
@@ -54,37 +92,41 @@ def write_sectors_csv(sectors, sectors_file):
         writer.writerow(["ticker", "sector"])
         for ticker, sector in sectors:
             writer.writerow([ticker, sector])
+
     logging.info(f"Wrote sector lookup to {sectors_file}")
 
 
-def main():
+def main() -> None:
+    """
+    Parse command-line arguments, download data, and write sector mapping.
+    """
     parser = argparse.ArgumentParser(
-        description="Download raw price data and sector info"
+        description="Download raw price data and sector info using yfinance"
     )
     parser.add_argument(
-        "--tickers-file", "-f",
+        "-f", "--tickers-file",
         default="data/tickers/sp500_tickers.csv",
-        help="One ticker per line"
+        help="Path to a file with one ticker symbol per line"
     )
     parser.add_argument(
-        "--start-date", "-s",
+        "-s", "--start-date",
         default="2008-01-01",
-        help="Start date for historical download (YYYY-MM-DD)"
+        help="Start date for historical data (YYYY-MM-DD)"
     )
     parser.add_argument(
-        "--end-date", "-e",
+        "-e", "--end-date",
         default=None,
-        help="End date for historical download (YYYY-MM-DD), defaults to today"
+        help="End date for historical data (YYYY-MM-DD); defaults to today"
     )
     parser.add_argument(
-        "--raw-folder", "-r",
+        "-r", "--raw-folder",
         default="data/raw",
-        help="Directory to save raw CSV files"
+        help="Directory to save downloaded raw CSV files"
     )
     parser.add_argument(
-        "--sectors-file", "-o",
+        "-o", "--sectors-file",
         default="data/tickers/sectors.csv",
-        help="Output CSV file for ticker–sector mapping"
+        help="Output CSV for ticker–sector mapping"
     )
     args = parser.parse_args()
 
@@ -93,14 +135,16 @@ def main():
         format="%(asctime)s %(levelname)s: %(message)s"
     )
 
-    # Read tickers
+    # Validate tickers file path
     if not os.path.isfile(args.tickers_file):
         logging.error(f"Tickers file not found: {args.tickers_file}")
         return
+
+    # Read tickers into a list
     with open(args.tickers_file, "r", encoding="utf-8") as f:
         tickers = [line.strip() for line in f if line.strip()]
 
-    # Download data and collect sectors
+    # Download data and collect sector information
     sectors = download_data(
         tickers=tickers,
         start_date=args.start_date,
@@ -108,11 +152,12 @@ def main():
         raw_folder=args.raw_folder
     )
 
-    # Write sectors CSV
+    # Write sector mapping to CSV
     write_sectors_csv(sectors, args.sectors_file)
 
-    logging.info("Done!")
+    logging.info("Download and sector mapping complete.")
 
 
 if __name__ == "__main__":
     main()
+

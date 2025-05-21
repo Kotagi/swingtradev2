@@ -1,160 +1,308 @@
 # src/features/technical.py
 
+"""
+technical.py
+
+Defines feature-extraction functions for a financial dataset, using pandas-ta
+for optimized indicator computations. Each function takes a DataFrame with
+columns ['open', 'high', 'low', 'close', 'volume'] (case-insensitive) and
+returns a pandas Series named for downstream pipeline use.
+"""
+
 import pandas as pd
-import numpy as np
 import pandas_ta as ta
+from pandas import Series, DataFrame
 
-def _get_close_series(df: pd.DataFrame) -> pd.Series:
+
+def _get_close_series(df: DataFrame) -> Series:
+    """
+    Return the 'close' price series, handling both lowercase and uppercase.
+
+    Args:
+        df: Input DataFrame.
+
+    Returns:
+        Series of closing prices.
+
+    Raises:
+        KeyError: If neither 'close' nor 'Close' is present.
+    """
     if 'close' in df.columns:
-        s = df['close']
-    elif 'Close' in df.columns:
-        s = df['Close']
-    else:
-        raise KeyError("DataFrame must contain 'close' or 'Close'")
-    return s
+        return df['close']
+    if 'Close' in df.columns:
+        return df['Close']
+    raise KeyError("DataFrame must contain 'close' or 'Close' column")
 
-def feature_5d_return(df: pd.DataFrame) -> pd.Series:
+
+def feature_5d_return(df: DataFrame) -> Series:
+    """
+    Compute 5-day forward return: (close_{t+5} / close_t) - 1.
+
+    Args:
+        df: Input DataFrame with 'close' prices.
+
+    Returns:
+        Series named '5d_return' of forward returns.
+    """
     close = _get_close_series(df)
     s = close.shift(-5) / close - 1
     s.name = "5d_return"
     return s
 
-def feature_10d_return(df: pd.DataFrame) -> pd.Series:
+
+def feature_10d_return(df: DataFrame) -> Series:
+    """
+    Compute 10-day forward return: (close_{t+10} / close_t) - 1.
+
+    Args:
+        df: Input DataFrame with 'close' prices.
+
+    Returns:
+        Series named '10d_return' of forward returns.
+    """
     close = _get_close_series(df)
     s = close.shift(-10) / close - 1
     s.name = "10d_return"
     return s
 
-def feature_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    high  = df.get('High', df.get('high'))
-    low   = df.get('Low',  df.get('low'))
-    close = _get_close_series(df)
 
-    prev = close.shift(1)
-    tr1  = high - low
-    tr2  = (high - prev).abs()
-    tr3  = (low  - prev).abs()
-    tr   = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+def feature_atr(df: DataFrame, period: int = 14) -> Series:
+    """
+    Compute Average True Range (ATR) over a given period via pandas-ta.
 
-    atr = tr.rolling(window=period, min_periods=period).mean()
-    atr.name = f"atr_{period}"
-    return atr
+    Args:
+        df: Input DataFrame with 'high', 'low', 'close' columns.
+        period: Lookback length for ATR calculation.
 
-def feature_bb_width(df: pd.DataFrame, period: int = 20, std_dev: float = 2.0) -> pd.Series:
-    close = _get_close_series(df)
-    sma   = close.rolling(window=period, min_periods=period).mean()
-    std   = close.rolling(window=period, min_periods=period).std(ddof=0)
-    width = (2 * std_dev * std) / sma
+    Returns:
+        Series named 'atr_{period}' of ATR values.
+    """
+    s = ta.atr(
+        high=df["high"],
+        low=df["low"],
+        close=df["close"],
+        length=period
+    )
+    s.name = f"atr_{period}"
+    return s
+
+
+def feature_bb_width(df: DataFrame, period: int = 20, std_dev: float = 2.0) -> Series:
+    """
+    Compute Bollinger Band width: (upper_band - lower_band) / middle_band.
+
+    Uses pandas-ta's bbands function.
+
+    Args:
+        df: Input DataFrame with 'close' column.
+        period: Window length for moving average and bands.
+        std_dev: Multiplier for standard deviation in bands.
+
+    Returns:
+        Series named 'bb_width_{period}' of band widths.
+    """
+    bb = ta.bbands(close=df["close"], length=period, std=std_dev)
+    # Extract lower, middle, upper bands by column order
+    lower = bb.iloc[:, 0]
+    mid = bb.iloc[:, 1]
+    upper = bb.iloc[:, 2]
+    width = (upper - lower) / mid
     width.name = f"bb_width_{period}"
     return width
 
-def feature_ema_cross(df: pd.DataFrame, span_short: int = 12, span_long: int = 26) -> pd.Series:
-    close     = _get_close_series(df)
-    ema_short = close.ewm(span=span_short, adjust=False, min_periods=span_short).mean()
-    ema_long  = close.ewm(span=span_long,  adjust=False, min_periods=span_long).mean()
-    diff      = ema_short - ema_long
+
+def feature_ema_cross(df: DataFrame, span_short: int = 12, span_long: int = 26) -> Series:
+    """
+    Compute EMA difference: EMA(short) - EMA(long).
+
+    Args:
+        df: Input DataFrame with 'close' column.
+        span_short: Span for short EMA.
+        span_long: Span for long EMA.
+
+    Returns:
+        Series named 'ema_cross_{span_short}_{span_long}'.
+    """
+    e1 = ta.ema(df["close"], length=span_short)
+    e2 = ta.ema(df["close"], length=span_long)
+    diff = e1 - e2
     diff.name = f"ema_cross_{span_short}_{span_long}"
     return diff
 
-def feature_obv(df: pd.DataFrame) -> pd.Series:
-    close = _get_close_series(df)
-    vol   = df.get('volume', df.get('Volume'))
-    dir   = np.sign(close.diff().fillna(0))
-    obv   = (dir * vol).cumsum()
-    obv.name = "obv"
-    return obv
 
-def feature_obv_pct(df: pd.DataFrame) -> pd.Series:
+def feature_obv(df: DataFrame) -> Series:
     """
-    Daily percent change of OBV.
-    Replace infinities (from divide-by-zero) with NaN.
-    """
-    obv = feature_obv(df)
-    pct = obv.pct_change()
-    pct = pct.replace([np.inf, -np.inf], np.nan)
-    pct.name = "obv_pct"
-    return pct
+    Compute On-Balance Volume (OBV) via pandas-ta.
 
-def feature_obv_zscore(df: pd.DataFrame, window: int = 20) -> pd.Series:
-    """
-    OBV relative to rolling mean.
-    Replace infinities (from divide-by-zero) with NaN.
-    """
-    obv = feature_obv(df)
-    ma  = obv.rolling(window=window, min_periods=window).mean()
-    rel = (obv - ma) / ma
-    rel = rel.replace([np.inf, -np.inf], np.nan)
-    rel.name = f"obv_z{window}"
-    return rel
+    Args:
+        df: Input DataFrame with 'close' and 'volume' columns.
 
-def feature_rsi(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    Returns:
+        Series named 'obv' of cumulative OBV values.
     """
-    Compute Relative Strength Index (RSI) over `period` days via pandas-ta.
+    s = ta.obv(df["close"], df["volume"])
+    s.name = "obv"
+    return s
+
+
+def feature_obv_pct(df: DataFrame, length: int = 1) -> Series:
     """
-    s = ta.rsi(df["close"], length=period)       # returns a Series
+    Compute daily percent change of OBV via Rate-of-Change.
+
+    Args:
+        df: Input DataFrame with 'close' and 'volume' columns.
+        length: Period for percent change (default 1 day).
+
+    Returns:
+        Series named 'obv_pct' of percent changes.
+    """
+    obv = ta.obv(df["close"], df["volume"])
+    s = ta.roc(obv, length=length)
+    s.name = "obv_pct"
+    return s
+
+
+def feature_obv_zscore(df: DataFrame, length: int = 20) -> Series:
+    """
+    Compute z-score of OBV relative to its moving average.
+
+    Args:
+        df: Input DataFrame with 'close' and 'volume' columns.
+        length: Window for z-score normalization.
+
+    Returns:
+        Series named 'obv_z{length}' of z-scored values.
+    """
+    obv = ta.obv(df["close"], df["volume"])
+    s = ta.zscore(obv, length=length)
+    s.name = f"obv_z{length}"
+    return s
+
+
+def feature_rsi(df: DataFrame, period: int = 14) -> Series:
+    """
+    Compute Relative Strength Index (RSI) via pandas-ta.
+
+    Args:
+        df: Input DataFrame with 'close' column.
+        period: Lookback length for RSI.
+
+    Returns:
+        Series named 'rsi_{period}' of RSI values.
+    """
+    s = ta.rsi(df["close"], length=period)
     s.name = f"rsi_{period}"
     return s
 
-def feature_sma_5(df: pd.DataFrame) -> pd.Series:
-    """
-    5-day simple moving average of close.
-    """
-    close = _get_close_series(df)
-    sma5  = close.rolling(window=5, min_periods=5).mean()
-    sma5.name = "sma_5"
-    return sma5
 
-def feature_ema_5(df: pd.DataFrame) -> pd.Series:
+def feature_sma_5(df: DataFrame) -> Series:
     """
-    5-day exponential moving average of close.
-    """
-    close = _get_close_series(df)
-    ema5  = close.ewm(span=5, adjust=False, min_periods=5).mean()
-    ema5.name = "ema_5"
-    return ema5
+    Compute 5-day Simple Moving Average via pandas-ta.
 
-def feature_sma_10(df: pd.DataFrame) -> pd.Series:
-    """
-    10-day simple moving average of close.
-    """
-    close = _get_close_series(df)
-    sma10 = close.rolling(window=10, min_periods=10).mean()
-    sma10.name = "sma_10"
-    return sma10
+    Args:
+        df: Input DataFrame with 'close' column.
 
-def feature_ema_10(df: pd.DataFrame) -> pd.Series:
+    Returns:
+        Series named 'sma_5' of SMA values.
     """
-    10-day exponential moving average of close.
-    """
-    close = _get_close_series(df)
-    ema10 = close.ewm(span=10, adjust=False, min_periods=10).mean()
-    ema10.name = "ema_10"
-    return ema10
+    s = ta.sma(df["close"], length=5)
+    s.name = "sma_5"
+    return s
 
-def feature_sma_50(df: pd.DataFrame) -> pd.Series:
-    """
-    50-day simple moving average of close.
-    """
-    close = _get_close_series(df)
-    sma50 = close.rolling(window=50, min_periods=50).mean()
-    sma50.name = "sma_50"
-    return sma50
 
-def feature_ema_50(df: pd.DataFrame) -> pd.Series:
+def feature_ema_5(df: DataFrame) -> Series:
     """
-    50-day exponential moving average of close.
-    """
-    close = _get_close_series(df)
-    ema50 = close.ewm(span=50, adjust=False, min_periods=50).mean()
-    ema50.name = "ema_50"
-    return ema50
+    Compute 5-day Exponential Moving Average via pandas-ta.
 
-def feature_adx_14(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    Args:
+        df: Input DataFrame with 'close' column.
+
+    Returns:
+        Series named 'ema_5' of EMA values.
+    """
+    s = ta.ema(df["close"], length=5)
+    s.name = "ema_5"
+    return s
+
+
+def feature_sma_10(df: DataFrame) -> Series:
+    """
+    Compute 10-day Simple Moving Average via pandas-ta.
+
+    Args:
+        df: Input DataFrame with 'close' column.
+
+    Returns:
+        Series named 'sma_10' of SMA values.
+    """
+    s = ta.sma(df["close"], length=10)
+    s.name = "sma_10"
+    return s
+
+
+def feature_ema_10(df: DataFrame) -> Series:
+    """
+    Compute 10-day Exponential Moving Average via pandas-ta.
+
+    Args:
+        df: Input DataFrame with 'close' column.
+
+    Returns:
+        Series named 'ema_10' of EMA values.
+    """
+    s = ta.ema(df["close"], length=10)
+    s.name = "ema_10"
+    return s
+
+
+def feature_sma_50(df: DataFrame) -> Series:
+    """
+    Compute 50-day Simple Moving Average via pandas-ta.
+
+    Args:
+        df: Input DataFrame with 'close' column.
+
+    Returns:
+        Series named 'sma_50' of SMA values.
+    """
+    s = ta.sma(df["close"], length=50)
+    s.name = "sma_50"
+    return s
+
+
+def feature_ema_50(df: DataFrame) -> Series:
+    """
+    Compute 50-day Exponential Moving Average via pandas-ta.
+
+    Args:
+        df: Input DataFrame with 'close' column.
+
+    Returns:
+        Series named 'ema_50' of EMA values.
+    """
+    s = ta.ema(df["close"], length=50)
+    s.name = "ema_50"
+    return s
+
+
+def feature_adx_14(df: DataFrame, period: int = 14) -> Series:
     """
     Compute 14-day Average Directional Index (ADX) via pandas-ta.
+
+    Args:
+        df: Input DataFrame with 'high', 'low', 'close' columns.
+        period: Lookback length for ADX.
+
+    Returns:
+        Series named 'adx_{period}' of ADX values.
     """
-    # ta.adx returns a DataFrame with columns: ['ADX_14','DMP_14','DMN_14']
-    adx_df = ta.adx(high=df["high"], low=df["low"], close=df["close"], length=period)
+    adx_df = ta.adx(
+        high=df["high"],
+        low=df["low"],
+        close=df["close"],
+        length=period
+    )
     s = adx_df[f"ADX_{period}"]
     s.name = f"adx_{period}"
     return s
+

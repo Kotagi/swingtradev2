@@ -16,7 +16,6 @@ bats/
   ├─ run_feature_pipeline.bat
 config/
   ├─ features.yaml
-  ├─ test_tickers.yaml
   ├─ train_features.yaml
 data/
   ├─ clean/
@@ -33,9 +32,7 @@ notebooks/
 reports/
   ├─ trade_logs/
 scripts/
-  ├─ audit_cleaned.py
 src/
-  ├─ Archive/
   ├─ __init__.py
   ├─ backtest.py
   ├─ clean_data.py
@@ -55,6 +52,7 @@ utils/
   ├─ logger.py
 clean_data.bat
 clean_features.bat
+profile_pipeline.bat
 readme_generator.py
 redownload_and_clean.bat
 run_features_labels.bat
@@ -70,12 +68,12 @@ run_features_labels.bat
 - `python-dotenv>=0.19`
 - `tabulate>=0.8.9`
 - `matplotlib>=3.4`
+- `pandas-ta>=0.3.14`
 
 
 ## Config Files
 
 - **config\features.yaml**: pipeline feature toggles (keys: features)
-- **config\test_tickers.yaml**:  (keys: test_tickers)
 - **config\train_features.yaml**: training feature toggles (keys: features)
 
 
@@ -85,11 +83,11 @@ run_features_labels.bat
 
 | Flag | Help | Default |
 | ---- | ---- | ------- |
-| `--tickers-file, -f` | One ticker per line | 'data/tickers/sp500_tickers.csv' |
-| `--start-date, -s` | Start date for historical download (YYYY-MM-DD) | '2008-01-01' |
-| `--end-date, -e` | End date for historical download (YYYY-MM-DD), defaults to today | None |
-| `--raw-folder, -r` | Directory to save raw CSV files | 'data/raw' |
-| `--sectors-file, -o` | Output CSV file for ticker–sector mapping | 'data/tickers/sectors.csv' |
+| `-f, --tickers-file` | Path to a file with one ticker symbol per line | 'data/tickers/sp500_tickers.csv' |
+| `-s, --start-date` | Start date for historical data (YYYY-MM-DD) | '2008-01-01' |
+| `-e, --end-date` | End date for historical data (YYYY-MM-DD); defaults to today | None |
+| `-r, --raw-folder` | Directory to save downloaded raw CSV files | 'data/raw' |
+| `-o, --sectors-file` | Output CSV for ticker–sector mapping | 'data/tickers/sectors.csv' |
 
 ### `src\feature_pipeline.py`
 
@@ -107,93 +105,116 @@ run_features_labels.bat
 ### `src\backtest.py`
 backtest.py
 **Functions:**
-- `load_universe()`
-- `backtest_signals(df, signal_col)`  
-  Given a DataFrame and a boolean signal column, return a trades DataFrame with:
+- `load_universe(tickers_csv)`  
+  Load the list of tickers from a CSV file.
+- `backtest_signals(df, signal_col, horizon, position_size)`  
+  Backtest a boolean entry signal over a fixed holding period.
 - `aggregate_results(trades)`  
-  Compute summary metrics for a set of trades.
-- `main()`
+  Compute summary performance metrics from a series of trades.
+- `main()`  
+  Main entry point: executes backtests for oracle and RSI strategies,
 
 ### `src\clean_data.py`
+clean_data.py
 **Functions:**
 - `clean_file(path)`  
-  Clean a single CSV file. Returns a list of integrity issues (empty if none).
-- `main()`
+  Clean a single raw CSV file and return any integrity issues.
+- `main()`  
+  Entry point: cleans all CSVs under RAW_DIR and logs a summary.
 
 ### `src\clean_features_labeled.py`
 clean_features_labeled.py
 **Functions:**
-- `clean_file(path)`
-- `main()`
+- `clean_file(path)`  
+  Read a single features_labeled CSV, drop rows with any NaNs, and overwrite it.
+- `main()`  
+  Locate all CSV files under DATA_DIR and clean each using clean_file().
 
 ### `src\download_data.py`
 download_data.py
 **Functions:**
 - `download_data(tickers, start_date, end_date, raw_folder)`  
-  Downloads price data for each ticker and saves to raw_folder/<ticker>.csv.
+  Download OHLCV data and fetch sector info for each ticker.
 - `write_sectors_csv(sectors, sectors_file)`  
-  Writes sectors.csv with columns: ticker,sector
-- `main()`
+  Write the ticker-to-sector mapping to a CSV file.
+- `main()`  
+  Parse command-line arguments, download data, and write sector mapping.
 
 ### `src\feature_pipeline.py`
+feature_pipeline.py
 **Functions:**
 - `apply_features(df, enabled_features, logger)`  
   Apply each enabled feature function to the DataFrame.
-- `main(input_dir, output_dir, config, label_horizon, label_threshold)`
+- `main(input_dir, output_dir, config_path, label_horizon, label_threshold)`  
+  Main pipeline function: loads cleaned CSVs, applies features, labels returns,
 
 ### `src\train_model.py`
 train_model.py
 **Functions:**
 - `load_data()`  
-  Load all ticker CSVs from DATA_DIR into a single DataFrame.
+  Load all ticker feature CSVs into one concatenated DataFrame.
 - `prepare(df)`  
-  Drop rows with any NaNs and split into features X and target y.
-- `main()`
+  Clean and split the raw DataFrame into X (features) and y (target).
+- `main()`  
+  Main routine to train and evaluate the model.
 
 ### `utils\labeling.py`
+labeling.py
 **Functions:**
 - `label_future_return(df, close_col, horizon, threshold, label_name)`  
-  Adds a binary label: 1 if forward (horizon)-day return > threshold, else 0.
+  Add a binary label column to indicate if the forward return exceeds a threshold.
+- `label_future_return_regression(df, close_col, horizon, label_name)`  
+  Add a continuous target column representing the future return.
 
 ### `utils\logger.py`
-Logging configuration for feature pipeline and other modules.
+logger.py
 **Functions:**
 - `setup_logger(name, log_file, level)`  
-  Set up and return a logger instance that logs to both console and file.
+  Configure and return a Logger instance.
 
 ### `features\registry.py`
+registry.py
 **Functions:**
 - `load_enabled_features(config_path)`  
-  Read config/features.yaml and return a dict of {feature_name: function}
+  Load the feature-toggle YAML and return only the enabled features.
 
 ### `features\technical.py`
+technical.py
 **Functions:**
-- `_get_close_series(df)`
-- `feature_5d_return(df)`
-- `feature_10d_return(df)`
-- `feature_atr(df, period)`
-- `feature_bb_width(df, period, std_dev)`
-- `feature_ema_cross(df, span_short, span_long)`
-- `feature_obv(df)`
-- `feature_obv_pct(df)`  
-  Daily percent change of OBV.
-- `feature_obv_zscore(df, window)`  
-  OBV relative to rolling mean.
-- `feature_rsi(df, period)`
+- `_get_close_series(df)`  
+  Return the 'close' price series, handling both lowercase and uppercase.
+- `feature_5d_return(df)`  
+  Compute 5-day forward return: (close_{t+5} / close_t) - 1.
+- `feature_10d_return(df)`  
+  Compute 10-day forward return: (close_{t+10} / close_t) - 1.
+- `feature_atr(df, period)`  
+  Compute Average True Range (ATR) over a given period via pandas-ta.
+- `feature_bb_width(df, period, std_dev)`  
+  Compute Bollinger Band width: (upper_band - lower_band) / middle_band.
+- `feature_ema_cross(df, span_short, span_long)`  
+  Compute EMA difference: EMA(short) - EMA(long).
+- `feature_obv(df)`  
+  Compute On-Balance Volume (OBV) via pandas-ta.
+- `feature_obv_pct(df, length)`  
+  Compute daily percent change of OBV via Rate-of-Change.
+- `feature_obv_zscore(df, length)`  
+  Compute z-score of OBV relative to its moving average.
+- `feature_rsi(df, period)`  
+  Compute Relative Strength Index (RSI) via pandas-ta.
 - `feature_sma_5(df)`  
-  5-day simple moving average of close.
+  Compute 5-day Simple Moving Average via pandas-ta.
 - `feature_ema_5(df)`  
-  5-day exponential moving average of close.
+  Compute 5-day Exponential Moving Average via pandas-ta.
 - `feature_sma_10(df)`  
-  10-day simple moving average of close.
+  Compute 10-day Simple Moving Average via pandas-ta.
 - `feature_ema_10(df)`  
-  10-day exponential moving average of close.
+  Compute 10-day Exponential Moving Average via pandas-ta.
 - `feature_sma_50(df)`  
-  50-day simple moving average of close.
+  Compute 50-day Simple Moving Average via pandas-ta.
 - `feature_ema_50(df)`  
-  50-day exponential moving average of close.
+  Compute 50-day Exponential Moving Average via pandas-ta.
 - `feature_adx_14(df, period)`  
-  Compute Average Directional Index (ADX) over the given period.
+  Compute 14-day Average Directional Index (ADX) via pandas-ta.
 
 ---
 ## Enabled Features
