@@ -101,11 +101,12 @@ run_features_labels.bat
 
 | Flag | Help | Default |
 | ---- | ---- | ------- |
-| `--input-dir` | Cleaned Parquets | - |
-| `--output-dir` | Features_labeled Parquets | - |
+| `--input-dir` | Cleaned Parqs | - |
+| `--output-dir` | Features Parqs | - |
 | `--config` | features.yaml | - |
-| `--horizon` | Label days ahead | 5 |
-| `--threshold` | Return thresh. | 0.0 |
+| `--horizon` | Label days | 5 |
+| `--threshold` | Return thresh | 0.0 |
+| `--full, --force-full` | Recompute all tickers, ignoring cache | - |
 
 ### `src\inspect_parquet.py`
 
@@ -160,10 +161,10 @@ feature_pipeline.py
 **Functions:**
 - `apply_features(df, enabled_features, logger)`  
   Apply each enabled feature function to the DataFrame.
-- `process_file(file_path, output_path, enabled, label_horizon, label_threshold, log_file)`  
-  Worker: process one ticker end-to-end with caching.
-- `main(input_dir, output_dir, config_path, label_horizon, label_threshold)`  
-  Entry point: parallelize processing with caching.
+- `process_file(file_path, output_path, enabled, label_horizon, label_threshold, log_file, full_refresh)`  
+  Worker: process one ticker end-to-end with optional caching.
+- `main(input_dir, output_dir, config_path, label_horizon, label_threshold, full_refresh)`  
+  Entry point: parallelize processing with optional full-refresh.
 
 ### `src\inspect_parquet.py`
 inspect_parquet.py
