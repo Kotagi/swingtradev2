@@ -10,7 +10,7 @@ This script:
   2. Filters features based on `config/train_features.yaml`
   3. Drops NaNs and raw‐price/forward‐return columns to prevent leakage
   4. Splits data into train/test by date
-  5. Trains baseline DummyClassifier & LogisticRegression
+  5. Trains baseline DummyClassifier & LogisticRegression (with scaling)
   6. Trains an XGBClassifier with class-imbalance handling
   7. Evaluates performance (ROC AUC, classification report)
   8. Saves the trained model and feature list to `models/`
@@ -24,11 +24,13 @@ from xgboost import XGBClassifier
 from sklearn.metrics import roc_auc_score, classification_report
 from sklearn.dummy import DummyClassifier
 from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
 from typing import Tuple, List
 
 # ——— CONFIGURATION ————————————————————————————————————————————————
 PROJECT_ROOT = Path.cwd()
-DATA_DIR     = PROJECT_ROOT / "data" / "features_labeled"  # now .parquet files
+DATA_DIR     = PROJECT_ROOT / "data" / "features_labeled"  # expects .parquet files
 MODEL_DIR    = PROJECT_ROOT / "models"
 MODEL_DIR.mkdir(exist_ok=True)
 MODEL_OUT    = MODEL_DIR / "xgb_classifier_selected_features.pkl"
@@ -36,7 +38,6 @@ TRAIN_END    = "2022-12-31"      # cut-off date (inclusive) for training
 LABEL_COL    = "label_5d"        # target column name
 TRAIN_CFG    = PROJECT_ROOT / "config" / "train_features.yaml"
 # —————————————————————————————————————————————————————————————————————————
-
 
 def load_data() -> pd.DataFrame:
     """
@@ -53,7 +54,7 @@ def load_data() -> pd.DataFrame:
     """
     parts: List[pd.DataFrame] = []
     for f in DATA_DIR.glob("*.parquet"):
-        df = pd.read_parquet(f)              # <- Parquet read
+        df = pd.read_parquet(f)
         df.index.name = "date"
         df["ticker"] = f.stem
         parts.append(df)
@@ -86,8 +87,9 @@ def prepare(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, List[str]]:
     feats = [c for c in df_clean.columns if c not in [LABEL_COL, "ticker"]]
 
     # 3) Exclude any forward-return columns (labels)
-    feats = [c for c in feats if "_return" not in c]
-
+    forward_return_cols = {"5d_return", "10d_return"}
+    feats = [c for c in feats if c not in forward_return_cols]
+    
     # 4) Exclude raw price columns to avoid leakage
     raw_price_cols = {"open", "high", "low", "close", "adj close"}
     feats = [c for c in feats if c not in raw_price_cols]
@@ -110,7 +112,7 @@ def main() -> None:
       4. Filter X by those features
       5. Print sanity checks
       6. Split into train/test by TRAIN_END date
-      7. Fit DummyClassifier & LogisticRegression baselines
+      7. Fit DummyClassifier & LogisticRegression (with scaling) baselines
       8. Fit XGBClassifier with class-imbalance handling
       9. Evaluate and print metrics
      10. Serialize model + feature list
@@ -159,11 +161,14 @@ def main() -> None:
     dummy_proba = dummy.predict_proba(X_test)[:, 1]
     print("DummyClassifier AUC:", roc_auc_score(y_test, dummy_proba))
 
-    # Step 7: Baseline LogisticRegression
-    lr = LogisticRegression(
-        class_weight="balanced",
-        max_iter=1000,
-        random_state=42
+    # Step 7: Baseline LogisticRegression (with scaling)
+    lr = make_pipeline(
+        StandardScaler(),
+        LogisticRegression(
+            class_weight="balanced",
+            max_iter=1000,
+            random_state=42
+        )
     )
     lr.fit(X_train, y_train)
     lr_proba = lr.predict_proba(X_test)[:, 1]

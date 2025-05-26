@@ -9,6 +9,7 @@ columns ['open', 'high', 'low', 'close', 'volume'] (case-insensitive) and
 returns a pandas Series named for downstream pipeline use.
 """
 
+import numpy as np
 import pandas as pd
 import pandas_ta as ta
 from pandas import Series, DataFrame
@@ -33,6 +34,46 @@ def _get_close_series(df: DataFrame) -> Series:
         return df['Close']
     raise KeyError("DataFrame must contain 'close' or 'Close' column")
 
+def feature_log_return_1d(df: DataFrame) -> Series:
+    """
+    Compute 1-day log return: ln(close_t / close_{t-1}).
+
+    Steps:
+      1. Retrieve the closing price series (handles upper/lower case).
+      2. Compute the ratio close_t / close_{t-1} and take the natural log.
+      3. Name the resulting Series for downstream use.
+
+    Args:
+        df: Input DataFrame with a 'close' price column.
+
+    Returns:
+        Series named 'log_return_1d' of 1-day log returns.
+    """
+    close = _get_close_series(df)
+    # log-return: ln(P_t / P_{t-1})
+    lr = np.log(close / close.shift(1))
+    lr.name = "log_return_1d"
+    return lr
+
+def feature_log_return_5d(df: DataFrame) -> Series:
+    """
+    Compute 5-day log return: ln(close_t / close_{t-5}).
+
+    Steps:
+      1. Retrieve closing price series (handles both 'close' and 'Close').
+      2. Compute ratio close_t / close_{t-5} and take natural log.
+      3. Name the resulting Series for downstream use.
+
+    Args:
+        df: Input DataFrame with a 'close' or 'Close' column.
+
+    Returns:
+        Series named 'log_return_5d' of 5-day log returns.
+    """
+    close = _get_close_series(df)
+    lr5 = np.log(close / close.shift(5))
+    lr5.name = "log_return_5d"
+    return lr5
 
 def feature_5d_return(df: DataFrame) -> Series:
     """
@@ -64,6 +105,27 @@ def feature_10d_return(df: DataFrame) -> Series:
     s = close.shift(-10) / close - 1
     s.name = "10d_return"
     return s
+
+def feature_close_vs_ma10(df: DataFrame) -> Series:
+    """
+    Compute the ratio of today's close to its 10-day simple moving average.
+
+    Steps:
+      1. Retrieve closing price series (handles 'close'/'Close').
+      2. Compute 10-day SMA.
+      3. Divide close_t by SMA10 and name the result.
+
+    Args:
+        df: Input DataFrame with a 'close' column.
+
+    Returns:
+        Series named 'close_vs_ma10' of close/SMA10 ratios.
+    """
+    close = _get_close_series(df)
+    sma10 = close.rolling(window=10, min_periods=1).mean()
+    ratio = close / sma10
+    ratio.name = "close_vs_ma10"
+    return ratio
 
 
 def feature_atr(df: DataFrame, period: int = 14) -> Series:
@@ -305,4 +367,3 @@ def feature_adx_14(df: DataFrame, period: int = 14) -> Series:
     s = adx_df[f"ADX_{period}"]
     s.name = f"adx_{period}"
     return s
-

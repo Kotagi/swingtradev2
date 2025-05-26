@@ -11,7 +11,7 @@ python src\feature_pipeline.py ^
     --output-dir data\features_labeled ^
     --config config\features.yaml ^
     --horizon 5 ^
-    --threshold 0.0 ^
+    --threshold 0.01 ^
 	--full
 
 popd

@@ -206,10 +206,16 @@ technical.py
 **Functions:**
 - `_get_close_series(df)`  
   Return the 'close' price series, handling both lowercase and uppercase.
+- `feature_log_return_1d(df)`  
+  Compute 1-day log return: ln(close_t / close_{t-1}).
+- `feature_log_return_5d(df)`  
+  Compute 5-day log return: ln(close_t / close_{t-5}).
 - `feature_5d_return(df)`  
   Compute 5-day forward return: (close_{t+5} / close_t) - 1.
 - `feature_10d_return(df)`  
   Compute 10-day forward return: (close_{t+10} / close_t) - 1.
+- `feature_close_vs_ma10(df)`  
+  Compute the ratio of today's close to its 10-day simple moving average.
 - `feature_atr(df, period)`  
   Compute Average True Range (ATR) over a given period via pandas-ta.
 - `feature_bb_width(df, period, std_dev)`  
@@ -247,10 +253,13 @@ technical.py
 - **adx_14**: ✅
 - **atr**: ✅
 - **bb_width**: ✅
+- **close_vs_ma10**: ✅
 - **ema_10**: ✅
 - **ema_5**: ✅
 - **ema_50**: ✅
 - **ema_cross**: ✅
+- **log_return_1d**: ✅
+- **log_return_5d**: ✅
 - **obv**: ✅
 - **obv_pct**: ✅
 - **obv_z20**: ✅

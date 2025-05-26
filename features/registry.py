@@ -26,6 +26,9 @@ from features.technical import (
     feature_sma_50,
     feature_ema_50,
     feature_adx_14,
+    feature_log_return_1d,
+    feature_log_return_5d,
+    feature_close_vs_ma10,
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -51,6 +54,10 @@ FEATURES = {
     "sma_50":       feature_sma_50,       # 50-day SMA
     "ema_50":       feature_ema_50,       # 50-day EMA
     "adx_14":       feature_adx_14,       # 14-day Average Directional Index
+    "log_return_1d":feature_log_return_1d,# 1 Day Log Return
+    "log_return_5d":feature_log_return_5d,# 5 Day Log Return
+    "close_vs_ma10":feature_close_vs_ma10,# Close vs 10-Day MA
+    
 }
 
 def load_enabled_features(config_path: str) -> dict:

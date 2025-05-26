@@ -17,5 +17,6 @@ features:
   sma_50: 1
   ema_50: 1
   adx_14: 1
-
-
+  log_return_1d: 1
+  log_return_5d: 1
+  close_vs_ma10: 1
