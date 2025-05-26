@@ -7,8 +7,8 @@ features:
   bb_width: 1
   ema_cross: 1
   obv: 0
-  obv_pct: 1
-  obv_z20: 1
+  obv_pct: 0
+  obv_z20: 0
   rsi: 1
   sma_5: 0
   ema_5: 0
