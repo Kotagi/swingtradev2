@@ -2,9 +2,10 @@
 """
 feature_pipeline.py
 
-Parallelized feature pipeline with file-based caching:
+Parallelized feature pipeline with optional full-refresh mode:
   - Reads cleaned Parquet files
-  - Skips any ticker whose output is already up-to-date
+  - By default, skips any ticker whose output is up-to-date (caching)
+  - With --full, forces recomputation of all tickers
   - Computes enabled features & labels future returns
   - Writes the resulting feature/label Parquet files
 Uses Joblib to distribute work across all CPU cores on Windows.
@@ -22,7 +23,11 @@ from features.registry import load_enabled_features
 from utils.labeling import label_future_return
 
 
-def apply_features(df: pd.DataFrame, enabled_features: dict, logger) -> pd.DataFrame:
+def apply_features(
+    df: pd.DataFrame,
+    enabled_features: dict,
+    logger
+) -> pd.DataFrame:
     """
     Apply each enabled feature function to the DataFrame.
 
@@ -30,6 +35,7 @@ def apply_features(df: pd.DataFrame, enabled_features: dict, logger) -> pd.DataF
         df: DataFrame of cleaned OHLCV data.
         enabled_features: Dict[name -> feature_fn].
         logger: Logger for status.
+
     Returns:
         df_feat: original df + feature columns.
     """
@@ -49,28 +55,31 @@ def process_file(
     enabled: dict,
     label_horizon: int,
     label_threshold: float,
-    log_file: str
+    log_file: str,
+    full_refresh: bool
 ) -> tuple:
     """
-    Worker: process one ticker end-to-end with caching.
+    Worker: process one ticker end-to-end with optional caching.
 
-    Steps:
-      A) If output exists and is newer than input, skip.
-      1) Read cleaned input Parquet.
-      2) Compute features.
-      3) Label future returns.
-      4) Write output Parquet.
+    Args:
+        file_path: Path to cleaned input Parquet.
+        output_path: Directory for feature/label Parquets.
+        enabled: Mapping of feature names to functions.
+        label_horizon: Days ahead for label generation.
+        label_threshold: Threshold for positive label.
+        log_file: Shared log file path.
+        full_refresh: If True, ignore existing outputs and recompute everything.
 
     Returns:
-      (filename, error or None)
+        (filename, error_message_or_None).
     """
     ticker = file_path.stem
     logger = setup_logger(ticker, log_file)
     out_file = output_path / f"{ticker}.parquet"
 
-    # —— A) File‐based caching check —— #
-    if out_file.exists():
-        input_mtime  = file_path.stat().st_mtime
+    # Caching: skip if up-to-date and not full_refresh
+    if not full_refresh and out_file.exists():
+        input_mtime = file_path.stat().st_mtime
         output_mtime = out_file.stat().st_mtime
         if output_mtime >= input_mtime:
             logger.info(f"Skipping {ticker}, up-to-date")
@@ -109,10 +118,19 @@ def main(
     output_dir: str,
     config_path: str,
     label_horizon: int,
-    label_threshold: float
+    label_threshold: float,
+    full_refresh: bool
 ) -> None:
     """
-    Entry point: parallelize processing with caching.
+    Entry point: parallelize processing with optional full-refresh.
+
+    Args:
+        input_dir: Directory of cleaned Parquet files.
+        output_dir: Directory for feature-labeled Parquets.
+        config_path: Path to features.yaml toggle file.
+        label_horizon: Days ahead for labels.
+        label_threshold: Threshold for positive labels.
+        full_refresh: If True, recompute all tickers regardless of cache.
     """
     start_time = time.perf_counter()
 
@@ -120,53 +138,58 @@ def main(
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # Set up the master logger
     master_log = "feature_pipeline.log"
     logger = setup_logger("pipeline", master_log)
 
-    # Load which features to compute
     enabled = load_enabled_features(config_path)
     logger.info(f"Enabled features: {list(enabled.keys())}")
+    if full_refresh:
+        logger.info("Full-refresh mode: recomputing all tickers")
 
-    # List all cleaned input Parquets
     files = sorted(input_path.glob("*.parquet"))
     logger.info(f"{len(files)} tickers to process")
 
-    # Parallel dispatch
+    # Parallel dispatch with full_refresh flag
     results = Parallel(
         n_jobs=-1,
         backend="multiprocessing",
         verbose=5
     )(
         delayed(process_file)(
-            f, output_path, enabled, label_horizon, label_threshold, master_log
+            f, output_path, enabled,
+            label_horizon, label_threshold,
+            master_log, full_refresh
         )
         for f in files
     )
 
-    # Summarize failures
     failures = [(fn, err) for fn, err in results if err]
     if failures:
-        logger.warning(f"{len(failures)}/{len(files)} tickers failed:")
+        logger.warning(f"{len(failures)}/{len(files)} failures:")
         for fn, err in failures:
             logger.warning(f" - {fn}: {err}")
     else:
-        logger.info("All tickers processed or skipped successfully")
+        logger.info("All tickers processed successfully")
 
-    # Final timing
     elapsed = time.perf_counter() - start_time
     logger.info(f"=== Completed in {elapsed:.2f} seconds ===")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Parallel feature pipeline with caching."
+        description="Feature pipeline with optional full-refresh."
     )
-    parser.add_argument("--input-dir",  required=True, help="Cleaned Parquets")
-    parser.add_argument("--output-dir", required=True, help="Features_labeled Parquets")
+    parser.add_argument("--input-dir",  required=True, help="Cleaned Parqs")
+    parser.add_argument("--output-dir", required=True, help="Features Parqs")
     parser.add_argument("--config",     required=True, help="features.yaml")
-    parser.add_argument("--horizon",    type=int,   default=5,   help="Label days ahead")
-    parser.add_argument("--threshold",  type=float, default=0.0, help="Return thresh.")
+    parser.add_argument("--horizon",    type=int,   default=5,   help="Label days")
+    parser.add_argument("--threshold",  type=float, default=0.0, help="Return thresh")
+    parser.add_argument(
+        "--full", "--force-full",
+        action="store_true",
+        dest="full_refresh",
+        help="Recompute all tickers, ignoring cache"
+    )
     args = parser.parse_args()
 
     main(
@@ -174,5 +197,7 @@ if __name__ == "__main__":
         output_dir=args.output_dir,
         config_path=args.config,
         label_horizon=args.horizon,
-        label_threshold=args.threshold
+        label_threshold=args.threshold,
+        full_refresh=args.full_refresh
     )
+
