@@ -8,3 +8,6 @@ Features added	XGB AUC
 + price_percentile_20d          0.5371
 + gap_up_pct                    0.5371
 + Prune				0.5364
++ candle_body_pct 		0.5378
++ daily_range_pct		0.5395
++ close_position_in_range       0.5395

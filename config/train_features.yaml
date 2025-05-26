@@ -3,12 +3,12 @@
 features:
   5d_return: 0
   10d_return: 0
-  atr: 1
+  atr: 0
   bb_width: 1
   ema_cross: 1
   obv: 0
-  obv_pct: 0
-  obv_z20: 0
+  obv_pct: 1
+  obv_z20: 1
   rsi: 1
   sma_5: 0
   ema_5: 0
@@ -26,4 +26,10 @@ features:
   gap_up_pct: 1
   candle_body_pct: 1
   daily_range_pct: 1
+  close_position_in_range: 1
+  rolling_max_5d_breakout: 1
+  rolling_min_5d_breakdown: 0
+  high_vs_close: 1
+  atr_pct_of_price: 1
+  volume_avg_ratio_5d: 1
 

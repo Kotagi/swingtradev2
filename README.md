@@ -235,8 +235,18 @@ technical.py
   Compute the percent size of the intraday high-low range relative to open:
 - `feature_candle_body_pct(df)`  
   Compute the percent size of the candle body relative to the high-low range:
+- `feature_close_position_in_range(df)`  
+  Compute the relative position of the close within the intraday range:
+- `feature_high_vs_close(df)`  
+  Compute the percent difference between the intraday high and the close:
+- `feature_rolling_max_5d_breakout(df)`  
+  Compute the percent that today’s close exceeds the max close of the prior 5 days:
+- `feature_rolling_min_5d_breakdown(df)`  
+  Compute the percent that today’s close falls below the min close of the prior 5 days:
 - `feature_atr(df, period)`  
   Compute Average True Range (ATR) over a given period via pandas-ta.
+- `feature_atr_pct_of_price(df)`  
+  Compute the Average True Range as a percent of today's close:
 - `feature_bb_width(df, period, std_dev)`  
   Compute Bollinger Band width: (upper_band - lower_band) / middle_band.
 - `feature_ema_cross(df, span_short, span_long)`  
@@ -247,6 +257,8 @@ technical.py
   Compute daily percent change of OBV via Rate-of-Change.
 - `feature_obv_zscore(df, length)`  
   Compute z-score of OBV relative to its moving average.
+- `feature_volume_avg_ratio_5d(df)`  
+  Compute the ratio of today's volume to the prior 5-day average volume.
 - `feature_rsi(df, period)`  
   Compute Relative Strength Index (RSI) via pandas-ta.
 - `feature_sma_5(df)`  
@@ -271,8 +283,10 @@ technical.py
 - **5d_return**: ✅
 - **adx_14**: ✅
 - **atr**: ✅
+- **atr_pct_of_price**: ✅
 - **bb_width**: ✅
 - **candle_body_pct**: ✅
+- **close_position_in_range**: ✅
 - **close_vs_ma10**: ✅
 - **close_vs_ma20**: ✅
 - **close_zscore_20**: ✅
@@ -282,14 +296,18 @@ technical.py
 - **ema_50**: ✅
 - **ema_cross**: ✅
 - **gap_up_pct**: ✅
+- **high_vs_close**: ✅
 - **log_return_1d**: ✅
 - **log_return_5d**: ✅
 - **obv**: ✅
 - **obv_pct**: ✅
 - **obv_z20**: ✅
 - **price_percentile_20d**: ✅
+- **rolling_max_5d_breakout**: ✅
+- **rolling_min_5d_breakdown**: ✅
 - **rsi**: ✅
 - **sma_10**: ✅
 - **sma_5**: ✅
 - **sma_50**: ✅
+- **volume_avg_ratio_5d**: ✅
 

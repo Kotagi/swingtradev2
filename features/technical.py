@@ -280,6 +280,110 @@ def feature_candle_body_pct(df: DataFrame) -> Series:
     pct.name = "candle_body_pct"
     return pct
 
+def feature_close_position_in_range(df: DataFrame) -> Series:
+    """
+    Compute the relative position of the close within the intraday range:
+      (close_t − low_t) / (high_t − low_t).
+
+    Steps:
+      1. Retrieve closing-price series (handles 'close'/'Close').
+      2. Retrieve high and low series (handles lower/upper case).
+      3. Compute range = high_t − low_t, replacing zeros with NaN to avoid divide-by-zero.
+      4. Compute (close_t − low_t) / range.
+      5. Name the Series 'close_position_in_range'.
+
+    Args:
+        df: Input DataFrame with 'close','high','low' columns.
+
+    Returns:
+        Series named 'close_position_in_range' in [0,1], where 0 means close==low, 1 means close==high.
+    """
+    close = _get_close_series(df)
+    highp = df.get("high", df.get("High"))
+    lowp  = df.get("low",  df.get("Low"))
+
+    # avoid division by zero
+    rng = (highp - lowp).replace(0, np.nan)
+
+    pos = (close - lowp) / rng
+    pos.name = "close_position_in_range"
+    return pos
+
+def feature_high_vs_close(df: DataFrame) -> Series:
+    """
+    Compute the percent difference between the intraday high and the close:
+      (high_t / close_t - 1) * 100
+
+    Steps:
+      1. Retrieve today’s close via our _get_close_series helper.
+      2. Retrieve today’s high price (handles 'high'/'High').
+      3. Compute (high_t / close_t - 1) * 100.
+      4. Name the Series 'high_vs_close'.
+
+    Args:
+        df: DataFrame with 'high' and 'close' columns.
+
+    Returns:
+        Series named 'high_vs_close' giving the intraday extension above close.
+    """
+    close = _get_close_series(df)
+    highp = df.get("high", df.get("High"))
+    pct = (highp / close - 1) * 100
+    pct.name = "high_vs_close"
+    return pct
+
+def feature_rolling_max_5d_breakout(df: DataFrame) -> Series:
+    """
+    Compute the percent that today’s close exceeds the max close of the prior 5 days:
+      max_prev5 = max(close_{t-5..t-1})
+      breakout_pct = max( (close_t / max_prev5 - 1) , 0 ) * 100
+
+    Steps:
+      1. Retrieve the closing-price series (via _get_close_series).
+      2. Shift by 1 day and take a 5-day rolling max (min_periods=1).
+      3. Divide today’s close by that prior-5-day max, subtract 1.
+      4. Clip negative values to 0 (only positive breakouts).
+      5. Multiply by 100 and name the Series.
+
+    Args:
+        df: Input DataFrame with a 'close' or 'Close' column.
+
+    Returns:
+        Series named 'rolling_max_5d_breakout' giving % breakout over the prior 5-day high.
+    """
+    close = _get_close_series(df)
+    # prior 5-day high
+    prev_max5 = close.shift(1).rolling(window=5, min_periods=1).max()
+    # percent above that high, clip negatives to zero
+    pct = ((close / prev_max5 - 1).clip(lower=0)) * 100
+    pct.name = "rolling_max_5d_breakout"
+    return pct
+
+def feature_rolling_min_5d_breakdown(df: DataFrame) -> Series:
+    """
+    Compute the percent that today’s close falls below the min close of the prior 5 days:
+      min_prev5 = min(close_{t-5..t-1})
+      breakdown_pct = max((min_prev5 - close_t) / min_prev5, 0) * 100
+
+    Steps:
+      1. Retrieve the closing-price series via _get_close_series.
+      2. Shift by 1 day and take a 5-day rolling minimum (min_periods=1).
+      3. Compute (min_prev5 - close_t) / min_prev5.
+      4. Clip negative values to 0 (only positive breakdowns).
+      5. Multiply by 100 and name the Series.
+
+    Args:
+        df: Input DataFrame with 'close' or 'Close' column.
+
+    Returns:
+        Series named 'rolling_min_5d_breakdown'.
+    """
+    close = _get_close_series(df)
+    prev_min5 = close.shift(1).rolling(window=5, min_periods=1).min()
+    pct = ((prev_min5 - close) / prev_min5).clip(lower=0) * 100
+    pct.name = "rolling_min_5d_breakdown"
+    return pct
+
 def feature_atr(df: DataFrame, period: int = 14) -> Series:
     """
     Compute Average True Range (ATR) over a given period via pandas-ta.
@@ -299,6 +403,32 @@ def feature_atr(df: DataFrame, period: int = 14) -> Series:
     )
     s.name = f"atr_{period}"
     return s
+
+def feature_atr_pct_of_price(df: DataFrame) -> Series:
+    """
+    Compute the Average True Range as a percent of today's close:
+      atr_pct_of_price = (ATR_t / close_t) * 100
+
+    Steps:
+      1. Compute ATR (using our existing feature_atr helper).
+      2. Retrieve the closing-price series via _get_close_series.
+      3. Divide ATR by close and multiply by 100.
+      4. Name the Series 'atr_pct_of_price'.
+
+    Args:
+        df: Input DataFrame with 'high','low','close' columns.
+
+    Returns:
+        Series named 'atr_pct_of_price'.
+    """
+    # 1) get raw ATR
+    atr = feature_atr(df)
+    # 2) get close
+    close = _get_close_series(df)
+    # 3) pct of price
+    pct = (atr / close) * 100
+    pct.name = "atr_pct_of_price"
+    return pct
 
 def feature_bb_width(df: DataFrame, period: int = 20, std_dev: float = 2.0) -> Series:
     """
@@ -391,6 +521,44 @@ def feature_obv_zscore(df: DataFrame, length: int = 20) -> Series:
     s.name = f"obv_z{length}"
     return s
 
+def feature_volume_avg_ratio_5d(df: DataFrame) -> Series:
+    """
+    Compute the ratio of today's volume to the prior 5-day average volume.
+
+    Steps:
+      1. Retrieve today’s volume (handles 'volume'/'Volume').
+      2. Shift by 1 day and take a 5-day rolling mean (min_periods=1).
+      3. Replace any zero averages with NaN to avoid divide-by-zero.
+      4. Divide today’s volume by that prior-5-day average.
+      5. Replace infinities and NaNs with 0.0.
+      6. Name the Series 'volume_avg_ratio_5d'.
+
+    Args:
+        df: Input DataFrame with a 'volume' column.
+
+    Returns:
+        Series named 'volume_avg_ratio_5d'.
+    """
+    import numpy as np
+
+    # 1) Grab volume column (case-insensitive)
+    vol = df.get("volume", df.get("Volume"))
+
+    # 2) Compute prior 5-day average volume
+    avg5 = vol.shift(1).rolling(window=5, min_periods=1).mean()
+
+    # 3) Prevent divide-by-zero
+    avg5 = avg5.replace(0, np.nan)
+
+    # 4) Compute ratio
+    ratio = vol / avg5
+
+    # 5) Clean up infinities and NaNs
+    ratio = ratio.replace([np.inf, -np.inf], 0.0).fillna(0.0)
+
+    # 6) Name and return
+    ratio.name = "volume_avg_ratio_5d"
+    return ratio
 
 def feature_rsi(df: DataFrame, period: int = 14) -> Series:
     """

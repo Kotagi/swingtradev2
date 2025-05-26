@@ -26,3 +26,10 @@ features:
   gap_up_pct: 1
   candle_body_pct: 1
   daily_range_pct: 1
+  close_position_in_range: 1
+  rolling_max_5d_breakout: 1
+  rolling_min_5d_breakdown: 1
+  high_vs_close: 1
+  atr_pct_of_price: 1
+  volume_avg_ratio_5d: 1
+  
