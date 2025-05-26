@@ -3,33 +3,40 @@
 features:
   5d_return: 0
   10d_return: 0
-  atr: 0
+  atr: 1
   bb_width: 1
   ema_cross: 1
-  obv: 0
+  obv: 1
   obv_pct: 1
-  obv_z20: 1
+  obv_z20: 0
   rsi: 1
   sma_5: 0
-  ema_5: 0
+  ema_5: 1
   sma_10: 0
-  ema_10: 0
+  ema_10: 1
   sma_50: 0
   ema_50: 0
   adx_14: 1
-  log_return_1d: 1
+  log_return_1d: 0
   log_return_5d: 1
-  close_vs_ma10: 0
-  close_vs_ma20: 1
-  close_zscore_20: 0
+  close_vs_ma10: 1
+  close_vs_ma20: 0
+  close_zscore_20: 1
   price_percentile_20d: 1
   gap_up_pct: 1
   candle_body_pct: 1
-  daily_range_pct: 1
+  daily_range_pct: 0
   close_position_in_range: 1
   rolling_max_5d_breakout: 1
   rolling_min_5d_breakdown: 0
   high_vs_close: 1
   atr_pct_of_price: 1
   volume_avg_ratio_5d: 1
+  rsi_slope: 1
+  macd_line: 0
+  macd_histogram: 1
+  macd_cross_signal: 0
+  stoch_k: 1
+  stoch_d: 1
+  stoch_cross: 1
 

@@ -41,6 +41,13 @@ from features.technical import (
     feature_high_vs_close,
     feature_atr_pct_of_price,
     feature_volume_avg_ratio_5d,
+    feature_rsi_slope,
+    feature_macd_line,
+    feature_macd_histogram,
+    feature_macd_cross_signal,
+    feature_stoch_k,
+    feature_stoch_d,
+    feature_stoch_cross,
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -81,6 +88,13 @@ FEATURES = {
     "high_vs_close":            feature_high_vs_close,              # Todays High Compared to Todays Close
     "atr_pct_of_price":         feature_atr_pct_of_price,           # Average True Range As A Precentage Of Todays Close
     "volume_avg_ratio_5d":      feature_volume_avg_ratio_5d,        # Ratio of Todays Volume Vs 5-Day Average
+    "rsi_slope":                feature_rsi_slope,                  # Compute the average daily change (“slope”) of the period‐RSI over a lookback window
+    "macd_line":                feature_macd_line,                  # Compute the MACD line: the difference between fast and slow EMAs of close
+    "macd_histogram":           feature_macd_histogram,             # Compute the MACD histogram: the difference between the MACD line and its signal line
+    "macd_cross_signal":        feature_macd_cross_signal,          # Compute a -1/0/+1 signal for MACD line crossing its signal line
+    "stoch_k":                  feature_stoch_k,                    # Compute the %K line of the Stochastic Oscillator
+    "stoch_d":                  feature_stoch_d,                    # Compute the %D (signal) line of the Stochastic Oscillator
+    "stoch_cross":              feature_stoch_cross,                # Compute a -1/0/+1 signal when %K crosses its %D line
 }
 
 def load_enabled_features(config_path: str) -> dict:

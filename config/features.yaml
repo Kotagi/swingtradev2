@@ -1,8 +1,8 @@
 # config/features.yaml
 
 features:
-  5d_return: 1
-  10d_return: 1
+  5d_return: 0
+  10d_return: 0
   atr: 1
   bb_width: 1
   ema_cross: 1
@@ -32,4 +32,11 @@ features:
   high_vs_close: 1
   atr_pct_of_price: 1
   volume_avg_ratio_5d: 1
+  rsi_slope: 1
+  macd_line: 1
+  macd_histogram: 1
+  macd_cross_signal: 1
+  stoch_k: 1
+  stoch_d: 1
+  stoch_cross: 1
   

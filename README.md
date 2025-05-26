@@ -261,6 +261,8 @@ technical.py
   Compute the ratio of today's volume to the prior 5-day average volume.
 - `feature_rsi(df, period)`  
   Compute Relative Strength Index (RSI) via pandas-ta.
+- `feature_rsi_slope(df, period, length)`  
+  Compute the average daily change (“slope”) of the period‐RSI over a lookback window.
 - `feature_sma_5(df)`  
   Compute 5-day Simple Moving Average via pandas-ta.
 - `feature_ema_5(df)`  
@@ -273,14 +275,26 @@ technical.py
   Compute 50-day Simple Moving Average via pandas-ta.
 - `feature_ema_50(df)`  
   Compute 50-day Exponential Moving Average via pandas-ta.
+- `feature_macd_line(df, fast, slow)`  
+  Compute the MACD line: the difference between fast and slow EMAs of close.
+- `feature_macd_histogram(df, fast, slow, signal)`  
+  Compute the MACD histogram: the difference between the MACD line and its signal line.
+- `feature_macd_cross_signal(df, fast, slow, signal)`  
+  Compute a -1/0/+1 signal for MACD line crossing its signal line.
+- `feature_stoch_k(df, length, smooth_k)`  
+  Compute the %K line of the Stochastic Oscillator:
+- `feature_stoch_d(df, length, smooth_k, smooth_d)`  
+  Compute the %D (signal) line of the Stochastic Oscillator:
+- `feature_stoch_cross(df, length, smooth_k, smooth_d)`  
+  Compute a -1/0/+1 signal when %K crosses its %D line.
 - `feature_adx_14(df, period)`  
   Compute 14-day Average Directional Index (ADX) via pandas-ta.
 
 ---
 ## Enabled Features
 
-- **10d_return**: ✅
-- **5d_return**: ✅
+- **10d_return**: ❌
+- **5d_return**: ❌
 - **adx_14**: ✅
 - **atr**: ✅
 - **atr_pct_of_price**: ✅
@@ -299,6 +313,9 @@ technical.py
 - **high_vs_close**: ✅
 - **log_return_1d**: ✅
 - **log_return_5d**: ✅
+- **macd_cross_signal**: ✅
+- **macd_histogram**: ✅
+- **macd_line**: ✅
 - **obv**: ✅
 - **obv_pct**: ✅
 - **obv_z20**: ✅
@@ -306,8 +323,12 @@ technical.py
 - **rolling_max_5d_breakout**: ✅
 - **rolling_min_5d_breakdown**: ✅
 - **rsi**: ✅
+- **rsi_slope**: ✅
 - **sma_10**: ✅
 - **sma_5**: ✅
 - **sma_50**: ✅
+- **stoch_cross**: ✅
+- **stoch_d**: ✅
+- **stoch_k**: ✅
 - **volume_avg_ratio_5d**: ✅
 

@@ -575,6 +575,33 @@ def feature_rsi(df: DataFrame, period: int = 14) -> Series:
     s.name = f"rsi_{period}"
     return s
 
+def feature_rsi_slope(df: DataFrame, period: int = 14, length: int = 3) -> Series:
+    """
+    Compute the average daily change (“slope”) of the period‐RSI over a lookback window.
+
+    Steps:
+      1. Compute the RSI via pandas‐ta over `period` days.
+      2. Shift that series by `length` days.
+      3. Subtract and divide by `length` to get per‐day slope.
+      4. Name the Series 'rsi_slope'.
+
+    Args:
+        df: Input DataFrame with a 'close' column.
+        period: Lookback length for RSI (default 14).  
+        length: Number of days over which to measure slope (default 5).
+
+    Returns:
+        Series named 'rsi_slope' of per‐day RSI changes.
+    """
+    # 1) Calculate RSI  
+    rsi_series = ta.rsi(df["close"], length=period)  # :contentReference[oaicite:0]{index=0}
+
+    # 2) Compute N-day difference, then annualize as per-day slope
+    slope = (rsi_series - rsi_series.shift(length)) / length
+
+    # 3) Clean up any NaNs (initial periods) if you like, or leave them  
+    slope.name = "rsi_slope"
+    return slope
 
 def feature_sma_5(df: DataFrame) -> Series:
     """
@@ -665,6 +692,260 @@ def feature_ema_50(df: DataFrame) -> Series:
     s.name = "ema_50"
     return s
 
+def feature_macd_line(df: DataFrame, fast: int = 12, slow: int = 26) -> Series:
+    """
+    Compute the MACD line: the difference between fast and slow EMAs of close.
+
+    Steps:
+      1. Retrieve the closing‐price series via _get_close_series.
+      2. Compute the fast EMA (default length=12).
+      3. Compute the slow EMA (default length=26).
+      4. Subtract: fast_ema − slow_ema.
+      5. Name the Series 'macd_line'.
+
+    Args:
+        df: Input DataFrame with a 'close' column.
+        fast: Window for the fast EMA (default 12).
+        slow: Window for the slow EMA (default 26).
+
+    Returns:
+        Series named 'macd_line'.
+    """
+    close = _get_close_series(df)
+    # pandas_ta EMAs
+    ema_fast = ta.ema(close, length=fast)
+    ema_slow = ta.ema(close, length=slow)
+    macd = ema_fast - ema_slow
+    macd.name = "macd_line"
+    return macd
+
+def feature_macd_histogram(
+    df: DataFrame,
+    fast: int = 12,
+    slow: int = 26,
+    signal: int = 9
+) -> Series:
+    """
+    Compute the MACD histogram: the difference between the MACD line and its signal line.
+
+    Steps:
+      1. Retrieve close series via _get_close_series.
+      2. Compute fast EMA (length=fast) and slow EMA (length=slow).
+      3. macd_line = fast_ema − slow_ema.
+      4. signal_line = EMA(macd_line, length=signal).
+      5. histogram = macd_line − signal_line.
+      6. Name the Series 'macd_histogram'.
+
+    Args:
+        df: Input DataFrame with a 'close' column.
+        fast: Window for the fast EMA (default 12).
+        slow: Window for the slow EMA (default 26).
+        signal: Window for the signal‐line EMA (default 9).
+
+    Returns:
+        Series named 'macd_histogram'.
+    """
+    close = _get_close_series(df)
+    ema_fast    = ta.ema(close, length=fast)
+    ema_slow    = ta.ema(close, length=slow)
+    macd_line   = ema_fast - ema_slow
+    signal_line = ta.ema(macd_line, length=signal)
+    hist        = macd_line - signal_line
+    hist.name   = "macd_histogram"
+    return hist
+
+def feature_macd_cross_signal(
+    df: DataFrame,
+    fast: int = 12,
+    slow: int = 26,
+    signal: int = 9
+) -> Series:
+    """
+    Compute a -1/0/+1 signal for MACD line crossing its signal line.
+
+    Steps:
+      1. Retrieve close series via _get_close_series.
+      2. Compute fast and slow EMAs, then macd_line = fast_ema - slow_ema.
+      3. Compute signal_line = EMA(macd_line, length=signal).
+      4. Compute diff = macd_line - signal_line.
+      5. Detect cross:
+           +1 where diff shifts from ≤0 to >0 (bullish crossover)
+           -1 where diff shifts from ≥0 to <0 (bearish crossover)
+           0 otherwise
+      6. Name the Series 'macd_cross_signal'.
+
+    Args:
+        df: Input DataFrame with a 'close' column.
+        fast: Window for the fast EMA (default 12).
+        slow: Window for the slow EMA (default 26).
+        signal: Window for the signal‐line EMA (default 9).
+
+    Returns:
+        Series named 'macd_cross_signal' of int values in {-1,0,1}.
+    """
+    close       = _get_close_series(df)
+    ema_fast    = ta.ema(close, length=fast)
+    ema_slow    = ta.ema(close, length=slow)
+    macd_line   = ema_fast - ema_slow
+    signal_line = ta.ema(macd_line, length=signal)
+    diff        = macd_line - signal_line
+
+    # 1-day lagged diff
+    prev_diff = diff.shift(1)
+
+    # bullish cross: prev_diff <= 0, diff > 0
+    bullish = (prev_diff <= 0) & (diff > 0)
+    # bearish cross: prev_diff >= 0, diff < 0
+    bearish = (prev_diff >= 0) & (diff < 0)
+
+    signal = pd.Series(0, index=diff.index)
+    signal[bullish] = 1
+    signal[bearish] = -1
+    signal.name = "macd_cross_signal"
+    return signal
+
+def feature_stoch_k(
+    df: DataFrame,
+    length: int = 14,
+    smooth_k: int = 3
+) -> Series:
+    """
+    Compute the %K line of the Stochastic Oscillator:
+      %K_t = 100 × (close_t − lowest_low_{t−length+1…t}) 
+                    / (highest_high_{t−length+1…t} − lowest_low_{t−length+1…t})
+      then smoothed by a moving average of window `smooth_k`.
+
+    Steps:
+      1. Retrieve close, high, and low via _get_close_series / df.
+      2. Compute rolling lowest low and highest high over `length` bars.
+      3. Compute raw %K.
+      4. Smooth %K with an SMA of window `smooth_k` (min_periods=1).
+      5. Name the Series 'stoch_k'.
+
+    Args:
+        df: Input DataFrame with 'high','low','close' columns.
+        length: Lookback length for the oscillator (default 14).
+        smooth_k: Smoothing window for %K (default 3).
+
+    Returns:
+        Series named 'stoch_k' with values in [0,100].
+    """
+    close = _get_close_series(df)
+    highp = df.get("high", df.get("High"))
+    lowp  = df.get("low",  df.get("Low"))
+
+    # 1) rolling extremes
+    lowest_low  = lowp.rolling(window=length, min_periods=1).min()
+    highest_high = highp.rolling(window=length, min_periods=1).max()
+
+    # 2) raw %K
+    raw_k = (close - lowest_low) / (highest_high - lowest_low) * 100
+
+    # 3) smooth
+    stoch_k = raw_k.rolling(window=smooth_k, min_periods=1).mean()
+    stoch_k.name = "stoch_k"
+    return stoch_k
+
+def feature_stoch_d(
+    df: DataFrame,
+    length: int = 14,
+    smooth_k: int = 3,
+    smooth_d: int = 3
+) -> Series:
+    """
+    Compute the %D (signal) line of the Stochastic Oscillator:
+      1) %K_t  = 100 × (close_t − lowest_low_{t−length+1…t})
+                   / (highest_high_{t−length+1…t} − lowest_low_{t−length+1…t})
+      2) stoch_k_smoothed = SMA(%K, window=smooth_k)
+      3) %D_t  = SMA(stoch_k_smoothed, window=smooth_d)
+
+    Steps:
+      1. Retrieve close, high, low via _get_close_series / df.
+      2. Compute raw %K over `length` bars.
+      3. Smooth raw %K by `smooth_k` to get stoch_k.
+      4. Further smooth stoch_k by `smooth_d` to get stoch_d.
+      5. Name the Series 'stoch_d'.
+
+    Args:
+        df: Input DataFrame with 'high', 'low', 'close' columns.
+        length: Lookback length for the oscillator (default 14).
+        smooth_k: Smoothing window for %K (default 3).
+        smooth_d: Smoothing window for %D (default 3).
+
+    Returns:
+        Series named 'stoch_d' with values in [0,100].
+    """
+    close = _get_close_series(df)
+    highp = df.get("high", df.get("High"))
+    lowp  = df.get("low",  df.get("Low"))
+
+    # 1) rolling extremes
+    lowest_low   = lowp.rolling(window=length, min_periods=1).min()
+    highest_high = highp.rolling(window=length, min_periods=1).max()
+
+    # 2) raw %K
+    raw_k = (close - lowest_low) / (highest_high - lowest_low) * 100
+
+    # 3) smooth %K
+    stoch_k = raw_k.rolling(window=smooth_k, min_periods=1).mean()
+
+    # 4) smooth %D
+    stoch_d = stoch_k.rolling(window=smooth_d, min_periods=1).mean()
+    stoch_d.name = "stoch_d"
+    return stoch_d
+
+def feature_stoch_cross(
+    df: DataFrame,
+    length: int = 14,
+    smooth_k: int = 3,
+    smooth_d: int = 3
+) -> Series:
+    """
+    Compute a -1/0/+1 signal when %K crosses its %D line.
+
+    Steps:
+      1. Compute stoch_k via rolling %K and SMA(length=smooth_k).
+      2. Compute stoch_d via SMA(stoch_k, window=smooth_d).
+      3. diff = stoch_k − stoch_d.
+      4. prev_diff = diff.shift(1).
+      5. Bullish cross (prev_diff <= 0 & diff > 0): +1  
+         Bearish cross (prev_diff >= 0 & diff < 0): −1  
+         Else: 0.
+      6. Name as 'stoch_cross'.
+
+    Args:
+        df: DataFrame with 'high','low','close'.
+        length: Lookback for raw %K (default 14).  
+        smooth_k: SMA window for %K (default 3).  
+        smooth_d: SMA window for %D (default 3).
+
+    Returns:
+        Series named 'stoch_cross' of int values in {-1,0,1}.
+    """
+    close   = _get_close_series(df)
+    highp   = df.get("high", df.get("High"))
+    lowp    = df.get("low",  df.get("Low"))
+
+    # raw %K
+    lowest = lowp.rolling(window=length, min_periods=1).min()
+    highest= highp.rolling(window=length, min_periods=1).max()
+    raw_k  = (close - lowest) / (highest - lowest) * 100
+
+    # smooth %K and %D
+    stoch_k = raw_k.rolling(window=smooth_k, min_periods=1).mean()
+    stoch_d = stoch_k.rolling(window=smooth_d, min_periods=1).mean()
+
+    diff     = stoch_k - stoch_d
+    prev_diff= diff.shift(1)
+
+    bullish  = (prev_diff <= 0) & (diff > 0)
+    bearish  = (prev_diff >= 0) & (diff < 0)
+
+    signal = pd.Series(0, index=diff.index)
+    signal[bullish] = 1
+    signal[bearish] = -1
+    signal.name = "stoch_cross"
+    return signal
 
 def feature_adx_14(df: DataFrame, period: int = 14) -> Series:
     """
