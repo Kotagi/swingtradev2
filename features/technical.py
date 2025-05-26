@@ -127,6 +127,158 @@ def feature_close_vs_ma10(df: DataFrame) -> Series:
     ratio.name = "close_vs_ma10"
     return ratio
 
+def feature_close_vs_ma20(df: DataFrame) -> Series:
+    """
+    Compute the ratio of today's close to its 20-day simple moving average.
+
+    Steps:
+      1. Retrieve the closing price series (handles upper/lower case).
+      2. Compute the 20-day SMA (min_periods=1 so you don’t introduce NaNs early).
+      3. Divide close_t by SMA20 and name the result.
+    Args:
+        df: Input DataFrame with a 'close' or 'Close' column.
+    Returns:
+        Series named 'close_vs_ma20' of close/SMA20 ratios.
+    """
+    close = _get_close_series(df)
+    sma20 = close.rolling(window=20, min_periods=1).mean()
+    ratio = close / sma20
+    ratio.name = "close_vs_ma20"
+    return ratio
+
+def feature_close_zscore_20(df: DataFrame) -> Series:
+    """
+    Compute the 20-day rolling z-score of today’s close:
+      (close_t − mean(close_{t-19..t})) / std(close_{t-19..t}).
+
+    Steps:
+      1. Retrieve closing-price series (handles upper/lower case).
+      2. Compute 20-day rolling mean & std (min_periods=1 to avoid NaNs early).
+      3. Subtract mean from close and divide by std.
+      4. Name the Series 'close_zscore_20'.
+
+    Args:
+        df: Input DataFrame with a 'close' or 'Close' column.
+
+    Returns:
+        Series named 'close_zscore_20', centered at 0 with unit variance.
+    """
+    close = _get_close_series(df)
+    mean20 = close.rolling(window=20, min_periods=1).mean()
+    std20  = close.rolling(window=20, min_periods=1).std().replace(0, np.nan)
+    zscore = (close - mean20) / std20
+    zscore.name = "close_zscore_20"
+    return zscore
+
+def feature_price_percentile_20d(df: DataFrame) -> Series:
+    """
+    Compute the 20-day rolling percentile rank of today’s close.
+
+    Steps:
+      1. Retrieve the closing-price series (handles upper/lower case).
+      2. For each day t, take the last 20 closes (including t).
+      3. Compute the percentile of close_t among that window:
+         (# of window values ≤ close_t − 1) / (window_size − 1)
+      4. Name the resulting Series for downstream use.
+
+    Args:
+        df: Input DataFrame with a 'close' column.
+
+    Returns:
+        Series named 'price_percentile_20d' with values in [0,1].
+    """
+    close = _get_close_series(df)
+    def pct_rank(window: np.ndarray) -> float:
+        # window[-1] is today's close; rank among window
+        today = window[-1]
+        # count how many are less than today
+        less_equal = np.sum(window <= today) - 1
+        denom = len(window) - 1
+        return float(less_equal / denom) if denom > 0 else 0.5
+
+    pct = close.rolling(window=20, min_periods=1) \
+               .apply(pct_rank, raw=True)
+    pct.name = "price_percentile_20d"
+    return pct
+
+def feature_gap_up_pct(df: DataFrame) -> Series:
+    """
+    Compute the percent gap-up at open relative to prior close:
+      (open_t / close_{t-1} - 1) * 100.
+
+    Steps:
+      1. Retrieve the closing-price series (handles ‘close’/‘Close’).
+      2. Retrieve today’s opening price (df['open']).
+      3. Shift close by 1 day to get prior close.
+      4. Compute (open_t / close_{t-1} − 1) * 100.
+      5. Name the Series 'gap_up_pct'.
+
+    Args:
+        df: Input DataFrame with 'open' and 'close' columns.
+
+    Returns:
+        Series named 'gap_up_pct' with values in percent.
+    """
+    close = _get_close_series(df)
+    # assume lowercase 'open' column; adjust if your pipeline canonicalizes differently
+    openp = df['open']
+    gap = (openp / close.shift(1) - 1) * 100
+    gap.name = "gap_up_pct"
+    return gap
+
+def feature_daily_range_pct(df: DataFrame) -> Series:
+    """
+    Compute the percent size of the intraday high-low range relative to open:
+      ((high_t − low_t) / open_t) × 100.
+
+    Steps:
+      1. Retrieve today’s open (handles ‘open’/‘Open’), high, and low series.
+      2. Compute range = high_t − low_t.
+      3. Divide by open_t and multiply by 100.
+      4. Name the Series 'daily_range_pct'.
+
+    Args:
+        df: DataFrame with 'open','high','low' columns.
+
+    Returns:
+        Series named 'daily_range_pct' giving range% per bar.
+    """
+    # handle lowercase/uppercase column names
+    openp = df.get("open", df.get("Open"))
+    highp = df.get("high", df.get("High"))
+    lowp  = df.get("low",  df.get("Low"))
+
+    # compute percent range
+    pct = ((highp - lowp) / openp) * 100
+    pct.name = "daily_range_pct"
+    return pct
+
+def feature_candle_body_pct(df: DataFrame) -> Series:
+    """
+    Compute the percent size of the candle body relative to the high-low range:
+      ((close_t − open_t) / (high_t − low_t)) * 100
+
+    Steps:
+      1. Retrieve open, high, low, and close series (case-insensitive).
+      2. Compute body = close − open.
+      3. Compute range = high − low, replacing any 0 with NaN to avoid divide-by-zero.
+      4. Compute (body / range) * 100 and name the Series.
+    Args:
+        df: Input DataFrame with 'open','high','low','close' columns.
+    Returns:
+        Series named 'candle_body_pct' with values in [-∞,∞], clipped by typical range.
+    """
+    # pull columns (handles lower/upper case)
+    openp = df.get("open", df.get("Open"))
+    highp = df.get("high", df.get("High"))
+    lowp  = df.get("low", df.get("Low"))
+    close = _get_close_series(df)
+
+    body = close - openp
+    rng  = (highp - lowp).replace(0, np.nan)
+    pct  = (body / rng) * 100
+    pct.name = "candle_body_pct"
+    return pct
 
 def feature_atr(df: DataFrame, period: int = 14) -> Series:
     """
@@ -147,7 +299,6 @@ def feature_atr(df: DataFrame, period: int = 14) -> Series:
     )
     s.name = f"atr_{period}"
     return s
-
 
 def feature_bb_width(df: DataFrame, period: int = 20, std_dev: float = 2.0) -> Series:
     """

@@ -1,0 +1,10 @@
+Features added	XGB AUC
++ Baseline (7 feats)	        0.4988
++ log_return_1d (8 feats)	0.5025
++ log_return_5d (9 feats)	0.5027
++ close_vs_ma10                 0.5376
++ close_vs_ma20                 0.5378
++ feature_close_zscore_20       0.5377
++ price_percentile_20d          0.5371
++ gap_up_pct                    0.5371
++ Prune				0.5364

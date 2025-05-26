@@ -76,6 +76,7 @@ run_features_labels.bat
 - `matplotlib>=3.4`
 - `pandas-ta>=0.3.14`
 - `pyarrow>=20.0.0`
+- `shap>=0.41.0`
 
 
 ## Config Files
@@ -114,6 +115,12 @@ run_features_labels.bat
 | ---- | ---- | ------- |
 | `parquet_file` | Path to the Parquet file to inspect (e.g. data/clean/AAPL.parquet). | - |
 | `--export-dir, -e` | Directory where the full CSV will be saved (default: data/inspect_parquet) | - |
+
+### `src\train_model.py`
+
+| Flag | Help | Default |
+| ---- | ---- | ------- |
+| `--diagnostics` | Compute and print feature importances and SHAP diagnostics | - |
 
 
 ## Modules
@@ -216,6 +223,18 @@ technical.py
   Compute 10-day forward return: (close_{t+10} / close_t) - 1.
 - `feature_close_vs_ma10(df)`  
   Compute the ratio of today's close to its 10-day simple moving average.
+- `feature_close_vs_ma20(df)`  
+  Compute the ratio of today's close to its 20-day simple moving average.
+- `feature_close_zscore_20(df)`  
+  Compute the 20-day rolling z-score of today’s close:
+- `feature_price_percentile_20d(df)`  
+  Compute the 20-day rolling percentile rank of today’s close.
+- `feature_gap_up_pct(df)`  
+  Compute the percent gap-up at open relative to prior close:
+- `feature_daily_range_pct(df)`  
+  Compute the percent size of the intraday high-low range relative to open:
+- `feature_candle_body_pct(df)`  
+  Compute the percent size of the candle body relative to the high-low range:
 - `feature_atr(df, period)`  
   Compute Average True Range (ATR) over a given period via pandas-ta.
 - `feature_bb_width(df, period, std_dev)`  
@@ -253,16 +272,22 @@ technical.py
 - **adx_14**: ✅
 - **atr**: ✅
 - **bb_width**: ✅
+- **candle_body_pct**: ✅
 - **close_vs_ma10**: ✅
+- **close_vs_ma20**: ✅
+- **close_zscore_20**: ✅
+- **daily_range_pct**: ✅
 - **ema_10**: ✅
 - **ema_5**: ✅
 - **ema_50**: ✅
 - **ema_cross**: ✅
+- **gap_up_pct**: ✅
 - **log_return_1d**: ✅
 - **log_return_5d**: ✅
 - **obv**: ✅
 - **obv_pct**: ✅
 - **obv_z20**: ✅
+- **price_percentile_20d**: ✅
 - **rsi**: ✅
 - **sma_10**: ✅
 - **sma_5**: ✅
