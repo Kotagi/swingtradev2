@@ -48,6 +48,16 @@ from features.technical import (
     feature_stoch_k,
     feature_stoch_d,
     feature_stoch_cross,
+    feature_bullish_engulfing,
+    feature_bearish_engulfing,
+    feature_hammer_signal,
+    feature_shooting_star_signal,
+    feature_marubozu_white,
+    feature_marubozu_black,
+    feature_doji_signal,
+    feature_long_legged_doji,
+    feature_morning_star,
+    feature_evening_star,
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -95,6 +105,16 @@ FEATURES = {
     "stoch_k":                  feature_stoch_k,                    # Compute the %K line of the Stochastic Oscillator
     "stoch_d":                  feature_stoch_d,                    # Compute the %D (signal) line of the Stochastic Oscillator
     "stoch_cross":              feature_stoch_cross,                # Compute a -1/0/+1 signal when %K crosses its %D line
+    "bullish_engulfing":        feature_bullish_engulfing,          # Today’s bullish candle fully engulfs yesterday’s bearish candle
+    "bearish_engulfing":        feature_bearish_engulfing,          # Today’s bearish candle fully engulfs yesterday’s bullish candle
+    "hammer_signal":            feature_hammer_signal,              # Flag hammer candles: small real body near top with long lower shadow
+    "shooting_star_signal":     feature_shooting_star_signal,       # Flag shooting-star candles: small real body near bottom with long upper shadow
+    "marubozu_white":           feature_marubozu_white,             # Flag white marubozu: open≈low, close≈high, close>open
+    "marubozu_black":           feature_marubozu_black,             # Flag black marubozu: open≈high, close≈low, close<open
+    "doji_signal":              feature_doji_signal,                # Flag Doji: tiny real body relative to range
+    "long_legged_doji":         feature_long_legged_doji,           # Flag long-legged Doji: tiny body + long shadows
+    "morning_star":             feature_morning_star,               # Flag Morning Star: bearish bar → small body → bullish bar closing > midpoint of bar1
+    "evening_star":             feature_evening_star,               # Flag Evening Star: bullish → small body → bearish closing < midpoint of bar1
 }
 
 def load_enabled_features(config_path: str) -> dict:

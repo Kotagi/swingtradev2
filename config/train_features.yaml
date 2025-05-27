@@ -39,4 +39,14 @@ features:
   stoch_k: 1
   stoch_d: 1
   stoch_cross: 1
+  bullish_engulfing: 1
+  bearish_engulfing:     1
+  hammer_signal:         1
+  shooting_star_signal:  1
+  marubozu_white:        1
+  marubozu_black:        1
+  doji_signal:           1
+  long_legged_doji:      1
+  morning_star:          1
+  evening_star:          1
 

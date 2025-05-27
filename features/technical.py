@@ -967,3 +967,242 @@ def feature_adx_14(df: DataFrame, period: int = 14) -> Series:
     s = adx_df[f"ADX_{period}"]
     s.name = f"adx_{period}"
     return s
+
+def feature_bullish_engulfing(df: DataFrame) -> Series:
+    """
+    Flag when today’s bullish candle fully engulfs yesterday’s bearish candle.
+
+    Steps:
+      1. Retrieve today’s open/close and yesterday’s open/close (shifted by 1).
+      2. Identify a bearish prior bar: prev_close < prev_open.
+      3. Identify a bullish current bar: close_t > open_t.
+      4. Check engulf:
+         - today’s open < prev_close
+         - today’s close > prev_open
+      5. Combine conditions into a binary Series.
+
+    Args:
+        df: Input DataFrame with 'open' and 'close' columns.
+
+    Returns:
+        Series named 'bullish_engulfing' with values 1.0 or 0.0.
+    """
+    import numpy as np
+
+    # 1) grab open & close (case-insensitive)
+    openp  = df.get("open", df.get("Open"))
+    closep = _get_close_series(df)
+
+    # yesterday’s values
+    prev_open  = openp.shift(1)
+    prev_close = closep.shift(1)
+
+    # 2) prior bearish
+    prior_bear = prev_close < prev_open
+    # 3) current bullish
+    curr_bull = closep > openp
+    # 4) engulf conditions
+    engulps = (openp < prev_close) & (closep > prev_open)
+
+    # 5) flag
+    flag = (prior_bear & curr_bull & engulps).astype(float)
+    flag.name = "bullish_engulfing"
+    return flag
+
+def feature_bearish_engulfing(df: DataFrame) -> Series:
+    """
+    Flag when today’s bearish candle fully engulfs yesterday’s bullish candle.
+
+    Steps:
+      1. Get today’s open/close and yesterday’s (shifted by 1).
+      2. Prior bullish: prev_close > prev_open.
+      3. Current bearish: close_t < open_t.
+      4. Engulf: today’s open > prev_close AND today’s close < prev_open.
+      5. Combine into 1.0/0.0 flag.
+    """
+    openp   = df.get("open", df.get("Open"))
+    closep  = _get_close_series(df)
+    prev_o  = openp.shift(1); prev_c = closep.shift(1)
+    prior_bull = prev_c > prev_o
+    curr_bear  = closep < openp
+    engulps    = (openp > prev_c) & (closep < prev_o)
+    flag       = (prior_bull & curr_bear & engulps).astype(float)
+    flag.name  = "bearish_engulfing"
+    return flag
+
+
+def feature_hammer_signal(df: DataFrame, body_pct: float = 0.3, shadow_ratio: float = 2.0) -> Series:
+    """
+    Flag hammer candles: small real body near top with long lower shadow.
+
+    Steps:
+      1. Get open/high/low/close.
+      2. Compute body = abs(close−open), range = high−low.
+      3. Lower shadow = min(open,close) − low.
+      4. Conditions:
+         • body <= body_pct * range
+         • lower_shadow >= shadow_ratio * body
+         • upper_shadow <= body_pct * range
+      5. Flag 1.0/0.0.
+    """
+    openp  = df.get("open", df.get("Open"));  closep = _get_close_series(df)
+    highp  = df.get("high", df.get("High"));  lowp   = df.get("low",  df.get("Low"))
+    body   = (closep - openp).abs()
+    rng    = highp - lowp
+    lower  = np.minimum(openp, closep) - lowp
+    upper  = highp - np.maximum(openp, closep)
+    cond   = (
+        (body <= body_pct * rng) &
+        (lower >= shadow_ratio * body) &
+        (upper <= body_pct * rng)
+    )
+    sig       = cond.astype(float)
+    sig.name  = "hammer_signal"
+    return sig
+
+
+def feature_shooting_star_signal(df: DataFrame, body_pct: float = 0.3, shadow_ratio: float = 2.0) -> Series:
+    """
+    Flag shooting-star candles: small real body near bottom with long upper shadow.
+
+    Steps:
+      1. Get OHLC.
+      2. body, range, upper=high−max(open,close), lower=min(open,close)−low.
+      3. Conditions:
+         • body <= body_pct * range
+         • upper >= shadow_ratio * body
+         • lower <= body_pct * range
+      4. Flag 1.0/0.0.
+    """
+    openp  = df.get("open", df.get("Open")); closep = _get_close_series(df)
+    highp  = df.get("high", df.get("High")); lowp   = df.get("low",  df.get("Low"))
+    body   = (closep - openp).abs()
+    rng    = highp - lowp
+    upper  = highp - np.maximum(openp, closep)
+    lower  = np.minimum(openp, closep) - lowp
+    cond   = (
+        (body <= body_pct * rng) &
+        (upper >= shadow_ratio * body) &
+        (lower <= body_pct * rng)
+    )
+    sig       = cond.astype(float)
+    sig.name  = "shooting_star_signal"
+    return sig
+
+
+def feature_marubozu_white(df: DataFrame, pct_tol: float = 0.05) -> Series:
+    openp  = df.get("open", df.get("Open"))
+    closep = _get_close_series(df)
+    highp  = df.get("high", df.get("High"))
+    lowp   = df.get("low",  df.get("Low"))
+    rng    = highp - lowp
+    tol    = pct_tol * rng
+
+    cond = (
+        ((openp - lowp).abs() <= tol) &
+        ((highp - closep).abs() <= tol) &
+        (closep > openp)
+    )
+    flag      = cond.astype(float)
+    flag.name = "marubozu_white"
+    return flag
+
+
+def feature_marubozu_black(df: DataFrame, pct_tol: float = 0.05) -> Series:
+    openp  = df.get("open", df.get("Open"))
+    closep = _get_close_series(df)
+    highp  = df.get("high", df.get("High"))
+    lowp   = df.get("low",  df.get("Low"))
+    rng    = highp - lowp
+    tol    = pct_tol * rng
+
+    cond = (
+        ((highp - openp).abs() <= tol) &
+        ((closep - lowp).abs()    <= tol) &
+        (closep < openp)
+    )
+    flag      = cond.astype(float)
+    flag.name = "marubozu_black"
+    return flag
+
+def feature_doji_signal(df: DataFrame, pct_tol: float = 0.1) -> Series:
+    """
+    Flag Doji: tiny real body relative to range.
+
+    Steps:
+      1. body=abs(close−open), range=high−low.
+      2. Flag body <= pct_tol * range.
+    """
+    openp  = df.get("open", df.get("Open")); closep = _get_close_series(df)
+    highp  = df.get("high", df.get("High")); lowp   = df.get("low",  df.get("Low"))
+    body   = (closep - openp).abs()
+    rng    = highp - lowp
+    flag      = (body <= pct_tol * rng).astype(float)
+    flag.name = "doji_signal"
+    return flag
+
+
+def feature_long_legged_doji(df: DataFrame, pct_tol: float = 0.1, shadow_ratio: float = 2.0) -> Series:
+    """
+    Flag long-legged Doji: tiny body + long shadows.
+
+    Steps:
+      1. raw Doji (pct_tol).
+      2. Shadows = (high−max) and (min−low).
+      3. Both shadows >= shadow_ratio*body.
+    """
+    openp  = df.get("open", df.get("Open")); closep = _get_close_series(df)
+    highp  = df.get("high", df.get("High")); lowp   = df.get("low",  df.get("Low"))
+    body   = (closep - openp).abs()
+    rng    = highp - lowp; tol = pct_tol * rng
+    raw    = body <= tol
+    upper  = highp - np.maximum(openp, closep)
+    lower  = np.minimum(openp, closep) - lowp
+    cond   = raw & (upper >= shadow_ratio * body) & (lower >= shadow_ratio * body)
+    flag      = cond.astype(float)
+    flag.name = "long_legged_doji"
+    return flag
+
+
+def feature_morning_star(df: DataFrame) -> Series:
+    """
+    Flag Morning Star: bearish bar → small body → bullish bar closing > midpoint of bar1.
+
+    Note: a loose 3-bar test for a 5-7 day setup.
+
+    Steps:
+      1. bar1 bearish, bar2 small body, bar3 bullish.
+      2. bar3 close > midpoint of bar1 (avg(open1,close1)).
+    """
+    openp  = df.get("open", df.get("Open")); closep = _get_close_series(df)
+    prev1_o, prev1_c = openp.shift(2), closep.shift(2)
+    prev2_o, prev2_c = openp.shift(1), closep.shift(1)
+    # 1) conditions
+    c1 = prev1_c < prev1_o   # bar1 bearish
+    c2 = (prev2_c - prev2_o).abs() <= 0.3*(df['high'].shift(1)-df['low'].shift(1))
+    c3 = closep > openp      # bar3 bullish
+    # 2) bar3 closes above midpoint of bar1
+    mid1 = (prev1_o + prev1_c) / 2
+    cond = c1 & c2 & c3 & (closep > mid1)
+    flag      = cond.astype(float)
+    flag.name = "morning_star"
+    return flag
+
+
+def feature_evening_star(df: DataFrame) -> Series:
+    """
+    Flag Evening Star: bullish → small body → bearish closing < midpoint of bar1.
+
+    Steps analogous to Morning Star, inverted.
+    """
+    openp  = df.get("open", df.get("Open")); closep = _get_close_series(df)
+    prev1_o, prev1_c = openp.shift(2), closep.shift(2)
+    prev2_o, prev2_c = openp.shift(1), closep.shift(1)
+    c1 = prev1_c > prev1_o
+    c2 = (prev2_c - prev2_o).abs() <= 0.3*(df['high'].shift(1)-df['low'].shift(1))
+    c3 = closep < openp
+    mid1 = (prev1_o + prev1_c) / 2
+    cond = c1 & c2 & c3 & (closep < mid1)
+    flag      = cond.astype(float)
+    flag.name = "evening_star"
+    return flag
