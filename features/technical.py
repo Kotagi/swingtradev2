@@ -968,6 +968,103 @@ def feature_adx_14(df: DataFrame, period: int = 14) -> Series:
     s.name = f"adx_{period}"
     return s
 
+def feature_ichimoku_conversion(df: DataFrame, period: int = 9) -> Series:
+    """
+    Conversion Line (Tenkan-sen): midpoint of highest high and lowest low over `period` bars.
+
+    Steps:
+      1. Retrieve high/low via df.
+      2. Compute rolling max(high, window=period) and min(low, window=period).
+      3. Take their average.
+      4. Name Series 'ichimoku_conversion'.
+
+    Args:
+        df: DataFrame with 'high' and 'low' columns.
+        period: Lookback for conversion line (default 9).
+
+    Returns:
+        Series named 'ichimoku_conversion'.
+    """
+    highp = df.get("high", df.get("High"))
+    lowp  = df.get("low",  df.get("Low"))
+    conv = (highp.rolling(period, min_periods=1).max() +
+            lowp.rolling(period,  min_periods=1).min()) / 2
+    conv.name = "ichimoku_conversion"
+    return conv
+
+
+def feature_ichimoku_base(df: DataFrame, period: int = 26) -> Series:
+    """
+    Base Line (Kijun-sen): midpoint of highest high and lowest low over `period` bars.
+
+    Steps analogous to conversion line but with longer period.
+    """
+    highp = df.get("high", df.get("High"))
+    lowp  = df.get("low",  df.get("Low"))
+    base = (highp.rolling(period, min_periods=1).max() +
+            lowp.rolling(period,  min_periods=1).min()) / 2
+    base.name = "ichimoku_base"
+    return base
+
+
+def feature_ichimoku_lead_span_a(
+    df: DataFrame,
+    conv_period: int = 9,
+    base_period: int = 26,
+    shift: int = 26
+) -> Series:
+    """
+    Leading Span A (Senkou Span A): midpoint of Conversion and Base lines, shifted forward.
+
+    Steps:
+      1. Compute conversion & base via their feature functions.
+      2. Average them.
+      3. Shift forward by `shift` bars.
+    """
+    conv = feature_ichimoku_conversion(df, period=conv_period)
+    base = feature_ichimoku_base(df,    period=base_period)
+    span_a = ((conv + base) / 2).shift(shift)
+    span_a.name = "ichimoku_lead_span_a"
+    return span_a
+
+
+def feature_ichimoku_lead_span_b(
+    df: DataFrame,
+    period: int = 52,
+    shift: int = 26
+) -> Series:
+    """
+    Leading Span B (Senkou Span B): midpoint of highest high & lowest low over `period` bars, shifted forward.
+
+    Steps:
+      1. Compute rolling max(high, window=period) and min(low, window=period).
+      2. Average them.
+      3. Shift forward by `shift` bars.
+    """
+    highp = df.get("high", df.get("High"))
+    lowp  = df.get("low",  df.get("Low"))
+    span_b = ((highp.rolling(period, min_periods=1).max() +
+               lowp.rolling(period,  min_periods=1).min()) / 2).shift(shift)
+    span_b.name = "ichimoku_lead_span_b"
+    return span_b
+
+
+def feature_ichimoku_lagging_span(
+    df: DataFrame,
+    shift: int = 26
+) -> Series:
+    """
+    Lagging Span (Chikou Span): today’s close shifted backward by `shift` bars.
+
+    Steps:
+      1. Retrieve close via _get_close_series.
+      2. Shift backward (negative shift) by `shift` bars.
+    """
+    close = _get_close_series(df)
+    lag = close.shift(-shift)
+    lag.name = "ichimoku_lagging_span"
+    return lag
+
 def feature_bullish_engulfing(df: DataFrame) -> Series:
     """
     Flag when today’s bullish candle fully engulfs yesterday’s bearish candle.

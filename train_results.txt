@@ -24,4 +24,5 @@ Features added	XGB AUC
 + macd_cross_signal		0.5440
 + stoch_k 			0.5436
 + stoch_d 			0.5437
-+ stoch_cross			0.5438	
++ stoch_cross			0.5438
++ Ichimoku Bands		0.5434	

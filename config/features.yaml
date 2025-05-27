@@ -49,4 +49,9 @@ features:
   long_legged_doji:      1
   morning_star:          1
   evening_star:          1
+  ichimoku_conversion:     1
+  ichimoku_base:           1
+  ichimoku_lead_span_a:    1
+  ichimoku_lead_span_b:    1
+  ichimoku_lagging_span:   0
   

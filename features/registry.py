@@ -58,6 +58,11 @@ from features.technical import (
     feature_long_legged_doji,
     feature_morning_star,
     feature_evening_star,
+    feature_ichimoku_conversion,
+    feature_ichimoku_base,
+    feature_ichimoku_lead_span_a,
+    feature_ichimoku_lead_span_b,
+    feature_ichimoku_lagging_span,
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -115,6 +120,11 @@ FEATURES = {
     "long_legged_doji":         feature_long_legged_doji,           # Flag long-legged Doji: tiny body + long shadows
     "morning_star":             feature_morning_star,               # Flag Morning Star: bearish bar → small body → bullish bar closing > midpoint of bar1
     "evening_star":             feature_evening_star,               # Flag Evening Star: bullish → small body → bearish closing < midpoint of bar1
+    "ichimoku_conversion":      feature_ichimoku_conversion,        # Conversion Line (Tenkan-sen): midpoint of highest high and lowest low over `period` bars
+    "ichimoku_base":            feature_ichimoku_base,              # Base Line (Kijun-sen): midpoint of highest high and lowest low over `period` bars
+    "ichimoku_lead_span_a":     feature_ichimoku_lead_span_a,       # Leading Span A (Senkou Span A): midpoint of Conversion and Base lines, shifted forward
+    "ichimoku_lead_span_b":     feature_ichimoku_lead_span_b,       # Leading Span B (Senkou Span B): midpoint of highest high & lowest low over `period` bars, shifted forward
+    "ichimoku_lagging_span":    feature_ichimoku_lagging_span,      # Lagging Span (Chikou Span): today’s close shifted backward by `shift` bars
 }
 
 def load_enabled_features(config_path: str) -> dict:

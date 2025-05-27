@@ -289,6 +289,16 @@ technical.py
   Compute a -1/0/+1 signal when %K crosses its %D line.
 - `feature_adx_14(df, period)`  
   Compute 14-day Average Directional Index (ADX) via pandas-ta.
+- `feature_ichimoku_conversion(df, period)`  
+  Conversion Line (Tenkan-sen): midpoint of highest high and lowest low over `period` bars.
+- `feature_ichimoku_base(df, period)`  
+  Base Line (Kijun-sen): midpoint of highest high and lowest low over `period` bars.
+- `feature_ichimoku_lead_span_a(df, conv_period, base_period, shift)`  
+  Leading Span A (Senkou Span A): midpoint of Conversion and Base lines, shifted forward.
+- `feature_ichimoku_lead_span_b(df, period, shift)`  
+  Leading Span B (Senkou Span B): midpoint of highest high & lowest low over `period` bars, shifted forward.
+- `feature_ichimoku_lagging_span(df, shift)`  
+  Lagging Span (Chikou Span): today’s close shifted backward by `shift` bars.
 - `feature_bullish_engulfing(df)`  
   Flag when today’s bullish candle fully engulfs yesterday’s bearish candle.
 - `feature_bearish_engulfing(df)`  
@@ -334,6 +344,11 @@ technical.py
 - **gap_up_pct**: ✅
 - **hammer_signal**: ✅
 - **high_vs_close**: ✅
+- **ichimoku_base**: ✅
+- **ichimoku_conversion**: ✅
+- **ichimoku_lagging_span**: ❌
+- **ichimoku_lead_span_a**: ✅
+- **ichimoku_lead_span_b**: ✅
 - **log_return_1d**: ✅
 - **log_return_5d**: ✅
 - **long_legged_doji**: ✅
