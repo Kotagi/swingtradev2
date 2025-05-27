@@ -289,6 +289,24 @@ technical.py
   Compute a -1/0/+1 signal when %K crosses its %D line.
 - `feature_adx_14(df, period)`  
   Compute 14-day Average Directional Index (ADX) via pandas-ta.
+- `feature_bullish_engulfing(df)`  
+  Flag when today’s bullish candle fully engulfs yesterday’s bearish candle.
+- `feature_bearish_engulfing(df)`  
+  Flag when today’s bearish candle fully engulfs yesterday’s bullish candle.
+- `feature_hammer_signal(df, body_pct, shadow_ratio)`  
+  Flag hammer candles: small real body near top with long lower shadow.
+- `feature_shooting_star_signal(df, body_pct, shadow_ratio)`  
+  Flag shooting-star candles: small real body near bottom with long upper shadow.
+- `feature_marubozu_white(df, pct_tol)`
+- `feature_marubozu_black(df, pct_tol)`
+- `feature_doji_signal(df, pct_tol)`  
+  Flag Doji: tiny real body relative to range.
+- `feature_long_legged_doji(df, pct_tol, shadow_ratio)`  
+  Flag long-legged Doji: tiny body + long shadows.
+- `feature_morning_star(df)`  
+  Flag Morning Star: bearish bar → small body → bullish bar closing > midpoint of bar1.
+- `feature_evening_star(df)`  
+  Flag Evening Star: bullish → small body → bearish closing < midpoint of bar1.
 
 ---
 ## Enabled Features
@@ -299,23 +317,32 @@ technical.py
 - **atr**: ✅
 - **atr_pct_of_price**: ✅
 - **bb_width**: ✅
+- **bearish_engulfing**: ✅
+- **bullish_engulfing**: ✅
 - **candle_body_pct**: ✅
 - **close_position_in_range**: ✅
 - **close_vs_ma10**: ✅
 - **close_vs_ma20**: ✅
 - **close_zscore_20**: ✅
 - **daily_range_pct**: ✅
+- **doji_signal**: ✅
 - **ema_10**: ✅
 - **ema_5**: ✅
 - **ema_50**: ✅
 - **ema_cross**: ✅
+- **evening_star**: ✅
 - **gap_up_pct**: ✅
+- **hammer_signal**: ✅
 - **high_vs_close**: ✅
 - **log_return_1d**: ✅
 - **log_return_5d**: ✅
+- **long_legged_doji**: ✅
 - **macd_cross_signal**: ✅
 - **macd_histogram**: ✅
 - **macd_line**: ✅
+- **marubozu_black**: ✅
+- **marubozu_white**: ✅
+- **morning_star**: ✅
 - **obv**: ✅
 - **obv_pct**: ✅
 - **obv_z20**: ✅
@@ -324,6 +351,7 @@ technical.py
 - **rolling_min_5d_breakdown**: ✅
 - **rsi**: ✅
 - **rsi_slope**: ✅
+- **shooting_star_signal**: ✅
 - **sma_10**: ✅
 - **sma_5**: ✅
 - **sma_50**: ✅
