@@ -18,9 +18,14 @@ config/
   ├─ features.yaml
   ├─ train_features.yaml
 data/
+  ├─ api_keys/
   ├─ clean/
   ├─ features_labeled/
   ├─ inspect_parquet/
+  ├─ macro/
+    ├─ clean/
+    ├─ features_labeled/
+    ├─ raw/
   ├─ raw/
   ├─ tickers/
     ├─ Archive/
@@ -54,8 +59,10 @@ utils/
   ├─ logger.py
 clean_data.bat
 clean_features.bat
+clean_macro_data.bat
 download_data.bat
 download_data_full.bat
+download_macro_data_full.bat
 profile_pipeline.bat
 read_clean_parquet.bat
 read_feature_parquet.bat
@@ -86,6 +93,13 @@ run_features_labels.bat
 
 
 ## CLI Reference
+
+### `src\clean_data.py`
+
+| Flag | Help | Default |
+| ---- | ---- | ------- |
+| `--raw-dir` | Directory containing raw CSV files | - |
+| `--clean-dir` | Directory where cleaned Parquet files will be written | - |
 
 ### `src\download_data.py`
 
@@ -140,10 +154,10 @@ backtest.py
 ### `src\clean_data.py`
 clean_data.py
 **Functions:**
-- `clean_file(path)`  
+- `clean_file(path, clean_dir)`  
   Clean a single raw CSV file and return any integrity issues.
 - `main()`  
-  Entry point: cleans all CSVs under RAW_DIR and logs a summary.
+  Entry point: cleans all CSVs under a raw directory and logs a summary.
 
 ### `src\clean_features_labeled.py`
 clean_features_labeled.py

@@ -1,5 +1,4 @@
-# src/clean_data.py
-
+#!/usr/bin/env python3
 """
 clean_data.py
 
@@ -10,20 +9,23 @@ Cleans raw stock CSVs by:
   - Lowercasing all column names
   - Casting volume to int and price columns to float
   - Running data integrity checks (nulls, duplicates, monotonic index, dtype validation)
-  - Saving cleaned data as Parquet files in data/clean/
-  - Logging per-file outcomes and a summary of failures
+  - Saving cleaned data as Parquet files in specified clean directory (default data/clean/)
+Usage:
+    python src/clean_data.py --raw-dir data/raw --clean-dir data/clean
 """
 
 import logging
 from pathlib import Path
+import argparse
 
 import pandas as pd
 
-# Directories for input raw data and output cleaned data
-RAW_DIR = Path(__file__).parent.parent / "data" / "raw"
+# —— CONFIGURATION —— #
+# Default directories for input raw data and output cleaned data
+RAW_DIR   = Path(__file__).parent.parent / "data" / "raw"
 CLEAN_DIR = Path(__file__).parent.parent / "data" / "clean"
 
-# Expected data types for cleaned columns
+# Expected dtypes for cleaned columns
 EXPECTED_DTYPES = {
     "volume": "int64",
     "open":   "float64",
@@ -33,7 +35,7 @@ EXPECTED_DTYPES = {
 }
 
 
-def clean_file(path: Path) -> list:
+def clean_file(path: Path, clean_dir: Path = CLEAN_DIR) -> list:
     """
     Clean a single raw CSV file and return any integrity issues.
 
@@ -47,7 +49,7 @@ def clean_file(path: Path) -> list:
       7. Cast 'volume' to int and price columns to float.
       8. Check for null dates, duplicate dates, non-monotonic index,
          and unexpected data types.
-      9. Save the cleaned DataFrame to Parquet.
+      9. Save the cleaned DataFrame to Parquet in `clean_dir`.
      10. Return list of any integrity issues encountered.
     """
     # Read raw data
@@ -61,16 +63,16 @@ def clean_file(path: Path) -> list:
     # Parse 'date' column to datetime, coercing errors to NaT
     df["date"] = pd.to_datetime(df["date"], format="%Y-%m-%d", errors="coerce")
 
-    # Drop rows with invalid dates or exact duplicates
+    # 1) Drop rows with invalid dates or exact duplicates
     df = df.dropna(subset=["date"]).drop_duplicates()
 
-    # Set 'date' as index and ensure it's sorted
+    # 2) Set 'date' as index and ensure it's sorted
     df = df.set_index("date").sort_index()
 
-    # Standardize column names to lowercase
+    # 3) Standardize column names to lowercase
     df.columns = [col.lower() for col in df.columns]
 
-    # Cast expected types
+    # 4) Cast expected types
     df["volume"] = df["volume"].astype(int)
     for col in ["open", "high", "low", "close"]:
         df[col] = df[col].astype(float)
@@ -78,32 +80,34 @@ def clean_file(path: Path) -> list:
     # Initialize list to collect any integrity issues
     issues = []
 
-    # 1) Null dates in index?
+    # 5) Null dates in index?
     null_dates = df.index.isnull().sum()
     if null_dates:
         issues.append(f"Null dates: {null_dates}")
 
-    # 2) Duplicate dates in index?
+    # 6) Duplicate dates in index?
     dup_dates = df.index.duplicated().sum()
     if dup_dates:
         issues.append(f"Duplicate dates: {dup_dates}")
 
-    # 3) Is index monotonic?
+    # 7) Is index monotonic?
     if not df.index.is_monotonic_increasing:
         issues.append("Index not monotonic")
 
-    # 4) Data type mismatches
+    # 8) Data type mismatches
     actual_dtypes = df.dtypes.apply(lambda dt: dt.name).to_dict()
-    bad_types = [col for col, exp in EXPECTED_DTYPES.items()
-                 if actual_dtypes.get(col) != exp]
+    bad_types = [
+        col for col, exp in EXPECTED_DTYPES.items()
+        if actual_dtypes.get(col) != exp
+    ]
     if bad_types:
         issues.append(f"Dtype mismatch in: {', '.join(bad_types)}")
 
     # Ensure output directory exists
-    CLEAN_DIR.mkdir(parents=True, exist_ok=True)
+    clean_dir.mkdir(parents=True, exist_ok=True)
 
     # 9) Save cleaned data as a Parquet file
-    parquet_path = CLEAN_DIR / f"{path.stem}.parquet"
+    parquet_path = clean_dir / f"{path.stem}.parquet"
     df.to_parquet(parquet_path, index=True)
     logging.info(f"{path.name} cleaned → {parquet_path}")
 
@@ -112,22 +116,39 @@ def clean_file(path: Path) -> list:
 
 def main() -> None:
     """
-    Entry point: cleans all CSVs under RAW_DIR and logs a summary.
+    Entry point: cleans all CSVs under a raw directory and logs a summary.
 
     Behavior:
+      - Parses CLI arguments for raw and clean directories.
       - Initializes logging.
-      - Processes each '*.csv' file in RAW_DIR via clean_file().
+      - Processes each '*.csv' file in the raw directory via clean_file().
       - Logs per-file integrity outcomes.
       - At end, logs a summary of total files, passes, and failures.
     """
+    parser = argparse.ArgumentParser(
+        description="Clean raw CSVs into Parquet files with integrity checks."
+    )
+    parser.add_argument(
+        "--raw-dir", default=str(RAW_DIR),
+        help="Directory containing raw CSV files"
+    )
+    parser.add_argument(
+        "--clean-dir", default=str(CLEAN_DIR),
+        help="Directory where cleaned Parquet files will be written"
+    )
+    args = parser.parse_args()
+
+    raw_dir = Path(args.raw_dir)
+    clean_dir = Path(args.clean_dir)
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s: %(message)s"
     )
 
-    files = sorted(RAW_DIR.glob("*.csv"))
+    files = sorted(raw_dir.glob("*.csv"))
     total_files = len(files)
-    logging.info(f"Found {total_files} raw CSV files in {RAW_DIR}")
+    logging.info(f"Found {total_files} raw CSV files in {raw_dir}")
 
     failures = []
 
@@ -135,7 +156,7 @@ def main() -> None:
     for file_path in files:
         logging.info(f"Cleaning {file_path.name}")
         try:
-            file_issues = clean_file(file_path)
+            file_issues = clean_file(file_path, clean_dir)
             if file_issues:
                 logging.warning(f"{file_path.name} issues: {file_issues}")
                 failures.append((file_path.name, file_issues))
@@ -149,8 +170,10 @@ def main() -> None:
     passed = total_files - len(failures)
     logging.info("=== Clean Data Summary ===")
     if failures:
-        logging.warning(f"{passed}/{total_files} files cleaned successfully, "
-                        f"{len(failures)} failed:")
+        logging.warning(
+            f"{passed}/{total_files} files cleaned successfully, "
+            f"{len(failures)} failed:"
+        )
         for fname, issues in failures:
             logging.warning(f" - {fname}: {issues}")
     else:
