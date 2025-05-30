@@ -98,19 +98,23 @@ run_features_labels.bat
 
 | Flag | Help | Default |
 | ---- | ---- | ------- |
-| `--raw-dir` | Directory containing raw CSV files | - |
-| `--clean-dir` | Directory where cleaned Parquet files will be written | - |
+| `--raw-dir, -r` | Directory containing raw CSV files | - |
+| `--clean-dir, -c` | Directory where cleaned Parquet files will be written | - |
+| `--verbose, -v` | Show detailed cleaning steps (DEBUG logs) | - |
 
 ### `src\download_data.py`
 
 | Flag | Help | Default |
 | ---- | ---- | ------- |
-| `-f, --tickers-file` | Path to a file with one ticker symbol per line | 'data/tickers/sp500_tickers.csv' |
-| `-s, --start-date` | Start date for historical data (YYYY-MM-DD) | '2008-01-01' |
-| `-e, --end-date` | End date (exclusive) for historical data (YYYY-MM-DD); defaults to today | None |
-| `-r, --raw-folder` | Directory to save downloaded raw CSV files | 'data/raw' |
-| `-o, --sectors-file` | Output CSV for ticker–sector mapping | 'data/tickers/sectors.csv' |
-| `--full, --force-full` | Ignore existing files and re-download entire history for every ticker | - |
+| `--tickers-file` | One ticker symbol per line | - |
+| `--start-date` | Start date (YYYY-MM-DD) | - |
+| `--end-date` | End date (exclusive, YYYY-MM-DD); defaults to today | - |
+| `--raw-folder` | Directory for raw per-ticker CSVs | - |
+| `--sectors-file` | Output CSV for ticker→sector mapping | - |
+| `--chunk-size` | Number of tickers per bulk HTTP request | - |
+| `--pause` | Seconds to sleep between each chunk | - |
+| `--full` | Force full redownload of all tickers (ignore existing CSVs) | - |
+| `--no-sectors` | Skip fetching and writing sector information | - |
 
 ### `src\feature_pipeline.py`
 
@@ -155,9 +159,9 @@ backtest.py
 clean_data.py
 **Functions:**
 - `clean_file(path, clean_dir)`  
-  Clean a single raw CSV file and return any integrity issues.
+  Clean a single raw CSV file and return any *integrity* issues
 - `main()`  
-  Entry point: cleans all CSVs under a raw directory and logs a summary.
+  Entry point: parse args, set up logging, clean all CSVs in raw_dir.
 
 ### `src\clean_features_labeled.py`
 clean_features_labeled.py
@@ -170,12 +174,16 @@ clean_features_labeled.py
 ### `src\download_data.py`
 download_data.py
 **Functions:**
-- `download_data(tickers, start_date, end_date, raw_folder, full_refresh)`  
-  Download OHLCV data and fetch sector info for each ticker.
+- `chunked_list(items, chunk_size)`  
+  Yield successive chunks of size `chunk_size` from `items`.
+- `process_symbol(symbol, df_all, raw_folder, start_date, yf_end, full_refresh, write_sectors)`  
+  Process one ticker: merge data, fetch splits, write CSV, and optionally fetch sector.
+- `download_data(tickers, start_date, end_date, raw_folder, chunk_size, pause, full_refresh, write_sectors)`  
+  Bulk-download OHLCV data in chunks, then parallel-process each ticker.
 - `write_sectors_csv(sectors, sectors_file)`  
   Write the ticker-to-sector mapping to a CSV file.
 - `main()`  
-  Parse command-line arguments, download data, and write sector mapping.
+  Parse command-line arguments, download data, and optionally write sector mapping.
 
 ### `src\feature_pipeline.py`
 feature_pipeline.py

@@ -6,20 +6,39 @@ REM
 REM --------------------------------------------------------------------------
 
 echo.
-echo === 1) Redownloading raw data ^& rebuilding sectors.csv ===
+echo === 1) Downloading Raw Data ^& Building Sectors.csv ===
 python src\download_data.py ^
   --tickers-file data\tickers\sp500_tickers.csv ^
   --start-date   2008-01-01                ^
   --raw-folder   data\raw                  ^
-  --sectors-file data\tickers\sectors.csv
+  --sectors-file data\tickers\sectors.csv  ^
+  --chunk-size 500^
+  --pause 10^
+  --full
+	
 IF %ERRORLEVEL% NEQ 0 (
   echo.
-  echo [ERROR] download_data.py failed.
+  echo [ERROR] Downloading raw data failed.
   pause
   exit /b %ERRORLEVEL%
 )
 
-
+echo === 1) Downloading Macro Raw Data ===
+python src\download_data.py ^
+  --tickers-file data\tickers\macro_tickers.csv ^
+  --start-date   2008-01-01                ^
+  --raw-folder   data\macro\raw                  ^
+  --no-sectors  ^
+  --chunk-size 100^
+  --pause 0.1^
+  --full
+	
+IF %ERRORLEVEL% NEQ 0 (
+  echo.
+  echo [ERROR] Downloading macro raw data failed.
+  pause
+  exit /b %ERRORLEVEL%
+)
 
 echo.
 echo Redownload complete.  
