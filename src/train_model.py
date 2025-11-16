@@ -83,8 +83,8 @@ def prepare(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, List[str]]:
         y: Series of the target label.
         feats: List of feature column names used.
     """
-    # 1) Drop rows with missing values
-    df_clean = df.dropna().copy()
+    # 1) Replace infinities with NaN, then drop rows with missing values
+    df_clean = df.replace([np.inf, -np.inf], np.nan).dropna().copy()
 
     # 2) Candidate feature names (exclude label & ticker)
     feats = [c for c in df_clean.columns if c not in [LABEL_COL, "ticker"]]
@@ -98,8 +98,23 @@ def prepare(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, List[str]]:
     feats = [c for c in feats if c not in raw_price_cols]
 
     # 5) Slice out X and y
-    X = df_clean[feats]
+    X = df_clean[feats].copy()
     y = df_clean[LABEL_COL]
+    
+    # 6) Clip extreme values to prevent overflow (clip to reasonable range)
+    # Clip to ±1e6 to prevent overflow issues while preserving signal
+    X = X.clip(lower=-1e6, upper=1e6)
+    
+    # 7) Final check: ensure no infinities or NaNs remain
+    if X.isin([np.inf, -np.inf]).any().any():
+        print("Warning: Found infinities after cleaning, replacing with NaN")
+        X = X.replace([np.inf, -np.inf], np.nan)
+    
+    if X.isna().any().any():
+        print("Warning: Found NaNs after cleaning, dropping rows")
+        mask = ~X.isna().any(axis=1)
+        X = X[mask]
+        y = y[mask]
 
     return X, y, feats
 

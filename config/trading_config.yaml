@@ -1,0 +1,65 @@
+# Trading Configuration
+# User-defined parameters for trading patterns and backtesting
+
+trading:
+  # Trade window: number of days to hold a position
+  horizon: 5
+  
+  # Return threshold: minimum return (as decimal) to consider a win
+  # Example: 0.05 means 5% return
+  return_threshold: 0.05
+  
+  # Position size per trade in dollars
+  position_size: 1000.0
+
+model:
+  # Model prediction probability threshold for entry signals
+  # Values between 0.0 and 1.0
+  prediction_threshold: 0.5
+  
+  # Minimum probability to consider for trade identification
+  min_probability: 0.5
+  
+  # Maximum number of opportunities to return
+  top_n_opportunities: 20
+
+backtest:
+  # Strategy to use: "model", "oracle", or "rsi"
+  strategy: "model"
+  
+  # Model threshold for backtesting (if using model strategy)
+  model_threshold: 0.5
+
+data:
+  # Start date for historical data (YYYY-MM-DD)
+  start_date: "2008-01-01"
+  
+  # Tickers file path
+  tickers_file: "data/tickers/sp500_tickers.csv"
+  
+  # Raw data folder
+  raw_folder: "data/raw"
+  
+  # Cleaned data folder
+  clean_folder: "data/clean"
+  
+  # Features folder
+  features_folder: "data/features_labeled"
+  
+  # Sectors file
+  sectors_file: "data/tickers/sectors.csv"
+
+features:
+  # Features configuration file
+  config_file: "config/features.yaml"
+  
+  # Training features configuration file
+  train_config_file: "config/train_features.yaml"
+
+models:
+  # Model directory
+  model_dir: "models"
+  
+  # Default model file
+  default_model: "models/xgb_classifier_selected_features.pkl"
+

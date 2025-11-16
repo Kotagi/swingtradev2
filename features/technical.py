@@ -11,7 +11,7 @@ returns a pandas Series named for downstream pipeline use.
 
 import numpy as np
 import pandas as pd
-import pandas_ta as ta
+import pandas_ta_classic as ta
 from pandas import Series, DataFrame
 
 

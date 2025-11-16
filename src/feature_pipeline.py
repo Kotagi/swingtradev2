@@ -12,8 +12,13 @@ Uses Joblib to distribute work across all CPU cores on Windows.
 """
 
 import argparse
+import sys
 import time
 from pathlib import Path
+
+# Add project root to Python path
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
 import pandas as pd
 from joblib import Parallel, delayed

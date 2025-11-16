@@ -10,6 +10,19 @@ venv/
 # Data & logs
 data/
 *.log
+feature_pipeline.log
+
+# Models (generated artifacts)
+models/*.pkl
+models/*.joblib
+
+# Generated outputs
+profile.out
+profile_start.out
+pipeline_times.txt
+train_results.txt
+pd.Series
+python
 
 # IDEs
 .pytest_cache/
