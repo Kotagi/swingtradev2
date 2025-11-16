@@ -15,6 +15,27 @@ import pandas_ta_classic as ta
 from pandas import Series, DataFrame
 
 
+def _get_column(df: DataFrame, col_name: str) -> Series:
+    """
+    Get a column from DataFrame with case-insensitive matching.
+    
+    Args:
+        df: Input DataFrame.
+        col_name: Column name to find (case-insensitive).
+    
+    Returns:
+        Series from the DataFrame.
+    
+    Raises:
+        KeyError: If column not found in any case variation.
+    """
+    col_lower = col_name.lower()
+    for col in df.columns:
+        if col.lower() == col_lower:
+            return df[col]
+    raise KeyError(f"DataFrame must contain '{col_name}' column (case-insensitive)")
+
+
 def _get_close_series(df: DataFrame) -> Series:
     """
     Return the 'close' price series, handling both lowercase and uppercase.
@@ -28,11 +49,27 @@ def _get_close_series(df: DataFrame) -> Series:
     Raises:
         KeyError: If neither 'close' nor 'Close' is present.
     """
-    if 'close' in df.columns:
-        return df['close']
-    if 'Close' in df.columns:
-        return df['Close']
-    raise KeyError("DataFrame must contain 'close' or 'Close' column")
+    return _get_column(df, 'close')
+
+
+def _get_open_series(df: DataFrame) -> Series:
+    """Return the 'open' price series, case-insensitive."""
+    return _get_column(df, 'open')
+
+
+def _get_high_series(df: DataFrame) -> Series:
+    """Return the 'high' price series, case-insensitive."""
+    return _get_column(df, 'high')
+
+
+def _get_low_series(df: DataFrame) -> Series:
+    """Return the 'low' price series, case-insensitive."""
+    return _get_column(df, 'low')
+
+
+def _get_volume_series(df: DataFrame) -> Series:
+    """Return the 'volume' series, case-insensitive."""
+    return _get_column(df, 'volume')
 
 def feature_log_return_1d(df: DataFrame) -> Series:
     """
@@ -220,8 +257,7 @@ def feature_gap_up_pct(df: DataFrame) -> Series:
         Series named 'gap_up_pct' with values in percent.
     """
     close = _get_close_series(df)
-    # assume lowercase 'open' column; adjust if your pipeline canonicalizes differently
-    openp = df['open']
+    openp = _get_open_series(df)
     gap = (openp / close.shift(1) - 1) * 100
     gap.name = "gap_up_pct"
     return gap
@@ -243,10 +279,9 @@ def feature_daily_range_pct(df: DataFrame) -> Series:
     Returns:
         Series named 'daily_range_pct' giving range% per bar.
     """
-    # handle lowercase/uppercase column names
-    openp = df.get("open", df.get("Open"))
-    highp = df.get("high", df.get("High"))
-    lowp  = df.get("low",  df.get("Low"))
+    openp = _get_open_series(df)
+    highp = _get_high_series(df)
+    lowp  = _get_low_series(df)
 
     # compute percent range
     pct = ((highp - lowp) / openp) * 100
@@ -268,10 +303,9 @@ def feature_candle_body_pct(df: DataFrame) -> Series:
     Returns:
         Series named 'candle_body_pct' with values in [-∞,∞], clipped by typical range.
     """
-    # pull columns (handles lower/upper case)
-    openp = df.get("open", df.get("Open"))
-    highp = df.get("high", df.get("High"))
-    lowp  = df.get("low", df.get("Low"))
+    openp = _get_open_series(df)
+    highp = _get_high_series(df)
+    lowp  = _get_low_series(df)
     close = _get_close_series(df)
 
     body = close - openp
@@ -299,8 +333,8 @@ def feature_close_position_in_range(df: DataFrame) -> Series:
         Series named 'close_position_in_range' in [0,1], where 0 means close==low, 1 means close==high.
     """
     close = _get_close_series(df)
-    highp = df.get("high", df.get("High"))
-    lowp  = df.get("low",  df.get("Low"))
+    highp = _get_high_series(df)
+    lowp  = _get_low_series(df)
 
     # avoid division by zero
     rng = (highp - lowp).replace(0, np.nan)
@@ -327,7 +361,7 @@ def feature_high_vs_close(df: DataFrame) -> Series:
         Series named 'high_vs_close' giving the intraday extension above close.
     """
     close = _get_close_series(df)
-    highp = df.get("high", df.get("High"))
+    highp = _get_high_series(df)
     pct = (highp / close - 1) * 100
     pct.name = "high_vs_close"
     return pct
@@ -396,9 +430,9 @@ def feature_atr(df: DataFrame, period: int = 14) -> Series:
         Series named 'atr_{period}' of ATR values.
     """
     s = ta.atr(
-        high=df["high"],
-        low=df["low"],
-        close=df["close"],
+        high=_get_high_series(df),
+        low=_get_low_series(df),
+        close=_get_close_series(df),
         length=period
     )
     s.name = f"atr_{period}"
@@ -483,7 +517,7 @@ def feature_obv(df: DataFrame) -> Series:
     Returns:
         Series named 'obv' of cumulative OBV values.
     """
-    s = ta.obv(df["close"], df["volume"])
+    s = ta.obv(_get_close_series(df), _get_volume_series(df))
     s.name = "obv"
     return s
 
@@ -491,16 +525,26 @@ def feature_obv(df: DataFrame) -> Series:
 def feature_obv_pct(df: DataFrame, length: int = 1) -> Series:
     """
     Compute daily percent change of OBV via Rate-of-Change.
+    
+    Handles edge cases where OBV transitions from 0 to non-zero (which would
+    produce infinity in ROC calculation).
 
     Args:
         df: Input DataFrame with 'close' and 'volume' columns.
         length: Period for percent change (default 1 day).
 
     Returns:
-        Series named 'obv_pct' of percent changes.
+        Series named 'obv_pct' of percent changes, with infinities replaced by NaN.
     """
-    obv = ta.obv(df["close"], df["volume"])
+    obv = ta.obv(_get_close_series(df), _get_volume_series(df))
+    
+    # Compute ROC
     s = ta.roc(obv, length=length)
+    
+    # Handle infinity cases: when OBV goes from 0 to non-zero, ROC = infinity
+    # Replace infinities with NaN for downstream handling
+    s = s.replace([np.inf, -np.inf], np.nan)
+    
     s.name = "obv_pct"
     return s
 
@@ -541,8 +585,7 @@ def feature_volume_avg_ratio_5d(df: DataFrame) -> Series:
     """
     import numpy as np
 
-    # 1) Grab volume column (case-insensitive)
-    vol = df.get("volume", df.get("Volume"))
+    vol = _get_volume_series(df)
 
     # 2) Compute prior 5-day average volume
     avg5 = vol.shift(1).rolling(window=5, min_periods=1).mean()
@@ -831,8 +874,8 @@ def feature_stoch_k(
         Series named 'stoch_k' with values in [0,100].
     """
     close = _get_close_series(df)
-    highp = df.get("high", df.get("High"))
-    lowp  = df.get("low",  df.get("Low"))
+    highp = _get_high_series(df)
+    lowp  = _get_low_series(df)
 
     # 1) rolling extremes
     lowest_low  = lowp.rolling(window=length, min_periods=1).min()
@@ -876,8 +919,8 @@ def feature_stoch_d(
         Series named 'stoch_d' with values in [0,100].
     """
     close = _get_close_series(df)
-    highp = df.get("high", df.get("High"))
-    lowp  = df.get("low",  df.get("Low"))
+    highp = _get_high_series(df)
+    lowp  = _get_low_series(df)
 
     # 1) rolling extremes
     lowest_low   = lowp.rolling(window=length, min_periods=1).min()
@@ -959,9 +1002,9 @@ def feature_adx_14(df: DataFrame, period: int = 14) -> Series:
         Series named 'adx_{period}' of ADX values.
     """
     adx_df = ta.adx(
-        high=df["high"],
-        low=df["low"],
-        close=df["close"],
+        high=_get_high_series(df),
+        low=_get_low_series(df),
+        close=_get_close_series(df),
         length=period
     )
     s = adx_df[f"ADX_{period}"]
@@ -985,8 +1028,8 @@ def feature_ichimoku_conversion(df: DataFrame, period: int = 9) -> Series:
     Returns:
         Series named 'ichimoku_conversion'.
     """
-    highp = df.get("high", df.get("High"))
-    lowp  = df.get("low",  df.get("Low"))
+    highp = _get_high_series(df)
+    lowp  = _get_low_series(df)
     conv = (highp.rolling(period, min_periods=1).max() +
             lowp.rolling(period,  min_periods=1).min()) / 2
     conv.name = "ichimoku_conversion"
@@ -999,8 +1042,8 @@ def feature_ichimoku_base(df: DataFrame, period: int = 26) -> Series:
 
     Steps analogous to conversion line but with longer period.
     """
-    highp = df.get("high", df.get("High"))
-    lowp  = df.get("low",  df.get("Low"))
+    highp = _get_high_series(df)
+    lowp  = _get_low_series(df)
     base = (highp.rolling(period, min_periods=1).max() +
             lowp.rolling(period,  min_periods=1).min()) / 2
     base.name = "ichimoku_base"
@@ -1014,16 +1057,19 @@ def feature_ichimoku_lead_span_a(
     shift: int = 26
 ) -> Series:
     """
-    Leading Span A (Senkou Span A): midpoint of Conversion and Base lines, shifted forward.
-
+    Leading Span A (Senkou Span A): midpoint of Conversion and Base lines.
+    
+    WARNING: Original Ichimoku shifts this forward, which causes lookahead bias.
+    This version does NOT shift forward to avoid using future data in ML models.
+    
     Steps:
       1. Compute conversion & base via their feature functions.
-      2. Average them.
-      3. Shift forward by `shift` bars.
+      2. Average them (without forward shift).
     """
     conv = feature_ichimoku_conversion(df, period=conv_period)
     base = feature_ichimoku_base(df,    period=base_period)
-    span_a = ((conv + base) / 2).shift(shift)
+    # Do NOT shift forward - that would be lookahead bias
+    span_a = (conv + base) / 2
     span_a.name = "ichimoku_lead_span_a"
     return span_a
 
@@ -1034,17 +1080,20 @@ def feature_ichimoku_lead_span_b(
     shift: int = 26
 ) -> Series:
     """
-    Leading Span B (Senkou Span B): midpoint of highest high & lowest low over `period` bars, shifted forward.
-
+    Leading Span B (Senkou Span B): midpoint of highest high & lowest low over `period` bars.
+    
+    WARNING: Original Ichimoku shifts this forward, which causes lookahead bias.
+    This version does NOT shift forward to avoid using future data in ML models.
+    
     Steps:
       1. Compute rolling max(high, window=period) and min(low, window=period).
-      2. Average them.
-      3. Shift forward by `shift` bars.
+      2. Average them (without forward shift).
     """
-    highp = df.get("high", df.get("High"))
-    lowp  = df.get("low",  df.get("Low"))
-    span_b = ((highp.rolling(period, min_periods=1).max() +
-               lowp.rolling(period,  min_periods=1).min()) / 2).shift(shift)
+    highp = _get_high_series(df)
+    lowp  = _get_low_series(df)
+    # Do NOT shift forward - that would be lookahead bias
+    span_b = (highp.rolling(period, min_periods=1).max() +
+              lowp.rolling(period,  min_periods=1).min()) / 2
     span_b.name = "ichimoku_lead_span_b"
     return span_b
 
@@ -1054,8 +1103,11 @@ def feature_ichimoku_lagging_span(
     shift: int = 26
 ) -> Series:
     """
-    Lagging Span (Chikou Span): today’s close shifted backward by `shift` bars.
-
+    Lagging Span (Chikou Span): today's close shifted backward by `shift` bars.
+    
+    WARNING: This uses past data shifted forward, which can cause issues in ML.
+    Consider using this only for visualization, not as a predictive feature.
+    
     Steps:
       1. Retrieve close via _get_close_series.
       2. Shift backward (negative shift) by `shift` bars.
@@ -1086,8 +1138,7 @@ def feature_bullish_engulfing(df: DataFrame) -> Series:
     """
     import numpy as np
 
-    # 1) grab open & close (case-insensitive)
-    openp  = df.get("open", df.get("Open"))
+    openp  = _get_open_series(df)
     closep = _get_close_series(df)
 
     # yesterday’s values
@@ -1117,7 +1168,7 @@ def feature_bearish_engulfing(df: DataFrame) -> Series:
       4. Engulf: today’s open > prev_close AND today’s close < prev_open.
       5. Combine into 1.0/0.0 flag.
     """
-    openp   = df.get("open", df.get("Open"))
+    openp   = _get_open_series(df)
     closep  = _get_close_series(df)
     prev_o  = openp.shift(1); prev_c = closep.shift(1)
     prior_bull = prev_c > prev_o
@@ -1142,8 +1193,10 @@ def feature_hammer_signal(df: DataFrame, body_pct: float = 0.3, shadow_ratio: fl
          • upper_shadow <= body_pct * range
       5. Flag 1.0/0.0.
     """
-    openp  = df.get("open", df.get("Open"));  closep = _get_close_series(df)
-    highp  = df.get("high", df.get("High"));  lowp   = df.get("low",  df.get("Low"))
+    openp  = _get_open_series(df)
+    closep = _get_close_series(df)
+    highp  = _get_high_series(df)
+    lowp   = _get_low_series(df)
     body   = (closep - openp).abs()
     rng    = highp - lowp
     lower  = np.minimum(openp, closep) - lowp
@@ -1171,8 +1224,10 @@ def feature_shooting_star_signal(df: DataFrame, body_pct: float = 0.3, shadow_ra
          • lower <= body_pct * range
       4. Flag 1.0/0.0.
     """
-    openp  = df.get("open", df.get("Open")); closep = _get_close_series(df)
-    highp  = df.get("high", df.get("High")); lowp   = df.get("low",  df.get("Low"))
+    openp  = _get_open_series(df)
+    closep = _get_close_series(df)
+    highp  = _get_high_series(df)
+    lowp   = _get_low_series(df)
     body   = (closep - openp).abs()
     rng    = highp - lowp
     upper  = highp - np.maximum(openp, closep)
@@ -1230,8 +1285,10 @@ def feature_doji_signal(df: DataFrame, pct_tol: float = 0.1) -> Series:
       1. body=abs(close−open), range=high−low.
       2. Flag body <= pct_tol * range.
     """
-    openp  = df.get("open", df.get("Open")); closep = _get_close_series(df)
-    highp  = df.get("high", df.get("High")); lowp   = df.get("low",  df.get("Low"))
+    openp  = _get_open_series(df)
+    closep = _get_close_series(df)
+    highp  = _get_high_series(df)
+    lowp   = _get_low_series(df)
     body   = (closep - openp).abs()
     rng    = highp - lowp
     flag      = (body <= pct_tol * rng).astype(float)
@@ -1248,8 +1305,10 @@ def feature_long_legged_doji(df: DataFrame, pct_tol: float = 0.1, shadow_ratio: 
       2. Shadows = (high−max) and (min−low).
       3. Both shadows >= shadow_ratio*body.
     """
-    openp  = df.get("open", df.get("Open")); closep = _get_close_series(df)
-    highp  = df.get("high", df.get("High")); lowp   = df.get("low",  df.get("Low"))
+    openp  = _get_open_series(df)
+    closep = _get_close_series(df)
+    highp  = _get_high_series(df)
+    lowp   = _get_low_series(df)
     body   = (closep - openp).abs()
     rng    = highp - lowp; tol = pct_tol * rng
     raw    = body <= tol
@@ -1276,7 +1335,9 @@ def feature_morning_star(df: DataFrame) -> Series:
     prev2_o, prev2_c = openp.shift(1), closep.shift(1)
     # 1) conditions
     c1 = prev1_c < prev1_o   # bar1 bearish
-    c2 = (prev2_c - prev2_o).abs() <= 0.3*(df['high'].shift(1)-df['low'].shift(1))
+    highp = _get_high_series(df)
+    lowp = _get_low_series(df)
+    c2 = (prev2_c - prev2_o).abs() <= 0.3*(highp.shift(1) - lowp.shift(1))
     c3 = closep > openp      # bar3 bullish
     # 2) bar3 closes above midpoint of bar1
     mid1 = (prev1_o + prev1_c) / 2
@@ -1296,7 +1357,9 @@ def feature_evening_star(df: DataFrame) -> Series:
     prev1_o, prev1_c = openp.shift(2), closep.shift(2)
     prev2_o, prev2_c = openp.shift(1), closep.shift(1)
     c1 = prev1_c > prev1_o
-    c2 = (prev2_c - prev2_o).abs() <= 0.3*(df['high'].shift(1)-df['low'].shift(1))
+    highp = _get_high_series(df)
+    lowp = _get_low_series(df)
+    c2 = (prev2_c - prev2_o).abs() <= 0.3*(highp.shift(1) - lowp.shift(1))
     c3 = closep < openp
     mid1 = (prev1_o + prev1_c) / 2
     cond = c1 & c2 & c3 & (closep < mid1)

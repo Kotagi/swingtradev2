@@ -1,8 +1,8 @@
 # config/features.yaml
 
 features:
-  5d_return: 0
-  10d_return: 0
+  # NOTE: 5d_return and 10d_return are forward-looking labels, not features.
+  # They have been removed from the feature registry to prevent data leakage.
   atr: 1
   bb_width: 1
   ema_cross: 1

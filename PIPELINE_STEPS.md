@@ -30,29 +30,43 @@ download_data_full.bat
 
 ---
 
-### **Step 2: Clean Data** (Optional if data already cleaned)
-**Purpose:** Clean and normalize raw stock data
+### **Step 2: Clean Data**
+**Purpose:** Clean and normalize raw stock data with parallel processing and robust validation
 
 **Command:**
+```bash
+python src/swing_trade_app.py clean
+```
+
+Or directly:
 ```bash
 python src/clean_data.py --raw-dir data/raw --clean-dir data/clean
 ```
 
-Or using short flags:
-```bash
-python src/clean_data.py -r data/raw -c data/clean
-```
+**Options:**
+- `--raw-dir` / `-r`: Input directory (default: `data/raw`)
+- `--clean-dir` / `-c`: Output directory (default: `data/clean`)
+- `--resume`: Skip already-cleaned files (resume from previous run)
+- `--workers` / `-w`: Number of parallel workers (default: 4)
+- `--verbose` / `-v`: Show detailed cleaning steps
 
 **What it does:**
-- Renames columns to lowercase
-- Parses and validates dates
-- Removes invalid/duplicate rows
-- Applies split adjustments to prices
-- Converts to Parquet format for efficiency
+- **Parallel processing:** Cleans multiple files concurrently for faster processing
+- **Progress tracking:** Shows real-time progress and statistics
+- **Resume capability:** Skips already-cleaned files when using `--resume`
+- **Robust validation:** Case-insensitive column detection, handles missing columns gracefully
+- **Data cleaning:**
+  - Renames columns to lowercase
+  - Parses and validates dates
+  - Removes invalid/duplicate rows
+  - Applies split adjustments to prices
+  - Converts to Parquet format for efficiency
+- **Enhanced error handling:** Handles empty files, malformed CSVs, and edge cases
+- **Summary statistics:** Reports rows dropped, processing time, success/failure counts
 
 **Output:** Cleaned Parquet files in `data/clean/` (one per ticker)
 
-**Note:** This step is typically only needed once or when raw data is updated.
+**Note:** This step is automatically included in the full pipeline. Use `--resume` to skip already-cleaned files.
 
 ---
 
@@ -71,20 +85,32 @@ python src/swing_trade_app.py features --horizon 5 --threshold 0.05
 - `--full`: Force full recomputation (ignores cache)
 
 **What it does:**
+- **Parallel processing:** Uses joblib for multi-core feature computation
+- **Feature validation:** Automatically checks for infinities, excessive NaNs, and constant values
+- **Robust error handling:** Continues processing other tickers if one fails
+- **Caching:** Skips up-to-date files automatically (use `--full` to force recompute)
 - Loads cleaned data from `data/clean/`
 - Computes 50+ technical indicators (RSI, MACD, Bollinger Bands, candlestick patterns, etc.)
+- **Data leakage prevention:** Forward-looking features removed from registry
+- **Ichimoku fixes:** Leading spans modified to avoid lookahead bias
 - Creates binary labels: 1 if future return > threshold, else 0
 - Saves feature + label data to `data/features_labeled/`
+- **Summary statistics:** Reports features computed, validation issues, processing time
 
 **Output:** Feature Parquet files in `data/features_labeled/` (one per ticker)
 
 **Key Features Computed:**
-- Price indicators (SMA, EMA, moving averages)
-- Momentum indicators (RSI, MACD, Stochastic)
-- Volatility indicators (ATR, Bollinger Bands)
-- Volume indicators (OBV, volume ratios)
-- Candlestick patterns (engulfing, hammer, doji, etc.)
-- Ichimoku components
+- **Momentum indicators:** RSI, MACD, Stochastic (with variants)
+- **Trend indicators:** SMA, EMA (multiple timeframes), ADX, Ichimoku
+- **Volatility indicators:** ATR, Bollinger Bands
+- **Volume indicators:** OBV (raw, percent change, z-score), volume ratios
+- **Price action:** Returns, gaps, breakouts, z-scores, percentiles
+- **Pattern recognition:** Candlestick patterns (engulfing, hammer, doji, morning/evening star, etc.)
+
+**Feature Organization:**
+- Features are categorized (momentum, trend, volume, volatility, pattern, price_action)
+- See `FEATURE_REDUNDANCY_GUIDE.md` for feature selection recommendations
+- See `features/metadata.py` for feature metadata and categories
 
 ---
 
@@ -221,7 +247,13 @@ python src/swing_trade_app.py full-pipeline \
 - `--full-features`: Force full feature recomputation
 
 **What it does:**
-- Executes steps 1-6 in sequence
+- Executes steps 1-6 in sequence:
+  1. Download data (if not skipped)
+  2. **Clean data** (automatically included, uses resume mode)
+  3. Build features
+  4. Train model (if not skipped)
+  5. Run backtest
+  6. Identify trades
 - Stops if any step fails
 - Shows progress for each step
 
@@ -279,6 +311,13 @@ Current Trading Opportunities
 - **`config/trading_config.yaml`**: Default trading parameters
 - **`data/tickers/sp500_tickers.csv`**: List of tickers to analyze
 
+## Documentation Files
+
+- **`FEATURE_REDUNDANCY_GUIDE.md`**: Guide to redundant features and selection strategies
+- **`features/metadata.py`**: Feature metadata system (categories, ranges, descriptions)
+- **`DOWNLOAD_IMPROVEMENTS_SUMMARY.md`**: Details on download step improvements
+- **`DOWNLOAD_ERROR_FIXES.md`**: Common download errors and fixes
+
 ---
 
 ## Quick Reference Commands
@@ -289,9 +328,35 @@ python src/swing_trade_app.py full-pipeline --horizon 5 --return-threshold 0.05
 
 # Individual steps
 python src/swing_trade_app.py download --full
+python src/swing_trade_app.py clean --resume  # Optional, included in full pipeline
 python src/swing_trade_app.py features --horizon 5 --threshold 0.05
 python src/swing_trade_app.py train
 python src/swing_trade_app.py backtest --horizon 5 --return-threshold 0.05
 python src/swing_trade_app.py identify --min-probability 0.6 --top-n 20
 ```
+
+## Recent Improvements
+
+### Download Step
+- ✅ Robust error handling with retry logic and exponential backoff
+- ✅ Progress bar with real-time statistics
+- ✅ Resume capability from checkpoint
+- ✅ Data validation and missing data detection
+- ✅ Adaptive rate limiting
+
+### Clean Step
+- ✅ Parallel processing (configurable workers)
+- ✅ Progress tracking and summary statistics
+- ✅ Resume capability (skip already-cleaned files)
+- ✅ Robust column detection (case-insensitive)
+- ✅ Enhanced error handling for edge cases
+
+### Feature Step
+- ✅ Feature validation (infinities, NaNs, constant values)
+- ✅ Data leakage prevention (forward-looking features removed)
+- ✅ Ichimoku lookahead bias fixes
+- ✅ Standardized column name handling
+- ✅ Comprehensive summary statistics
+- ✅ Feature metadata system with categories
+- ✅ Feature redundancy documentation
 

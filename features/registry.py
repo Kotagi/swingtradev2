@@ -10,8 +10,6 @@ a loader to read a feature-toggle YAML and return only those features enabled.
 
 import yaml
 from features.technical import (
-    feature_5d_return,
-    feature_10d_return,
     feature_atr,
     feature_bb_width,
     feature_ema_cross,
@@ -72,8 +70,8 @@ from features.technical import (
 # Values: Python functions that accept a DataFrame and return a Series
 # ──────────────────────────────────────────────────────────────────────────────
 FEATURES = {
-    "5d_return":                feature_5d_return,                  # 5-day forward return label
-    "10d_return":               feature_10d_return,                 # 10-day forward return label
+    # NOTE: 5d_return and 10d_return are forward-looking labels, not features.
+    # They should NOT be used as features to avoid data leakage.
     "atr":                      feature_atr,                        # Average True Range
     "bb_width":                 feature_bb_width,                   # Bollinger Band width
     "ema_cross":                feature_ema_cross,                  # EMA(short) − EMA(long)
@@ -87,7 +85,7 @@ FEATURES = {
     "ema_10":                   feature_ema_10,                     # 10-day EMA
     "sma_50":                   feature_sma_50,                     # 50-day SMA
     "ema_50":                   feature_ema_50,                     # 50-day EMA
-    "adx_14":                   feature_adx_14,                     # 14-day Average Directional Index
+    "adx_14":                   feature_adx_14,                    # 14-day Average Directional Index
     "log_return_1d":            feature_log_return_1d,              # 1 Day Log Return
     "log_return_5d":            feature_log_return_5d,              # 5 Day Log Return
     "close_vs_ma10":            feature_close_vs_ma10,              # Close vs 10-Day MA
