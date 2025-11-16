@@ -10,6 +10,7 @@ a loader to read a feature-toggle YAML and return only those features enabled.
 
 import yaml
 from features.technical import (
+    # Original features
     feature_atr,
     feature_bb_width,
     feature_ema_cross,
@@ -61,6 +62,65 @@ from features.technical import (
     feature_ichimoku_lead_span_a,
     feature_ichimoku_lead_span_b,
     feature_ichimoku_lagging_span,
+    # Phase 1: Support & Resistance
+    feature_resistance_level_20d,
+    feature_resistance_level_50d,
+    feature_support_level_20d,
+    feature_support_level_50d,
+    feature_distance_to_resistance,
+    feature_distance_to_support,
+    feature_price_near_resistance,
+    feature_price_near_support,
+    feature_resistance_touches,
+    feature_support_touches,
+    feature_pivot_point,
+    feature_fibonacci_levels,
+    # Phase 1: Volatility Regime
+    feature_volatility_regime,
+    feature_volatility_trend,
+    feature_bb_squeeze,
+    feature_bb_expansion,
+    feature_atr_ratio_20d,
+    feature_atr_ratio_252d,
+    feature_volatility_percentile_20d,
+    feature_volatility_percentile_252d,
+    feature_high_volatility_flag,
+    feature_low_volatility_flag,
+    # Phase 1: Trend Strength
+    feature_trend_strength_20d,
+    feature_trend_strength_50d,
+    feature_trend_consistency,
+    feature_ema_alignment,
+    feature_sma_slope_20d,
+    feature_sma_slope_50d,
+    feature_ema_slope_20d,
+    feature_trend_duration,
+    feature_trend_reversal_signal,
+    feature_price_vs_all_mas,
+    # Phase 1: Multi-Timeframe (Weekly)
+    feature_weekly_return_1w,
+    feature_weekly_return_2w,
+    feature_weekly_return_4w,
+    feature_weekly_sma_5w,
+    feature_weekly_sma_10w,
+    feature_weekly_sma_20w,
+    feature_weekly_ema_5w,
+    feature_weekly_ema_10w,
+    feature_weekly_rsi_14w,
+    feature_weekly_macd_histogram,
+    feature_close_vs_weekly_sma20,
+    feature_weekly_volume_ratio,
+    feature_weekly_atr_pct,
+    feature_weekly_trend_strength,
+    # Phase 1: Volume Profile (Non-Intraday)
+    feature_volume_weighted_price,
+    feature_price_vs_vwap,
+    feature_vwap_slope,
+    feature_volume_climax,
+    feature_volume_dry_up,
+    feature_volume_trend,
+    feature_volume_breakout,
+    feature_volume_distribution,
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -122,7 +182,66 @@ FEATURES = {
     "ichimoku_base":            feature_ichimoku_base,              # Base Line (Kijun-sen): midpoint of highest high and lowest low over `period` bars
     "ichimoku_lead_span_a":     feature_ichimoku_lead_span_a,       # Leading Span A (Senkou Span A): midpoint of Conversion and Base lines, shifted forward
     "ichimoku_lead_span_b":     feature_ichimoku_lead_span_b,       # Leading Span B (Senkou Span B): midpoint of highest high & lowest low over `period` bars, shifted forward
-    "ichimoku_lagging_span":    feature_ichimoku_lagging_span,      # Lagging Span (Chikou Span): today’s close shifted backward by `shift` bars
+    "ichimoku_lagging_span":    feature_ichimoku_lagging_span,      # Lagging Span (Chikou Span): today's close shifted backward by `shift` bars
+    # Phase 1: Support & Resistance (12 features)
+    "resistance_level_20d":     feature_resistance_level_20d,       # Nearest resistance (20-day high)
+    "resistance_level_50d":     feature_resistance_level_50d,       # Nearest resistance (50-day high)
+    "support_level_20d":        feature_support_level_20d,          # Nearest support (20-day low)
+    "support_level_50d":        feature_support_level_50d,          # Nearest support (50-day low)
+    "distance_to_resistance":   feature_distance_to_resistance,     # % distance to resistance
+    "distance_to_support":      feature_distance_to_support,        # % distance to support
+    "price_near_resistance":    feature_price_near_resistance,      # Binary: within 2% of resistance
+    "price_near_support":       feature_price_near_support,         # Binary: within 2% of support
+    "resistance_touches":       feature_resistance_touches,         # Count of resistance touches
+    "support_touches":          feature_support_touches,            # Count of support touches
+    "pivot_point":              feature_pivot_point,                # Classic pivot point
+    "fibonacci_levels":         feature_fibonacci_levels,           # Distance to Fibonacci level
+    # Phase 1: Volatility Regime (10 features)
+    "volatility_regime":        feature_volatility_regime,          # ATR percentile over 252 days
+    "volatility_trend":         feature_volatility_trend,           # ATR slope (trend)
+    "bb_squeeze":               feature_bb_squeeze,                 # BB squeeze indicator
+    "bb_expansion":             feature_bb_expansion,                # BB expansion indicator
+    "atr_ratio_20d":            feature_atr_ratio_20d,              # ATR / 20-day ATR avg
+    "atr_ratio_252d":           feature_atr_ratio_252d,             # ATR / 252-day ATR avg
+    "volatility_percentile_20d": feature_volatility_percentile_20d, # ATR percentile (20d)
+    "volatility_percentile_252d": feature_volatility_percentile_252d, # ATR percentile (252d)
+    "high_volatility_flag":     feature_high_volatility_flag,       # Binary: ATR > 75th percentile
+    "low_volatility_flag":      feature_low_volatility_flag,        # Binary: ATR < 25th percentile
+    # Phase 1: Trend Strength (11 features)
+    "trend_strength_20d":       feature_trend_strength_20d,         # ADX over 20 days
+    "trend_strength_50d":       feature_trend_strength_50d,         # ADX over 50 days
+    "trend_consistency":        feature_trend_consistency,          # % days above/below MA
+    "ema_alignment":            feature_ema_alignment,              # EMA alignment (-1/0/1)
+    "sma_slope_20d":            feature_sma_slope_20d,              # 20-day SMA slope
+    "sma_slope_50d":            feature_sma_slope_50d,              # 50-day SMA slope
+    "ema_slope_20d":            feature_ema_slope_20d,             # 20-day EMA slope
+    "trend_duration":           feature_trend_duration,             # Days since trend change
+    "trend_reversal_signal":    feature_trend_reversal_signal,      # Reversal indicator
+    "price_vs_all_mas":         feature_price_vs_all_mas,           # Count of MAs price is above
+    # Phase 1: Multi-Timeframe Weekly (14 features)
+    "weekly_return_1w":         feature_weekly_return_1w,           # 1-week log return
+    "weekly_return_2w":         feature_weekly_return_2w,           # 2-week log return
+    "weekly_return_4w":         feature_weekly_return_4w,           # 4-week log return
+    "weekly_sma_5w":            feature_weekly_sma_5w,              # 5-week SMA
+    "weekly_sma_10w":           feature_weekly_sma_10w,              # 10-week SMA
+    "weekly_sma_20w":           feature_weekly_sma_20w,             # 20-week SMA
+    "weekly_ema_5w":            feature_weekly_ema_5w,              # 5-week EMA
+    "weekly_ema_10w":           feature_weekly_ema_10w,             # 10-week EMA
+    "weekly_rsi_14w":           feature_weekly_rsi_14w,             # Weekly RSI
+    "weekly_macd_histogram":    feature_weekly_macd_histogram,      # Weekly MACD histogram
+    "close_vs_weekly_sma20":    feature_close_vs_weekly_sma20,      # Price vs 20-week SMA
+    "weekly_volume_ratio":      feature_weekly_volume_ratio,        # Weekly volume ratio
+    "weekly_atr_pct":           feature_weekly_atr_pct,              # Weekly ATR %
+    "weekly_trend_strength":    feature_weekly_trend_strength,      # Weekly trend strength
+    # Phase 1: Volume Profile (8 features, non-intraday)
+    "volume_weighted_price":    feature_volume_weighted_price,      # VWAP approximation
+    "price_vs_vwap":            feature_price_vs_vwap,              # Distance to VWAP
+    "vwap_slope":               feature_vwap_slope,                 # VWAP slope
+    "volume_climax":            feature_volume_climax,              # High volume days
+    "volume_dry_up":            feature_volume_dry_up,              # Low volume days
+    "volume_trend":             feature_volume_trend,               # Volume trend
+    "volume_breakout":          feature_volume_breakout,            # Volume spike on breakout
+    "volume_distribution":      feature_volume_distribution,        # Volume concentration
 }
 
 def load_enabled_features(config_path: str) -> dict:

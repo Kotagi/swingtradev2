@@ -82,12 +82,12 @@ def apply_features(
         - df_feat: original df + feature columns
         - validation_issues: dict mapping feature_name -> list of issues
     """
-    df_feat = df.copy()
     validation_issues = {}
+    feature_dict = {}  # Collect all features first
     
     for name, func in enabled_features.items():
         try:
-            feature_series = func(df_feat)
+            feature_series = func(df)
             
             # Validate feature output
             if validate:
@@ -100,14 +100,21 @@ def apply_features(
                     # Replace infinities with NaN for downstream handling
                     feature_series = feature_series.replace([np.inf, -np.inf], np.nan)
             
-            df_feat[name] = feature_series
+            feature_dict[name] = feature_series
             logger.debug(f"{name} computed")
             
         except Exception as e:
             logger.error(f"{name} failed: {e}", exc_info=True)
             validation_issues[name] = [f"Computation error: {str(e)}"]
             # Add NaN column on failure to maintain DataFrame structure
-            df_feat[name] = np.nan
+            feature_dict[name] = pd.Series(np.nan, index=df.index, name=name)
+    
+    # Join all features at once using pd.concat (much faster than adding one by one)
+    if feature_dict:
+        feature_df = pd.DataFrame(feature_dict, index=df.index)
+        df_feat = pd.concat([df, feature_df], axis=1)
+    else:
+        df_feat = df.copy()
     
     return df_feat, validation_issues
 

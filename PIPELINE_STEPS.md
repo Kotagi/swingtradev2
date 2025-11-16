@@ -89,8 +89,9 @@ python src/swing_trade_app.py features --horizon 5 --threshold 0.05
 - **Feature validation:** Automatically checks for infinities, excessive NaNs, and constant values
 - **Robust error handling:** Continues processing other tickers if one fails
 - **Caching:** Skips up-to-date files automatically (use `--full` to force recompute)
+- **Performance optimized:** Uses efficient DataFrame concatenation (no fragmentation warnings)
 - Loads cleaned data from `data/clean/`
-- Computes 50+ technical indicators (RSI, MACD, Bollinger Bands, candlestick patterns, etc.)
+- Computes **105+ technical indicators** across multiple categories
 - **Data leakage prevention:** Forward-looking features removed from registry
 - **Ichimoku fixes:** Leading spans modified to avoid lookahead bias
 - Creates binary labels: 1 if future return > threshold, else 0
@@ -99,7 +100,9 @@ python src/swing_trade_app.py features --horizon 5 --threshold 0.05
 
 **Output:** Feature Parquet files in `data/features_labeled/` (one per ticker)
 
-**Key Features Computed:**
+**Key Features Computed (105+ total):**
+
+**Original Features (~50):**
 - **Momentum indicators:** RSI, MACD, Stochastic (with variants)
 - **Trend indicators:** SMA, EMA (multiple timeframes), ADX, Ichimoku
 - **Volatility indicators:** ATR, Bollinger Bands
@@ -107,41 +110,95 @@ python src/swing_trade_app.py features --horizon 5 --threshold 0.05
 - **Price action:** Returns, gaps, breakouts, z-scores, percentiles
 - **Pattern recognition:** Candlestick patterns (engulfing, hammer, doji, morning/evening star, etc.)
 
+**Phase 1 New Features (55):**
+- **Support & Resistance (12):** Resistance/support levels (20d, 50d), distances, touches, pivot points, Fibonacci levels
+- **Volatility Regime (10):** ATR percentiles, volatility trends, BB squeeze/expansion, volatility flags
+- **Trend Strength (11):** ADX variations (20d, 50d), trend consistency, EMA alignment, MA slopes, trend duration, reversal signals
+- **Multi-Timeframe Weekly (14):** Weekly SMAs, EMAs, RSI, MACD, returns, volume ratios, trend strength
+- **Volume Profile (8):** VWAP, price vs VWAP, volume climax/dry-up, volume trends, breakouts, distribution
+
 **Feature Organization:**
-- Features are categorized (momentum, trend, volume, volatility, pattern, price_action)
+- Features are categorized (momentum, trend, volume, volatility, pattern, price_action, support_resistance, volatility_regime, trend_strength, multi_timeframe, volume_profile)
 - See `FEATURE_REDUNDANCY_GUIDE.md` for feature selection recommendations
+- See `FEATURE_ROADMAP.md` for complete feature roadmap and future additions
+- See `PHASE1_FEATURE_ANALYSIS.md` for Phase 1 feature breakdown
+- See `FUTURE_FEATURES.md` for features requiring additional data sources
 - See `features/metadata.py` for feature metadata and categories
+
+**Performance Notes:**
+- Feature computation is optimized with efficient DataFrame operations
+- Weekly features use resampling and forward-fill for multi-timeframe analysis
+- Percentile calculations use optimized vectorized operations
+- Processing time scales with number of features and tickers (expect ~2-5 minutes for 493 tickers with 105 features)
 
 ---
 
 ### **Step 4: Train ML Model**
-**Purpose:** Train XGBoost classifier to predict profitable trades
+**Purpose:** Train XGBoost classifier with hyperparameter tuning and comprehensive evaluation
 
 **Command:**
 ```bash
+# Quick training (improved default hyperparameters)
 python src/swing_trade_app.py train
+
+# With hyperparameter tuning (recommended for best results)
+python src/swing_trade_app.py train --tune --n-iter 30
+
+# With cross-validation (more robust, slower)
+python src/swing_trade_app.py train --tune --cv
+
+# Full diagnostics with SHAP analysis
+python src/swing_trade_app.py train --tune --diagnostics
 ```
 
 **Options:**
-- `--diagnostics`: Show feature importance and SHAP diagnostics
+- `--tune`: Perform hyperparameter tuning (RandomizedSearchCV) - **Recommended**
+- `--n-iter`: Number of hyperparameter search iterations (default: 20)
+- `--cv`: Use cross-validation for hyperparameter tuning (slower but more robust)
+- `--no-early-stop`: Disable early stopping (train for full n_estimators)
+- `--plots`: Generate training curves and feature importance charts (requires matplotlib)
+- `--diagnostics`: Show SHAP diagnostics (requires shap library)
 
 **What it does:**
+- **Enhanced data splitting:** Train/Validation/Test split by date:
+  - Train: up to 2022-12-31
+  - Validation: 2023-01-01 to 2023-12-31 (for early stopping)
+  - Test: 2024-01-01 onwards
 - Loads all feature data from `data/features_labeled/`
 - Filters features based on `config/train_features.yaml`
-- Splits data into train/test sets (by date: train up to 2022-12-31)
 - Trains baseline models (DummyClassifier, LogisticRegression)
-- Trains XGBoost classifier with class imbalance handling
-- Evaluates performance (ROC AUC, precision, recall)
-- Saves model to `models/xgb_classifier_selected_features.pkl`
+- **Hyperparameter tuning:** Searches 9 hyperparameters (n_estimators, max_depth, learning_rate, etc.)
+- **Early stopping:** Prevents overfitting using validation set
+- Trains XGBoost classifier with improved class imbalance handling
+- **Comprehensive evaluation:** ROC AUC, Average Precision, F1 Score, Confusion Matrix, Precision/Recall/Specificity
+- **Feature importance:** Always displays top 20 features with rankings
+- Saves model, features, and training metadata
 
 **Output:** 
 - Trained model file: `models/xgb_classifier_selected_features.pkl`
-- Console metrics: ROC AUC, classification report
+- Training metadata: `models/training_metadata.json`
+- Training curves plot: `models/xgb_training_curves.png` (if `--plots` used)
+- Feature importance chart: `models/feature_importance_chart.png` (if `--plots` used)
+- Console metrics: Comprehensive evaluation metrics
 
 **Metrics Shown:**
-- ROC AUC score (higher is better, >0.65 is decent)
-- Precision/Recall for both classes
-- Feature importance (if --diagnostics used)
+- **Baseline comparisons:** DummyClassifier, LogisticRegression, XGBoost AUC scores
+- **Test set metrics:**
+  - ROC AUC (higher is better, >0.70 is good)
+  - Average Precision (AP)
+  - F1 Score
+  - Confusion Matrix (TN, FP, FN, TP)
+  - Precision, Recall, Specificity, Accuracy
+  - Classification report
+- **Feature importance:** Top 20 features with cumulative importance percentages
+- **Training metadata:** Hyperparameters, metrics, feature importances, date ranges
+
+**Performance Tips:**
+- Use `--tune` for best results (adds ~5-15 minutes but significantly improves performance)
+- Start with `--n-iter 20` for faster tuning, increase to 30-50 for better results
+- Use `--cv` only if you have time (adds significant computation time)
+- Early stopping is enabled by default (use `--no-early-stop` to disable)
+- Use `--plots` to visualize training progress and feature importance (helpful for analysis)
 
 ---
 
@@ -313,6 +370,10 @@ Current Trading Opportunities
 
 ## Documentation Files
 
+- **`FEATURE_ROADMAP.md`**: Complete feature roadmap with all planned features (Phase 1-3)
+- **`PHASE1_FEATURE_ANALYSIS.md`**: Detailed analysis of Phase 1 features and data requirements
+- **`PHASE1_IMPLEMENTATION_SUMMARY.md`**: Summary of Phase 1 feature implementation
+- **`FUTURE_FEATURES.md`**: Features requiring additional data sources (intraday, market indices, etc.)
 - **`FEATURE_REDUNDANCY_GUIDE.md`**: Guide to redundant features and selection strategies
 - **`features/metadata.py`**: Feature metadata system (categories, ranges, descriptions)
 - **`DOWNLOAD_IMPROVEMENTS_SUMMARY.md`**: Details on download step improvements
@@ -345,18 +406,34 @@ python src/swing_trade_app.py identify --min-probability 0.6 --top-n 20
 - ✅ Adaptive rate limiting
 
 ### Clean Step
-- ✅ Parallel processing (configurable workers)
+- ✅ Parallel processing for faster cleaning
 - ✅ Progress tracking and summary statistics
 - ✅ Resume capability (skip already-cleaned files)
 - ✅ Robust column detection (case-insensitive)
 - ✅ Enhanced error handling for edge cases
 
 ### Feature Step
+- ✅ **105+ features** across 11 categories
+- ✅ **Phase 1 features implemented:** Support/Resistance, Volatility Regime, Trend Strength, Multi-Timeframe, Volume Profile
+- ✅ Performance optimized (efficient DataFrame operations, no fragmentation)
 - ✅ Feature validation (infinities, NaNs, constant values)
 - ✅ Data leakage prevention (forward-looking features removed)
 - ✅ Ichimoku lookahead bias fixes
 - ✅ Standardized column name handling
+- ✅ Parallel processing with joblib
+- ✅ Optimized percentile calculations
 - ✅ Comprehensive summary statistics
 - ✅ Feature metadata system with categories
 - ✅ Feature redundancy documentation
+
+### Training Step
+- ✅ Hyperparameter tuning with RandomizedSearchCV
+- ✅ Early stopping to prevent overfitting
+- ✅ Cross-validation support
+- ✅ Comprehensive evaluation metrics
+- ✅ Feature importance display
+- ✅ Model versioning and metadata tracking
+- ✅ Training curves visualization (optional)
+- ✅ Optimized parallelization
+- ✅ Fast mode for quicker tuning
 

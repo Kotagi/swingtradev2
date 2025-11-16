@@ -134,16 +134,54 @@ def build_features(
 
 
 def train_model(
-    diagnostics: bool = False
+    diagnostics: bool = False,
+    tune: bool = False,
+    n_iter: int = 20,
+    cv: bool = False,
+    no_early_stop: bool = False,
+    plots: bool = False,
+    fast: bool = False,
+    cv_folds: Optional[int] = None,
+    imbalance_multiplier: float = 1.0,
+    train_end: Optional[str] = None,
+    val_end: Optional[str] = None
 ) -> bool:
-    """Train ML model."""
+    """Train ML model with optional hyperparameter tuning and visualization."""
     cmd = [
         sys.executable,
         str(SCRIPTS_DIR / "train_model.py")
     ]
     
+    if tune:
+        cmd.append("--tune")
+        cmd.extend(["--n-iter", str(n_iter)])
+    
+    if cv:
+        cmd.append("--cv")
+    
+    if no_early_stop:
+        cmd.append("--no-early-stop")
+    
+    if plots:
+        cmd.append("--plots")
+    
+    if fast:
+        cmd.append("--fast")
+    
+    if cv_folds is not None:
+        cmd.extend(["--cv-folds", str(cv_folds)])
+    
     if diagnostics:
         cmd.append("--diagnostics")
+    
+    if imbalance_multiplier != 1.0:
+        cmd.extend(["--imbalance-multiplier", str(imbalance_multiplier)])
+    
+    if train_end is not None:
+        cmd.extend(["--train-end", train_end])
+    
+    if val_end is not None:
+        cmd.extend(["--val-end", val_end])
     
     return run_command(cmd, "Training ML Model")
 
@@ -260,7 +298,17 @@ Examples:
     
     # Train command
     train_parser = subparsers.add_parser("train", help="Train ML model")
-    train_parser.add_argument("--diagnostics", action="store_true", help="Include feature importance diagnostics")
+    train_parser.add_argument("--tune", action="store_true", help="Perform hyperparameter tuning (RandomizedSearchCV)")
+    train_parser.add_argument("--n-iter", type=int, default=20, help="Number of hyperparameter search iterations (default: 20)")
+    train_parser.add_argument("--cv", action="store_true", help="Use cross-validation for hyperparameter tuning")
+    train_parser.add_argument("--no-early-stop", action="store_true", help="Disable early stopping")
+    train_parser.add_argument("--plots", action="store_true", help="Generate training curves and feature importance plots")
+    train_parser.add_argument("--fast", action="store_true", help="Use faster hyperparameter tuning (~3-5x faster, slightly less optimal)")
+    train_parser.add_argument("--cv-folds", type=int, default=None, help="Number of CV folds (default: 3, or 2 if --fast)")
+    train_parser.add_argument("--diagnostics", action="store_true", help="Include SHAP diagnostics")
+    train_parser.add_argument("--imbalance-multiplier", type=float, default=1.0, help="Class imbalance multiplier (default: 1.0, try 2.0-3.0 for more trades)")
+    train_parser.add_argument("--train-end", type=str, default=None, help="Training data end date (YYYY-MM-DD, default: 2022-12-31)")
+    train_parser.add_argument("--val-end", type=str, default=None, help="Validation data end date (YYYY-MM-DD, default: 2023-12-31)")
     
     # Backtest command
     bt_parser = subparsers.add_parser("backtest", help="Run backtest")
@@ -331,7 +379,19 @@ Examples:
         )
     
     elif args.command == "train":
-        success = train_model(diagnostics=args.diagnostics)
+        success = train_model(
+            diagnostics=args.diagnostics,
+            tune=args.tune,
+            n_iter=args.n_iter,
+            cv=args.cv,
+            no_early_stop=args.no_early_stop,
+            plots=args.plots,
+            fast=args.fast,
+            cv_folds=args.cv_folds,
+            imbalance_multiplier=getattr(args, 'imbalance_multiplier', 1.0),
+            train_end=getattr(args, 'train_end', None),
+            val_end=getattr(args, 'val_end', None)
+        )
     
     elif args.command == "backtest":
         success = run_backtest(

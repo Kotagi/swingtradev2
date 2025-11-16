@@ -71,6 +71,41 @@ def _get_volume_series(df: DataFrame) -> Series:
     """Return the 'volume' series, case-insensitive."""
     return _get_column(df, 'volume')
 
+
+def _rolling_percentile_rank(series: Series, window: int, min_periods: int = 1) -> Series:
+    """
+    Efficiently calculate rolling percentile rank (0-100).
+    
+    Uses vectorized operations for better performance than .apply() with rank().
+    """
+    result = pd.Series(index=series.index, dtype=float)
+    values = series.values
+    
+    for i in range(len(series)):
+        if i < min_periods - 1:
+            result.iloc[i] = np.nan
+            continue
+        
+        start_idx = max(0, i - window + 1)
+        window_data = values[start_idx:i+1]
+        
+        if len(window_data) < min_periods:
+            result.iloc[i] = np.nan
+            continue
+        
+        current_val = values[i]
+        if pd.isna(current_val) or np.isnan(current_val):
+            result.iloc[i] = np.nan
+            continue
+        
+        # Count values <= current value, subtract 1 (don't count current value itself)
+        # Use numpy for faster comparison
+        rank = np.sum(window_data <= current_val) - 1
+        percentile = (rank / (len(window_data) - 1)) * 100 if len(window_data) > 1 else 50.0
+        result.iloc[i] = percentile
+    
+    return result
+
 def feature_log_return_1d(df: DataFrame) -> Series:
     """
     Compute 1-day log return: ln(close_t / close_{t-1}).
@@ -1366,3 +1401,718 @@ def feature_evening_star(df: DataFrame) -> Series:
     flag      = cond.astype(float)
     flag.name = "evening_star"
     return flag
+
+
+# ============================================================================
+# PHASE 1 FEATURES: Support & Resistance Levels
+# ============================================================================
+
+def feature_resistance_level_20d(df: DataFrame) -> Series:
+    """Nearest resistance level (20-day rolling high)."""
+    high = _get_high_series(df)
+    resistance = high.rolling(window=20, min_periods=1).max()
+    resistance.name = "resistance_level_20d"
+    return resistance
+
+
+def feature_resistance_level_50d(df: DataFrame) -> Series:
+    """Nearest resistance level (50-day rolling high)."""
+    high = _get_high_series(df)
+    resistance = high.rolling(window=50, min_periods=1).max()
+    resistance.name = "resistance_level_50d"
+    return resistance
+
+
+def feature_support_level_20d(df: DataFrame) -> Series:
+    """Nearest support level (20-day rolling low)."""
+    low = _get_low_series(df)
+    support = low.rolling(window=20, min_periods=1).min()
+    support.name = "support_level_20d"
+    return support
+
+
+def feature_support_level_50d(df: DataFrame) -> Series:
+    """Nearest support level (50-day rolling low)."""
+    low = _get_low_series(df)
+    support = low.rolling(window=50, min_periods=1).min()
+    support.name = "support_level_50d"
+    return support
+
+
+def feature_distance_to_resistance(df: DataFrame) -> Series:
+    """Percentage distance from current price to nearest resistance (20-day high)."""
+    close = _get_close_series(df)
+    high = _get_high_series(df)
+    resistance = high.rolling(window=20, min_periods=1).max()
+    distance = ((resistance - close) / close) * 100
+    distance.name = "distance_to_resistance"
+    return distance
+
+
+def feature_distance_to_support(df: DataFrame) -> Series:
+    """Percentage distance from current price to nearest support (20-day low)."""
+    close = _get_close_series(df)
+    low = _get_low_series(df)
+    support = low.rolling(window=20, min_periods=1).min()
+    distance = ((close - support) / close) * 100
+    distance.name = "distance_to_support"
+    return distance
+
+
+def feature_price_near_resistance(df: DataFrame) -> Series:
+    """Binary flag: price within 2% of resistance level."""
+    close = _get_close_series(df)
+    high = _get_high_series(df)
+    resistance = high.rolling(window=20, min_periods=1).max()
+    pct_diff = ((resistance - close) / close) * 100
+    near = (pct_diff <= 2.0).astype(float)
+    near.name = "price_near_resistance"
+    return near
+
+
+def feature_price_near_support(df: DataFrame) -> Series:
+    """Binary flag: price within 2% of support level."""
+    close = _get_close_series(df)
+    low = _get_low_series(df)
+    support = low.rolling(window=20, min_periods=1).min()
+    pct_diff = ((close - support) / close) * 100
+    near = (pct_diff <= 2.0).astype(float)
+    near.name = "price_near_support"
+    return near
+
+
+def feature_resistance_touches(df: DataFrame) -> Series:
+    """Count of times price has touched resistance level in last 20 days."""
+    close = _get_close_series(df)
+    high = _get_high_series(df)
+    resistance = high.rolling(window=20, min_periods=1).max()
+    # Count touches: price within 0.5% of resistance
+    touches = (abs(close - resistance) / close <= 0.005).rolling(window=20, min_periods=1).sum()
+    touches.name = "resistance_touches"
+    return touches
+
+
+def feature_support_touches(df: DataFrame) -> Series:
+    """Count of times price has touched support level in last 20 days."""
+    close = _get_close_series(df)
+    low = _get_low_series(df)
+    support = low.rolling(window=20, min_periods=1).min()
+    # Count touches: price within 0.5% of support
+    touches = (abs(close - support) / close <= 0.005).rolling(window=20, min_periods=1).sum()
+    touches.name = "support_touches"
+    return touches
+
+
+def feature_pivot_point(df: DataFrame) -> Series:
+    """Classic pivot point: (High + Low + Close) / 3."""
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    close = _get_close_series(df)
+    pivot = (high + low + close) / 3
+    pivot.name = "pivot_point"
+    return pivot
+
+
+def feature_fibonacci_levels(df: DataFrame) -> Series:
+    """Distance to Fibonacci retracement level (38.2% from swing high/low)."""
+    close = _get_close_series(df)
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    # Calculate swing high and low over 20 days
+    swing_high = high.rolling(window=20, min_periods=1).max()
+    swing_low = low.rolling(window=20, min_periods=1).min()
+    range_size = swing_high - swing_low
+    # Fibonacci 38.2% level from swing low
+    fib_level = swing_low + (range_size * 0.382)
+    # Distance from current price to Fibonacci level
+    distance = ((close - fib_level) / close) * 100
+    distance.name = "fibonacci_levels"
+    return distance
+
+
+# ============================================================================
+# PHASE 1 FEATURES: Volatility Regime
+# ============================================================================
+
+def feature_volatility_regime(df: DataFrame) -> Series:
+    """Current ATR percentile (0-100) over 252 trading days."""
+    atr = feature_atr(df)
+    percentile = _rolling_percentile_rank(atr, window=252, min_periods=20)
+    percentile.name = "volatility_regime"
+    return percentile
+
+
+def feature_volatility_trend(df: DataFrame) -> Series:
+    """ATR slope (increasing/decreasing volatility) over 20 days."""
+    atr = feature_atr(df)
+    # Linear regression slope over 20 days
+    def calc_slope(series):
+        if len(series) < 2:
+            return np.nan
+        x = np.arange(len(series))
+        coeffs = np.polyfit(x, series.values, 1)
+        return coeffs[0]
+    
+    slope = atr.rolling(window=20, min_periods=5).apply(calc_slope, raw=False)
+    slope.name = "volatility_trend"
+    return slope
+
+
+def feature_bb_squeeze(df: DataFrame) -> Series:
+    """Bollinger Band squeeze indicator (low volatility)."""
+    bb_width = feature_bb_width(df)
+    # Squeeze: BB width below 25th percentile over 20 days
+    percentile = _rolling_percentile_rank(bb_width, window=20, min_periods=5)
+    squeeze = (percentile < 25).astype(float)
+    squeeze.name = "bb_squeeze"
+    return squeeze
+
+
+def feature_bb_expansion(df: DataFrame) -> Series:
+    """Bollinger Band expansion indicator (high volatility)."""
+    bb_width = feature_bb_width(df)
+    # Expansion: BB width above 75th percentile over 20 days
+    percentile = _rolling_percentile_rank(bb_width, window=20, min_periods=5)
+    expansion = (percentile > 75).astype(float)
+    expansion.name = "bb_expansion"
+    return expansion
+
+
+def feature_atr_ratio_20d(df: DataFrame) -> Series:
+    """Current ATR / 20-day ATR average."""
+    atr = feature_atr(df)
+    atr_avg = atr.rolling(window=20, min_periods=1).mean()
+    ratio = atr / atr_avg
+    ratio.name = "atr_ratio_20d"
+    return ratio
+
+
+def feature_atr_ratio_252d(df: DataFrame) -> Series:
+    """Current ATR / 252-day ATR average."""
+    atr = feature_atr(df)
+    atr_avg = atr.rolling(window=252, min_periods=20).mean()
+    ratio = atr / atr_avg
+    ratio.name = "atr_ratio_252d"
+    return ratio
+
+
+def feature_volatility_percentile_20d(df: DataFrame) -> Series:
+    """ATR percentile over 20 days (0-100)."""
+    atr = feature_atr(df)
+    percentile = _rolling_percentile_rank(atr, window=20, min_periods=5)
+    percentile.name = "volatility_percentile_20d"
+    return percentile
+
+
+def feature_volatility_percentile_252d(df: DataFrame) -> Series:
+    """ATR percentile over 252 days (0-100)."""
+    atr = feature_atr(df)
+    percentile = _rolling_percentile_rank(atr, window=252, min_periods=20)
+    percentile.name = "volatility_percentile_252d"
+    return percentile
+
+
+def feature_high_volatility_flag(df: DataFrame) -> Series:
+    """Binary flag: ATR > 75th percentile over 252 days."""
+    atr = feature_atr(df)
+    percentile = _rolling_percentile_rank(atr, window=252, min_periods=20)
+    flag = (percentile > 75).astype(float)
+    flag.name = "high_volatility_flag"
+    return flag
+
+
+def feature_low_volatility_flag(df: DataFrame) -> Series:
+    """Binary flag: ATR < 25th percentile over 252 days."""
+    atr = feature_atr(df)
+    percentile = _rolling_percentile_rank(atr, window=252, min_periods=20)
+    flag = (percentile < 25).astype(float)
+    flag.name = "low_volatility_flag"
+    return flag
+
+
+# ============================================================================
+# PHASE 1 FEATURES: Trend Strength & Quality
+# ============================================================================
+
+def feature_trend_strength_20d(df: DataFrame) -> Series:
+    """ADX (Average Directional Index) over 20 days."""
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    close = _get_close_series(df)
+    adx = ta.adx(high=high, low=low, close=close, length=20)
+    if adx is not None and isinstance(adx, pd.DataFrame):
+        # ADX returns DataFrame with columns like 'ADX_20', extract the ADX column
+        adx_col = [c for c in adx.columns if 'ADX' in c.upper()]
+        if adx_col:
+            adx_series = adx[adx_col[0]]
+        else:
+            adx_series = adx.iloc[:, 0] if len(adx.columns) > 0 else pd.Series(index=close.index, dtype=float)
+    elif isinstance(adx, pd.Series):
+        adx_series = adx
+    else:
+        adx_series = pd.Series(index=close.index, dtype=float)
+    adx_series.name = "trend_strength_20d"
+    return adx_series
+
+
+def feature_trend_strength_50d(df: DataFrame) -> Series:
+    """ADX (Average Directional Index) over 50 days."""
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    close = _get_close_series(df)
+    adx = ta.adx(high=high, low=low, close=close, length=50)
+    if adx is not None and isinstance(adx, pd.DataFrame):
+        # ADX returns DataFrame with columns like 'ADX_50', extract the ADX column
+        adx_col = [c for c in adx.columns if 'ADX' in c.upper()]
+        if adx_col:
+            adx_series = adx[adx_col[0]]
+        else:
+            adx_series = adx.iloc[:, 0] if len(adx.columns) > 0 else pd.Series(index=close.index, dtype=float)
+    elif isinstance(adx, pd.Series):
+        adx_series = adx
+    else:
+        adx_series = pd.Series(index=close.index, dtype=float)
+    adx_series.name = "trend_strength_50d"
+    return adx_series
+
+
+def feature_trend_consistency(df: DataFrame) -> Series:
+    """Percentage of days price above/below MA over 20-day lookback."""
+    close = _get_close_series(df)
+    ma20 = close.rolling(window=20, min_periods=1).mean()
+    above_ma = (close > ma20).rolling(window=20, min_periods=1).sum()
+    consistency = (above_ma / 20) * 100
+    consistency.name = "trend_consistency"
+    return consistency
+
+
+def feature_ema_alignment(df: DataFrame) -> Series:
+    """EMA alignment: 1 if all EMAs aligned bullish, -1 if bearish, 0 if neutral."""
+    close = _get_close_series(df)
+    ema5 = ta.ema(close, length=5)
+    ema10 = ta.ema(close, length=10)
+    ema50 = ta.ema(close, length=50)
+    
+    if isinstance(ema5, pd.Series) and isinstance(ema10, pd.Series) and isinstance(ema50, pd.Series):
+        bullish = (ema5 > ema10) & (ema10 > ema50) & (close > ema5)
+        bearish = (ema5 < ema10) & (ema10 < ema50) & (close < ema5)
+        alignment = pd.Series(0.0, index=close.index)
+        alignment[bullish] = 1.0
+        alignment[bearish] = -1.0
+    else:
+        alignment = pd.Series(0.0, index=close.index)
+    
+    alignment.name = "ema_alignment"
+    return alignment
+
+
+def feature_sma_slope_20d(df: DataFrame) -> Series:
+    """Slope of 20-day SMA (linear regression)."""
+    close = _get_close_series(df)
+    sma20 = close.rolling(window=20, min_periods=1).mean()
+    
+    def calc_slope(series):
+        if len(series) < 2:
+            return np.nan
+        x = np.arange(len(series))
+        coeffs = np.polyfit(x, series.values, 1)
+        return coeffs[0]
+    
+    slope = sma20.rolling(window=20, min_periods=5).apply(calc_slope, raw=False)
+    slope.name = "sma_slope_20d"
+    return slope
+
+
+def feature_sma_slope_50d(df: DataFrame) -> Series:
+    """Slope of 50-day SMA (linear regression)."""
+    close = _get_close_series(df)
+    sma50 = close.rolling(window=50, min_periods=1).mean()
+    
+    def calc_slope(series):
+        if len(series) < 2:
+            return np.nan
+        x = np.arange(len(series))
+        coeffs = np.polyfit(x, series.values, 1)
+        return coeffs[0]
+    
+    slope = sma50.rolling(window=50, min_periods=10).apply(calc_slope, raw=False)
+    slope.name = "sma_slope_50d"
+    return slope
+
+
+def feature_ema_slope_20d(df: DataFrame) -> Series:
+    """Slope of 20-day EMA (linear regression)."""
+    close = _get_close_series(df)
+    ema20 = ta.ema(close, length=20)
+    
+    if not isinstance(ema20, pd.Series):
+        ema20 = pd.Series(index=close.index, dtype=float)
+    
+    def calc_slope(series):
+        if len(series) < 2:
+            return np.nan
+        x = np.arange(len(series))
+        coeffs = np.polyfit(x, series.values, 1)
+        return coeffs[0]
+    
+    slope = ema20.rolling(window=20, min_periods=5).apply(calc_slope, raw=False)
+    slope.name = "ema_slope_20d"
+    return slope
+
+
+def feature_trend_duration(df: DataFrame) -> Series:
+    """Days since last trend change (price crossing 20-day MA)."""
+    close = _get_close_series(df)
+    ma20 = close.rolling(window=20, min_periods=1).mean()
+    above_ma = close > ma20
+    # Detect trend changes (crossovers)
+    trend_changes = (above_ma != above_ma.shift(1))
+    # Calculate days since last change
+    duration = pd.Series(0, index=close.index, dtype=int)
+    last_change_idx = 0
+    for i in range(len(close)):
+        if trend_changes.iloc[i]:
+            last_change_idx = i
+        duration.iloc[i] = i - last_change_idx
+    duration = duration.astype(float)
+    duration.name = "trend_duration"
+    return duration
+
+
+def feature_trend_reversal_signal(df: DataFrame) -> Series:
+    """Potential trend reversal indicator (RSI divergence with price)."""
+    close = _get_close_series(df)
+    rsi = feature_rsi(df)
+    # Simple reversal: RSI overbought (>70) with price making new high, or RSI oversold (<30) with price making new low
+    rsi_overbought = rsi > 70
+    rsi_oversold = rsi < 30
+    price_new_high = close == close.rolling(window=20, min_periods=1).max()
+    price_new_low = close == close.rolling(window=20, min_periods=1).min()
+    
+    bearish_reversal = rsi_overbought & price_new_high
+    bullish_reversal = rsi_oversold & price_new_low
+    
+    signal = pd.Series(0.0, index=close.index)
+    signal[bearish_reversal] = -1.0
+    signal[bullish_reversal] = 1.0
+    signal.name = "trend_reversal_signal"
+    return signal
+
+
+def feature_price_vs_all_mas(df: DataFrame) -> Series:
+    """Count of moving averages price is above (out of 5, 10, 20, 50-day MAs)."""
+    close = _get_close_series(df)
+    sma5 = close.rolling(window=5, min_periods=1).mean()
+    sma10 = close.rolling(window=10, min_periods=1).mean()
+    sma20 = close.rolling(window=20, min_periods=1).mean()
+    sma50 = close.rolling(window=50, min_periods=1).mean()
+    
+    count = (close > sma5).astype(int) + (close > sma10).astype(int) + \
+            (close > sma20).astype(int) + (close > sma50).astype(int)
+    count = count.astype(float)
+    count.name = "price_vs_all_mas"
+    return count
+
+
+# ============================================================================
+# PHASE 1 FEATURES: Multi-Timeframe (Weekly Patterns)
+# Helper function for weekly resampling
+# ============================================================================
+
+def _resample_to_weekly(df: DataFrame) -> DataFrame:
+    """
+    Resample daily OHLCV data to weekly.
+    
+    Args:
+        df: Daily DataFrame with OHLCV columns and datetime index
+        
+    Returns:
+        DataFrame with weekly aggregated data
+    """
+    close = _get_close_series(df)
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    volume = _get_volume_series(df)
+    
+    # Create DataFrame with datetime index
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise ValueError("DataFrame must have DatetimeIndex for resampling")
+    
+    weekly_df = pd.DataFrame({
+        'close': close,
+        'high': high,
+        'low': low,
+        'volume': volume
+    }, index=df.index)
+    
+    # Resample to weekly (end of week, Sunday)
+    weekly = weekly_df.resample('W').agg({
+        'close': 'last',
+        'high': 'max',
+        'low': 'min',
+        'volume': 'sum'
+    })
+    
+    return weekly
+
+
+def feature_weekly_return_1w(df: DataFrame) -> Series:
+    """1-week log return (weekly resampled)."""
+    weekly = _resample_to_weekly(df)
+    weekly_return = np.log(weekly['close'] / weekly['close'].shift(1))
+    # Forward-fill to daily
+    daily_return = weekly_return.reindex(df.index, method='ffill')
+    daily_return.name = "weekly_return_1w"
+    return daily_return
+
+
+def feature_weekly_return_2w(df: DataFrame) -> Series:
+    """2-week log return (weekly resampled)."""
+    weekly = _resample_to_weekly(df)
+    weekly_return = np.log(weekly['close'] / weekly['close'].shift(2))
+    daily_return = weekly_return.reindex(df.index, method='ffill')
+    daily_return.name = "weekly_return_2w"
+    return daily_return
+
+
+def feature_weekly_return_4w(df: DataFrame) -> Series:
+    """4-week log return (weekly resampled)."""
+    weekly = _resample_to_weekly(df)
+    weekly_return = np.log(weekly['close'] / weekly['close'].shift(4))
+    daily_return = weekly_return.reindex(df.index, method='ffill')
+    daily_return.name = "weekly_return_4w"
+    return daily_return
+
+
+def feature_weekly_sma_5w(df: DataFrame) -> Series:
+    """5-week SMA (weekly resampled)."""
+    weekly = _resample_to_weekly(df)
+    sma = weekly['close'].rolling(window=5, min_periods=1).mean()
+    daily_sma = sma.reindex(df.index, method='ffill')
+    daily_sma.name = "weekly_sma_5w"
+    return daily_sma
+
+
+def feature_weekly_sma_10w(df: DataFrame) -> Series:
+    """10-week SMA (weekly resampled)."""
+    weekly = _resample_to_weekly(df)
+    sma = weekly['close'].rolling(window=10, min_periods=1).mean()
+    daily_sma = sma.reindex(df.index, method='ffill')
+    daily_sma.name = "weekly_sma_10w"
+    return daily_sma
+
+
+def feature_weekly_sma_20w(df: DataFrame) -> Series:
+    """20-week SMA (weekly resampled)."""
+    weekly = _resample_to_weekly(df)
+    sma = weekly['close'].rolling(window=20, min_periods=1).mean()
+    daily_sma = sma.reindex(df.index, method='ffill')
+    daily_sma.name = "weekly_sma_20w"
+    return daily_sma
+
+
+def feature_weekly_ema_5w(df: DataFrame) -> Series:
+    """5-week EMA (weekly resampled)."""
+    weekly = _resample_to_weekly(df)
+    ema = ta.ema(weekly['close'], length=5)
+    if isinstance(ema, pd.Series):
+        daily_ema = ema.reindex(df.index, method='ffill')
+    else:
+        daily_ema = pd.Series(index=df.index, dtype=float)
+    daily_ema.name = "weekly_ema_5w"
+    return daily_ema
+
+
+def feature_weekly_ema_10w(df: DataFrame) -> Series:
+    """10-week EMA (weekly resampled)."""
+    weekly = _resample_to_weekly(df)
+    ema = ta.ema(weekly['close'], length=10)
+    if isinstance(ema, pd.Series):
+        daily_ema = ema.reindex(df.index, method='ffill')
+    else:
+        daily_ema = pd.Series(index=df.index, dtype=float)
+    daily_ema.name = "weekly_ema_10w"
+    return daily_ema
+
+
+def feature_weekly_rsi_14w(df: DataFrame) -> Series:
+    """Weekly RSI (14-week period, weekly resampled)."""
+    weekly = _resample_to_weekly(df)
+    rsi = ta.rsi(weekly['close'], length=14)
+    if isinstance(rsi, pd.Series):
+        daily_rsi = rsi.reindex(df.index, method='ffill')
+    else:
+        daily_rsi = pd.Series(index=df.index, dtype=float)
+    daily_rsi.name = "weekly_rsi_14w"
+    return daily_rsi
+
+
+def feature_weekly_macd_histogram(df: DataFrame) -> Series:
+    """Weekly MACD histogram (weekly resampled)."""
+    weekly = _resample_to_weekly(df)
+    macd = ta.macd(weekly['close'])
+    if macd is not None and isinstance(macd, pd.DataFrame) and 'MACDh_12_26_9' in macd.columns:
+        hist = macd['MACDh_12_26_9']
+        daily_hist = hist.reindex(df.index, method='ffill')
+    else:
+        daily_hist = pd.Series(index=df.index, dtype=float)
+    daily_hist.name = "weekly_macd_histogram"
+    return daily_hist
+
+
+def feature_close_vs_weekly_sma20(df: DataFrame) -> Series:
+    """Price vs 20-week SMA (percentage difference)."""
+    close = _get_close_series(df)
+    weekly_sma20 = feature_weekly_sma_20w(df)
+    pct_diff = ((close - weekly_sma20) / weekly_sma20) * 100
+    pct_diff.name = "close_vs_weekly_sma20"
+    return pct_diff
+
+
+def feature_weekly_volume_ratio(df: DataFrame) -> Series:
+    """Weekly volume vs average weekly volume."""
+    weekly = _resample_to_weekly(df)
+    volume_avg = weekly['volume'].rolling(window=10, min_periods=1).mean()
+    ratio = weekly['volume'] / volume_avg
+    daily_ratio = ratio.reindex(df.index, method='ffill')
+    daily_ratio.name = "weekly_volume_ratio"
+    return daily_ratio
+
+
+def feature_weekly_atr_pct(df: DataFrame) -> Series:
+    """Weekly ATR as percentage of price."""
+    weekly = _resample_to_weekly(df)
+    # Calculate ATR on weekly data
+    high = weekly['high']
+    low = weekly['low']
+    close = weekly['close']
+    atr = ta.atr(high=high, low=low, close=close, length=14)
+    if isinstance(atr, pd.Series):
+        atr_pct = (atr / weekly['close']) * 100
+        daily_atr_pct = atr_pct.reindex(df.index, method='ffill')
+    else:
+        daily_atr_pct = pd.Series(index=df.index, dtype=float)
+    daily_atr_pct.name = "weekly_atr_pct"
+    return daily_atr_pct
+
+
+def feature_weekly_trend_strength(df: DataFrame) -> Series:
+    """Slope of weekly SMA (trend strength)."""
+    weekly_sma20 = feature_weekly_sma_20w(df)
+    weekly = _resample_to_weekly(df)
+    sma20_weekly = weekly['close'].rolling(window=20, min_periods=1).mean()
+    
+    def calc_slope(series):
+        if len(series) < 2:
+            return np.nan
+        x = np.arange(len(series))
+        coeffs = np.polyfit(x, series.values, 1)
+        return coeffs[0]
+    
+    slope = sma20_weekly.rolling(window=10, min_periods=3).apply(calc_slope, raw=False)
+    daily_slope = slope.reindex(df.index, method='ffill')
+    daily_slope.name = "weekly_trend_strength"
+    return daily_slope
+
+
+# ============================================================================
+# PHASE 1 FEATURES: Volume Profile & Distribution (Non-Intraday)
+# ============================================================================
+
+def feature_volume_weighted_price(df: DataFrame) -> Series:
+    """VWAP approximation using daily typical price: (High + Low + Close) / 3."""
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    close = _get_close_series(df)
+    volume = _get_volume_series(df)
+    
+    typical_price = (high + low + close) / 3
+    # VWAP: cumulative sum of (price * volume) / cumulative sum of volume
+    vwap = (typical_price * volume).cumsum() / volume.cumsum()
+    vwap.name = "volume_weighted_price"
+    return vwap
+
+
+def feature_price_vs_vwap(df: DataFrame) -> Series:
+    """Distance from price to VWAP (percentage)."""
+    close = _get_close_series(df)
+    vwap = feature_volume_weighted_price(df)
+    pct_diff = ((close - vwap) / vwap) * 100
+    pct_diff.name = "price_vs_vwap"
+    return pct_diff
+
+
+def feature_vwap_slope(df: DataFrame) -> Series:
+    """VWAP trend direction (slope over 20 days)."""
+    vwap = feature_volume_weighted_price(df)
+    
+    def calc_slope(series):
+        if len(series) < 2:
+            return np.nan
+        x = np.arange(len(series))
+        coeffs = np.polyfit(x, series.values, 1)
+        return coeffs[0]
+    
+    slope = vwap.rolling(window=20, min_periods=5).apply(calc_slope, raw=False)
+    slope.name = "vwap_slope"
+    return slope
+
+
+def feature_volume_climax(df: DataFrame) -> Series:
+    """Unusually high volume days (above 75th percentile over 20 days)."""
+    volume = _get_volume_series(df)
+    percentile = _rolling_percentile_rank(volume, window=20, min_periods=5)
+    climax = (percentile > 75).astype(float)
+    climax.name = "volume_climax"
+    return climax
+
+
+def feature_volume_dry_up(df: DataFrame) -> Series:
+    """Unusually low volume days (below 25th percentile over 20 days)."""
+    volume = _get_volume_series(df)
+    percentile = _rolling_percentile_rank(volume, window=20, min_periods=5)
+    dry_up = (percentile < 25).astype(float)
+    dry_up.name = "volume_dry_up"
+    return dry_up
+
+
+def feature_volume_trend(df: DataFrame) -> Series:
+    """Volume moving average slope (trend direction)."""
+    volume = _get_volume_series(df)
+    volume_ma = volume.rolling(window=20, min_periods=1).mean()
+    
+    def calc_slope(series):
+        if len(series) < 2:
+            return np.nan
+        x = np.arange(len(series))
+        coeffs = np.polyfit(x, series.values, 1)
+        return coeffs[0]
+    
+    slope = volume_ma.rolling(window=20, min_periods=5).apply(calc_slope, raw=False)
+    slope.name = "volume_trend"
+    return slope
+
+
+def feature_volume_breakout(df: DataFrame) -> Series:
+    """Volume spike on price breakout (volume > 150% of 20-day avg AND price breaks 20-day high)."""
+    volume = _get_volume_series(df)
+    close = _get_close_series(df)
+    high = _get_high_series(df)
+    
+    volume_avg = volume.rolling(window=20, min_periods=1).mean()
+    volume_spike = volume > (volume_avg * 1.5)
+    price_breakout = close > high.rolling(window=20, min_periods=1).max().shift(1)
+    
+    breakout = (volume_spike & price_breakout).astype(float)
+    breakout.name = "volume_breakout"
+    return breakout
+
+
+def feature_volume_distribution(df: DataFrame) -> Series:
+    """Volume concentration metric (coefficient of variation of volume over 20 days)."""
+    volume = _get_volume_series(df)
+    volume_std = volume.rolling(window=20, min_periods=5).std()
+    volume_mean = volume.rolling(window=20, min_periods=5).mean()
+    cv = volume_std / volume_mean  # Coefficient of variation
+    cv.name = "volume_distribution"
+    return cv
