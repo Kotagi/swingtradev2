@@ -48,7 +48,7 @@ python src/download_data.py --tickers-file data/tickers/sp500_tickers.csv --star
 
 If you haven't cleaned the data yet:
 ```bash
-python src/clean_data.py --input-dir data/raw --output-dir data/clean
+python src/clean_data.py --raw-dir data/raw --clean-dir data/clean
 ```
 
 ### 3. Build Features with Custom Parameters

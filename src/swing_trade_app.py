@@ -16,11 +16,12 @@ Usage:
 
 Commands:
     download      - Download stock data from yfinance
+    clean         - Clean raw CSV files into Parquet format
     features      - Build feature set from cleaned data
     train         - Train ML model with user-defined parameters
     backtest      - Run backtests with configurable parameters
     identify      - Identify current potential trades
-    full-pipeline - Run complete pipeline: download -> features -> train -> backtest -> identify
+    full-pipeline - Run complete pipeline: download -> clean -> features -> train -> backtest -> identify
 """
 
 import argparse
@@ -56,9 +57,11 @@ def download_data(
     start_date: str = "2008-01-01",
     raw_folder: str = "data/raw",
     sectors_file: str = "data/tickers/sectors.csv",
-    full: bool = False
+    full: bool = False,
+    resume: bool = False,
+    max_retries: int = 3
 ) -> bool:
-    """Download stock data from yfinance."""
+    """Download stock data from yfinance with enhanced features."""
     cmd = [
         sys.executable,
         str(SCRIPTS_DIR / "download_data.py"),
@@ -67,13 +70,42 @@ def download_data(
         "--raw-folder", raw_folder,
         "--sectors-file", sectors_file,
         "--chunk-size", "100",
-        "--pause", "1.0"
+        "--pause", "1.0",
+        "--max-retries", str(max_retries)
     ]
     
     if full:
         cmd.append("--full")
     
+    if resume:
+        cmd.append("--resume")
+    
     return run_command(cmd, "Downloading Stock Data")
+
+
+def clean_data(
+    raw_dir: str = "data/raw",
+    clean_dir: str = "data/clean",
+    resume: bool = False,
+    workers: int = 4,
+    verbose: bool = False
+) -> bool:
+    """Clean raw CSV files into Parquet format."""
+    cmd = [
+        sys.executable,
+        str(SCRIPTS_DIR / "clean_data.py"),
+        "--raw-dir", raw_dir,
+        "--clean-dir", clean_dir,
+        "--workers", str(workers)
+    ]
+    
+    if resume:
+        cmd.append("--resume")
+    
+    if verbose:
+        cmd.append("--verbose")
+    
+    return run_command(cmd, "Cleaning Raw Data")
 
 
 def build_features(
@@ -177,6 +209,9 @@ Examples:
   # Download data
   python src/swing_trade_app.py download --full
 
+  # Clean raw data
+  python src/swing_trade_app.py clean --resume --workers 8
+
   # Build features with 10-day horizon and 5% return threshold
   python src/swing_trade_app.py features --horizon 10 --threshold 0.05
 
@@ -203,6 +238,16 @@ Examples:
     dl_parser.add_argument("--raw-folder", default="data/raw")
     dl_parser.add_argument("--sectors-file", default="data/tickers/sectors.csv")
     dl_parser.add_argument("--full", action="store_true", help="Force full redownload")
+    dl_parser.add_argument("--resume", action="store_true", help="Resume from checkpoint")
+    dl_parser.add_argument("--max-retries", type=int, default=3, help="Max retry attempts")
+    
+    # Clean command
+    clean_parser = subparsers.add_parser("clean", help="Clean raw CSV files")
+    clean_parser.add_argument("--raw-dir", default="data/raw")
+    clean_parser.add_argument("--clean-dir", default="data/clean")
+    clean_parser.add_argument("--resume", action="store_true", help="Skip already-cleaned files")
+    clean_parser.add_argument("--workers", type=int, default=4, help="Number of parallel workers")
+    clean_parser.add_argument("--verbose", action="store_true", help="Verbose output")
     
     # Features command
     feat_parser = subparsers.add_parser("features", help="Build feature set")
@@ -261,7 +306,18 @@ Examples:
             start_date=args.start_date,
             raw_folder=args.raw_folder,
             sectors_file=args.sectors_file,
-            full=args.full
+            full=args.full,
+            resume=args.resume,
+            max_retries=args.max_retries
+        )
+    
+    elif args.command == "clean":
+        success = clean_data(
+            raw_dir=args.raw_dir,
+            clean_dir=args.clean_dir,
+            resume=args.resume,
+            workers=args.workers,
+            verbose=args.verbose
         )
     
     elif args.command == "features":
@@ -303,13 +359,18 @@ Examples:
         
         # Step 1: Download data
         if not args.skip_download:
-            success = download_data(full=args.full_download)
+            success = download_data(full=args.full_download, resume=False)
             if not success:
                 print("\nPipeline stopped: Data download failed")
                 return
         
-        # Step 2: Build features (assuming data cleaning is done separately or automatically)
-        # Note: You may need to run clean_data.py first if not already done
+        # Step 2: Clean data
+        success = clean_data(resume=True)
+        if not success:
+            print("\nPipeline stopped: Data cleaning failed")
+            return
+        
+        # Step 3: Build features
         success = build_features(
             horizon=args.horizon,
             threshold=args.return_threshold,
@@ -319,14 +380,14 @@ Examples:
             print("\nPipeline stopped: Feature building failed")
             return
         
-        # Step 3: Train model
+        # Step 4: Train model
         if not args.skip_train:
             success = train_model()
             if not success:
                 print("\nPipeline stopped: Model training failed")
                 return
         
-        # Step 4: Run backtest
+        # Step 5: Run backtest
         success = run_backtest(
             horizon=args.horizon,
             return_threshold=args.return_threshold,
@@ -337,7 +398,7 @@ Examples:
             print("\nPipeline stopped: Backtest failed")
             return
         
-        # Step 5: Identify current trades
+        # Step 6: Identify current trades
         success = identify_trades(
             min_probability=args.min_probability,
             top_n=args.top_n
