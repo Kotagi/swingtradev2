@@ -121,6 +121,21 @@ from features.technical import (
     feature_volume_trend,
     feature_volume_breakout,
     feature_volume_distribution,
+    # Priority 1: Market Context Features
+    feature_relative_strength_spy_5d,
+    feature_relative_strength_spy_20d,
+    feature_rs_rank_20d,
+    feature_outperformance_flag,
+    feature_market_correlation_20d,
+    # Priority 1: Time-Based Features
+    feature_day_of_week_sin,
+    feature_day_of_week_cos,
+    feature_day_of_month_sin,
+    feature_day_of_month_cos,
+    feature_month_of_year_sin,
+    feature_month_of_year_cos,
+    feature_is_month_end,
+    feature_is_quarter_end,
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -242,6 +257,21 @@ FEATURES = {
     "volume_trend":             feature_volume_trend,               # Volume trend
     "volume_breakout":          feature_volume_breakout,            # Volume spike on breakout
     "volume_distribution":      feature_volume_distribution,        # Volume concentration
+    # Priority 1: Market Context Features (5 features)
+    "relative_strength_spy_5d":  feature_relative_strength_spy_5d,  # Stock return vs SPY (5d)
+    "relative_strength_spy_20d": feature_relative_strength_spy_20d, # Stock return vs SPY (20d)
+    "rs_rank_20d":              feature_rs_rank_20d,               # Relative strength rank (0-100)
+    "outperformance_flag":      feature_outperformance_flag,        # Binary: outperforming SPY
+    "market_correlation_20d":    feature_market_correlation_20d,    # Rolling correlation to SPY
+    # Priority 1: Time-Based Features (8 features)
+    "day_of_week_sin":          feature_day_of_week_sin,            # Day of week (sin)
+    "day_of_week_cos":          feature_day_of_week_cos,            # Day of week (cos)
+    "day_of_month_sin":         feature_day_of_month_sin,           # Day of month (sin)
+    "day_of_month_cos":         feature_day_of_month_cos,           # Day of month (cos)
+    "month_of_year_sin":        feature_month_of_year_sin,          # Month of year (sin)
+    "month_of_year_cos":        feature_month_of_year_cos,          # Month of year (cos)
+    "is_month_end":             feature_is_month_end,               # Binary: last 3 days of month
+    "is_quarter_end":           feature_is_quarter_end,             # Binary: last week of quarter
 }
 
 def load_enabled_features(config_path: str) -> dict:

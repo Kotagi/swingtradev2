@@ -17,11 +17,15 @@ import joblib
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from datetime import datetime
+import sys
+
+# Add project root to path for imports
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
 # —— CONFIGURATION —— #
-PROJECT_ROOT = Path.cwd()
 DATA_DIR = PROJECT_ROOT / "data" / "features_labeled"
 MODEL_DIR = PROJECT_ROOT / "models"
 TICKERS_CSV = PROJECT_ROOT / "data" / "tickers" / "sp500_tickers.csv"
@@ -31,13 +35,13 @@ MIN_PROBABILITY = 0.5  # Minimum prediction probability to consider a trade
 
 def load_model(model_path: Path) -> Tuple:
     """
-    Load the trained model and feature list from a pickle file.
+    Load the trained model, feature list, and scaler from a pickle file.
 
     Args:
         model_path: Path to the model pickle file.
 
     Returns:
-        Tuple of (model, feature_list).
+        Tuple of (model, feature_list, scaler, features_to_scale, features_to_keep).
     """
     if not model_path.exists():
         raise FileNotFoundError(f"Model file not found: {model_path}")
@@ -46,11 +50,87 @@ def load_model(model_path: Path) -> Tuple:
     if isinstance(data, dict):
         model = data.get("model")
         features = data.get("features", [])
+        scaler = data.get("scaler")
+        features_to_scale = data.get("features_to_scale", [])
+        features_to_keep = data.get("features_to_keep", [])
     else:
         model = data
         features = []
+        scaler = None
+        features_to_scale = []
+        features_to_keep = []
     
-    return model, features
+    return model, features, scaler, features_to_scale, features_to_keep
+
+
+def get_recommended_filters() -> Dict[str, Tuple[str, float]]:
+    """
+    Get recommended entry filters based on stop-loss analysis.
+    
+    These filters are based on top findings from stop-loss analysis:
+    - Candle body percentage (effect size: -0.725)
+    - Close position in range (effect size: -0.646)
+    - Weekly RSI (effect size: 0.603)
+    - Market correlation (effect size: -0.497)
+    - Volatility regime (effect size: -0.464)
+    
+    Returns:
+        Dict of {feature_name: (operator, threshold)}
+    """
+    return {
+        'candle_body_pct': ('>', -10.0),  # Avoid very bearish candles
+        'close_position_in_range': ('>', 0.40),  # Price in upper portion of range
+        'weekly_rsi_14w': ('<', 42.0),  # Avoid overbought weekly RSI
+        'market_correlation_20d': ('>', 0.60),  # Only when moving with market
+        'volatility_regime': ('>', 60.0),  # Prefer higher volatility
+    }
+
+
+def apply_entry_filters(
+    feature_vector: pd.Series,
+    filters: Dict[str, Tuple[str, float]]
+) -> bool:
+    """
+    Apply entry filters to a feature vector.
+    
+    Args:
+        feature_vector: Series with feature values
+        filters: Dict of {feature_name: (operator, threshold)} where operator is '>', '<', '>=', '<='
+    
+    Returns:
+        True if all filters pass, False otherwise
+    """
+    if not filters:
+        return True
+    
+    for feature, (operator, threshold) in filters.items():
+        if feature not in feature_vector.index:
+            # Feature not available - skip this filter (or return False if strict)
+            continue
+        
+        feature_value = feature_vector[feature]
+        
+        # Handle NaN values
+        if pd.isna(feature_value):
+            return False
+        
+        if operator == '>':
+            if not (feature_value > threshold):
+                return False
+        elif operator == '<':
+            if not (feature_value < threshold):
+                return False
+        elif operator == '>=':
+            if not (feature_value >= threshold):
+                return False
+        elif operator == '<=':
+            if not (feature_value <= threshold):
+                return False
+        else:
+            # Unknown operator - skip
+            continue
+    
+    return True
 
 
 def load_latest_features(ticker: str, data_dir: Path, features: List[str]) -> pd.Series:
@@ -116,7 +196,10 @@ def identify_opportunities(
     data_dir: Path,
     tickers: List[str],
     min_probability: float = MIN_PROBABILITY,
-    top_n: int = 20
+    top_n: int = 20,
+    scaler=None,
+    features_to_scale: List[str] = None,
+    entry_filters: Optional[Dict[str, Tuple[str, float]]] = None
 ) -> pd.DataFrame:
     """
     Identify trading opportunities across a universe of tickers.
@@ -144,6 +227,11 @@ def identify_opportunities(
         if feature_vector is None:
             continue
         
+        # Apply entry filters if provided (before making prediction)
+        if entry_filters:
+            if not apply_entry_filters(feature_vector, entry_filters):
+                continue  # Skip this ticker if filters don't pass
+        
         # Align features with model expectations
         feature_df = pd.DataFrame([feature_vector])
         available_features = [f for f in features if f in feature_df.columns]
@@ -160,6 +248,15 @@ def identify_opportunities(
                 X[f] = 0.0
         
         X = X[features]  # Ensure correct order
+        
+        # Apply scaling if scaler is provided
+        if scaler is not None and features_to_scale:
+            X_scaled = X.copy()
+            # Only scale features that were scaled during training
+            scale_cols = [f for f in features_to_scale if f in X.columns]
+            if scale_cols:
+                X_scaled[scale_cols] = scaler.transform(X[scale_cols])
+            X = X_scaled
         
         # Make prediction
         try:
@@ -231,18 +328,60 @@ def main():
         default=None,
         help="Output CSV file path (optional)"
     )
+    parser.add_argument(
+        "--use-recommended-filters",
+        action="store_true",
+        default=False,
+        help="Use recommended filters from stop-loss analysis (default: False)"
+    )
+    parser.add_argument(
+        "--custom-filter",
+        action="append",
+        nargs=3,
+        metavar=("FEATURE", "OPERATOR", "THRESHOLD"),
+        help="Add custom filter: --custom-filter feature_name > 0.5 (can be used multiple times)"
+    )
     
     args = parser.parse_args()
     
     # Load model
     print(f"Loading model from {args.model}...")
-    model, features = load_model(Path(args.model))
+    model, features, scaler, features_to_scale, _ = load_model(Path(args.model))
     print(f"Model loaded. Using {len(features)} features.")
+    if scaler is not None:
+        print(f"Scaler loaded. Will scale {len(features_to_scale)} features during prediction.")
     
     # Load tickers
     tickers_df = pd.read_csv(args.tickers_file, header=None)
     tickers = tickers_df.iloc[:, 0].astype(str).tolist()
     print(f"Loaded {len(tickers)} tickers from {args.tickers_file}")
+    
+    # Build entry filters
+    entry_filters = {}
+    
+    if args.use_recommended_filters:
+        entry_filters.update(get_recommended_filters())
+        print(f"\nUsing recommended filters from stop-loss analysis:")
+        for feat, (op, val) in sorted(entry_filters.items()):
+            print(f"  {feat} {op} {val}")
+    
+    # Add custom filters
+    if args.custom_filter:
+        for feature, operator, threshold_str in args.custom_filter:
+            try:
+                threshold = float(threshold_str)
+                if operator not in ['>', '<', '>=', '<=']:
+                    print(f"Warning: Invalid operator '{operator}'. Must be one of: >, <, >=, <=")
+                    continue
+                entry_filters[feature] = (operator, threshold)
+                print(f"  Added custom filter: {feature} {operator} {threshold}")
+            except ValueError:
+                print(f"Warning: Invalid threshold '{threshold_str}' for {feature}. Skipping.")
+    
+    if entry_filters:
+        print(f"\nTotal filters applied: {len(entry_filters)}")
+    else:
+        print("\nNo entry filters applied")
     
     # Identify opportunities
     print("\nIdentifying trading opportunities...")
@@ -252,7 +391,10 @@ def main():
         data_dir=Path(args.data_dir),
         tickers=tickers,
         min_probability=args.min_probability,
-        top_n=args.top_n
+        top_n=args.top_n,
+        scaler=scaler,
+        features_to_scale=features_to_scale,
+        entry_filters=entry_filters if entry_filters else None
     )
     
     # Display results

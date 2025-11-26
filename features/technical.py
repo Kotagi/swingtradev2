@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import pandas_ta_classic as ta
 from pandas import Series, DataFrame
+from typing import Optional
 
 
 def _get_column(df: DataFrame, col_name: str) -> Series:
@@ -2116,3 +2117,456 @@ def feature_volume_distribution(df: DataFrame) -> Series:
     cv = volume_std / volume_mean  # Coefficient of variation
     cv.name = "volume_distribution"
     return cv
+
+
+# ============================================================================
+# PRIORITY 1: Market Context Features (Relative Strength vs SPY)
+# ============================================================================
+
+# Cache for SPY data to avoid reloading for each ticker
+_SPY_DATA_CACHE = None
+
+def _load_spy_data() -> Optional[DataFrame]:
+    """Load and cache SPY data once. Handles both cleaned (Parquet) and raw (CSV) formats."""
+    global _SPY_DATA_CACHE
+    if _SPY_DATA_CACHE is not None:
+        return _SPY_DATA_CACHE
+    
+    from pathlib import Path
+    
+    # First try cleaned data (Parquet) - same format as other tickers
+    spy_clean_file = Path("data/clean/SPY.parquet")
+    if spy_clean_file.exists():
+        try:
+            spy_df = pd.read_parquet(spy_clean_file)
+            # Cleaned data has date as index
+            if not isinstance(spy_df.index, pd.DatetimeIndex):
+                spy_df.index = pd.to_datetime(spy_df.index)
+            _SPY_DATA_CACHE = spy_df
+            return _SPY_DATA_CACHE
+        except Exception as e:
+            # If Parquet fails, fall back to CSV
+            pass
+    
+    # Fall back to raw CSV - process it the same way clean_data.py does
+    spy_file = Path("data/raw/SPY.csv")
+    if spy_file.exists():
+        try:
+            # Read CSV (date is first column, same as other raw tickers)
+            spy_df = pd.read_csv(spy_file)
+            if spy_df.empty:
+                return None
+            
+            # Rename first column to 'date' (same as clean_data.py)
+            first_col = spy_df.columns[0]
+            spy_df = spy_df.rename(columns={first_col: "date"})
+            
+            # Parse date column
+            spy_df["date"] = pd.to_datetime(spy_df["date"], format="%Y-%m-%d", errors="coerce")
+            
+            # Drop invalid dates
+            spy_df = spy_df.dropna(subset=["date"])
+            
+            if spy_df.empty:
+                return None
+            
+            # Set date as index and sort (same as clean_data.py)
+            spy_df = spy_df.set_index("date").sort_index()
+            
+            # Lowercase columns (same as clean_data.py)
+            spy_df.columns = [col.lower() for col in spy_df.columns]
+            
+            _SPY_DATA_CACHE = spy_df
+            return _SPY_DATA_CACHE
+        except Exception:
+            return None
+    return None
+
+def feature_relative_strength_spy_5d(df: DataFrame, spy_data: DataFrame = None) -> Series:
+    """
+    Stock return vs SPY return over 5 days (relative strength).
+    
+    Args:
+        df: Stock DataFrame
+        spy_data: SPY DataFrame with 'Close' column (optional, will be loaded if not provided)
+    
+    Returns:
+        Series: (stock_return - spy_return) * 100
+    """
+    close = _get_close_series(df)
+    stock_return = (close / close.shift(5) - 1) * 100
+    
+    if spy_data is None:
+        spy_data = _load_spy_data()
+        if spy_data is None:
+            # Return NaN if SPY data not available
+            result = pd.Series(np.nan, index=df.index)
+            result.name = "relative_strength_spy_5d"
+            return result
+    
+    # Get SPY close (handle case-insensitive)
+    spy_close = _get_column(spy_data, 'close') if 'close' in spy_data.columns else spy_data['Close']
+    
+    # Ensure SPY index is DatetimeIndex and sorted
+    if not isinstance(spy_close.index, pd.DatetimeIndex):
+        spy_close.index = pd.to_datetime(spy_close.index)
+    spy_close = spy_close.sort_index()
+    
+    # Get stock date index - cleaned data has date as index
+    # Ensure index is DatetimeIndex (parquet might not preserve type)
+    if isinstance(df.index, pd.DatetimeIndex):
+        stock_dates = df.index
+    elif df.index.name == 'date' or (hasattr(df.index, 'dtype') and pd.api.types.is_datetime64_any_dtype(df.index)):
+        # Index is date-like but not DatetimeIndex - convert it
+        stock_dates = pd.to_datetime(df.index)
+    elif 'date' in df.columns:
+        stock_dates = pd.to_datetime(df['date'])
+    else:
+        # Can't align without dates
+        result = pd.Series(np.nan, index=df.index)
+        result.name = "relative_strength_spy_5d"
+        return result
+    
+    # Normalize dates to date-only (remove time component) for matching
+    stock_dates_normalized = pd.to_datetime(stock_dates).normalize()
+    spy_dates_normalized = pd.to_datetime(spy_close.index).normalize()
+    
+    # Create temporary DataFrames for alignment
+    stock_temp = pd.DataFrame({
+        'date': stock_dates_normalized,
+        'idx': range(len(stock_dates_normalized))
+    })
+    spy_temp = pd.DataFrame({
+        'date': spy_dates_normalized,
+        'close': spy_close.values
+    }).sort_values('date')
+    
+    # Merge on date (left join to preserve stock dates)
+    merged = stock_temp.merge(spy_temp, on='date', how='left', sort=False)
+    merged = merged.sort_values('idx').reset_index(drop=True)
+    
+    # Forward fill missing SPY values
+    merged['close'] = merged['close'].ffill()
+    
+    # Convert back to Series with original index
+    spy_close_series = pd.Series(merged['close'].values, index=df.index)
+    
+    spy_return = (spy_close_series / spy_close_series.shift(5) - 1) * 100
+    
+    rs = stock_return - spy_return
+    rs.name = "relative_strength_spy_5d"
+    return rs
+
+
+def feature_relative_strength_spy_20d(df: DataFrame, spy_data: DataFrame = None) -> Series:
+    """Stock return vs SPY return over 20 days (relative strength)."""
+    close = _get_close_series(df)
+    stock_return = (close / close.shift(20) - 1) * 100
+    
+    if spy_data is None:
+        spy_data = _load_spy_data()
+        if spy_data is None:
+            result = pd.Series(np.nan, index=df.index)
+            result.name = "relative_strength_spy_20d"
+            return result
+    
+    spy_close = _get_column(spy_data, 'close') if 'close' in spy_data.columns else spy_data['Close']
+    
+    # Ensure SPY index is DatetimeIndex and sorted
+    if not isinstance(spy_close.index, pd.DatetimeIndex):
+        spy_close.index = pd.to_datetime(spy_close.index)
+    spy_close = spy_close.sort_index()
+    
+    # Get stock date index - ensure it's DatetimeIndex
+    if isinstance(df.index, pd.DatetimeIndex):
+        stock_dates = df.index
+    elif df.index.name == 'date' or (hasattr(df.index, 'dtype') and pd.api.types.is_datetime64_any_dtype(df.index)):
+        stock_dates = pd.to_datetime(df.index)
+    elif 'date' in df.columns:
+        stock_dates = pd.to_datetime(df['date'])
+    else:
+        result = pd.Series(np.nan, index=df.index)
+        result.name = "relative_strength_spy_20d"
+        return result
+    
+    # Normalize dates to date-only for matching
+    stock_dates_normalized = pd.to_datetime(stock_dates).normalize()
+    spy_dates_normalized = pd.to_datetime(spy_close.index).normalize()
+    
+    # Create temporary DataFrames for alignment
+    stock_temp = pd.DataFrame({
+        'date': stock_dates_normalized,
+        'idx': range(len(stock_dates_normalized))
+    })
+    spy_temp = pd.DataFrame({
+        'date': spy_dates_normalized,
+        'close': spy_close.values
+    }).sort_values('date')
+    
+    # Merge on date (left join to preserve stock dates)
+    merged = stock_temp.merge(spy_temp, on='date', how='left', sort=False)
+    merged = merged.sort_values('idx').reset_index(drop=True)
+    
+    # Forward fill missing SPY values
+    merged['close'] = merged['close'].ffill()
+    
+    # Convert back to Series with original index
+    spy_close_series = pd.Series(merged['close'].values, index=df.index)
+    spy_return = (spy_close_series / spy_close_series.shift(20) - 1) * 100
+    
+    rs = stock_return - spy_return
+    rs.name = "relative_strength_spy_20d"
+    return rs
+
+
+def feature_rs_rank_20d(df: DataFrame, spy_data: DataFrame = None) -> Series:
+    """
+    Relative strength rank (0-100) vs market over 20 days.
+    
+    Compares stock's relative strength to its own history.
+    """
+    rs = feature_relative_strength_spy_20d(df, spy_data)
+    rank = _rolling_percentile_rank(rs, window=252, min_periods=20)  # 1 year lookback
+    rank.name = "rs_rank_20d"
+    return rank
+
+
+def feature_outperformance_flag(df: DataFrame, spy_data: DataFrame = None) -> Series:
+    """Binary flag: 1 if stock is outperforming SPY over 20 days, else 0."""
+    rs = feature_relative_strength_spy_20d(df, spy_data)
+    flag = (rs > 0).astype(float)
+    flag.name = "outperformance_flag"
+    return flag
+
+
+def feature_market_correlation_20d(df: DataFrame, spy_data: DataFrame = None) -> Series:
+    """
+    Rolling correlation to SPY over 20 days.
+    
+    Measures how closely stock moves with the market.
+    """
+    close = _get_close_series(df)
+    stock_returns = close.pct_change()
+    
+    if spy_data is None:
+        spy_data = _load_spy_data()
+        if spy_data is None:
+            result = pd.Series(np.nan, index=df.index)
+            result.name = "market_correlation_20d"
+            return result
+    
+    spy_close = _get_column(spy_data, 'close') if 'close' in spy_data.columns else spy_data['Close']
+    
+    # Ensure SPY index is DatetimeIndex and sorted
+    if not isinstance(spy_close.index, pd.DatetimeIndex):
+        spy_close.index = pd.to_datetime(spy_close.index)
+    spy_close = spy_close.sort_index()
+    
+    # Get stock date index - ensure it's DatetimeIndex
+    if isinstance(df.index, pd.DatetimeIndex):
+        stock_dates = df.index
+    elif df.index.name == 'date' or (hasattr(df.index, 'dtype') and pd.api.types.is_datetime64_any_dtype(df.index)):
+        stock_dates = pd.to_datetime(df.index)
+    elif 'date' in df.columns:
+        stock_dates = pd.to_datetime(df['date'])
+    else:
+        result = pd.Series(np.nan, index=df.index)
+        result.name = "market_correlation_20d"
+        return result
+    
+    # Normalize dates to date-only for matching
+    stock_dates_normalized = pd.to_datetime(stock_dates).normalize()
+    spy_dates_normalized = pd.to_datetime(spy_close.index).normalize()
+    
+    # Create temporary DataFrames for alignment
+    stock_temp = pd.DataFrame({
+        'date': stock_dates_normalized,
+        'idx': range(len(stock_dates_normalized))
+    })
+    spy_temp = pd.DataFrame({
+        'date': spy_dates_normalized,
+        'close': spy_close.values
+    }).sort_values('date')
+    
+    # Merge on date (left join to preserve stock dates)
+    merged = stock_temp.merge(spy_temp, on='date', how='left', sort=False)
+    merged = merged.sort_values('idx').reset_index(drop=True)
+    
+    # Forward fill missing SPY values
+    merged['close'] = merged['close'].ffill()
+    
+    # Convert back to Series with original index
+    spy_close_series = pd.Series(merged['close'].values, index=df.index)
+    spy_returns = spy_close_series.pct_change()
+    
+    # Calculate rolling correlation
+    correlation = stock_returns.rolling(window=20, min_periods=10).corr(spy_returns)
+    correlation.name = "market_correlation_20d"
+    return correlation
+
+
+# ============================================================================
+# PRIORITY 1: Time-Based Features
+# ============================================================================
+
+def feature_day_of_week_sin(df: DataFrame) -> Series:
+    """
+    Day of week (cyclical encoding - sine component).
+    
+    Monday=0, Friday=4. Encoded as sin(2π * day / 7).
+    """
+    if not isinstance(df.index, pd.DatetimeIndex):
+        # Try to find a date column
+        if 'date' in df.columns:
+            dates = pd.to_datetime(df['date'])
+        else:
+            result = pd.Series(np.nan, index=df.index)
+            result.name = "day_of_week_sin"
+            return result
+    else:
+        dates = df.index
+    
+    day_of_week = dates.dayofweek  # 0=Monday, 6=Sunday
+    sin_component = np.sin(2 * np.pi * day_of_week / 7)
+    result = pd.Series(sin_component, index=df.index)
+    result.name = "day_of_week_sin"
+    return result
+
+
+def feature_day_of_week_cos(df: DataFrame) -> Series:
+    """Day of week (cyclical encoding - cosine component)."""
+    if not isinstance(df.index, pd.DatetimeIndex):
+        if 'date' in df.columns:
+            dates = pd.to_datetime(df['date'])
+        else:
+            result = pd.Series(np.nan, index=df.index)
+            result.name = "day_of_week_cos"
+            return result
+    else:
+        dates = df.index
+    
+    day_of_week = dates.dayofweek
+    cos_component = np.cos(2 * np.pi * day_of_week / 7)
+    result = pd.Series(cos_component, index=df.index)
+    result.name = "day_of_week_cos"
+    return result
+
+
+def feature_day_of_month_sin(df: DataFrame) -> Series:
+    """Day of month (cyclical encoding - sine component, 1-31)."""
+    if not isinstance(df.index, pd.DatetimeIndex):
+        if 'date' in df.columns:
+            dates = pd.to_datetime(df['date'])
+        else:
+            result = pd.Series(np.nan, index=df.index)
+            result.name = "day_of_month_sin"
+            return result
+    else:
+        dates = df.index
+    
+    day_of_month = dates.day
+    sin_component = np.sin(2 * np.pi * day_of_month / 31)
+    result = pd.Series(sin_component, index=df.index)
+    result.name = "day_of_month_sin"
+    return result
+
+
+def feature_day_of_month_cos(df: DataFrame) -> Series:
+    """Day of month (cyclical encoding - cosine component)."""
+    if not isinstance(df.index, pd.DatetimeIndex):
+        if 'date' in df.columns:
+            dates = pd.to_datetime(df['date'])
+        else:
+            result = pd.Series(np.nan, index=df.index)
+            result.name = "day_of_month_cos"
+            return result
+    else:
+        dates = df.index
+    
+    day_of_month = dates.day
+    cos_component = np.cos(2 * np.pi * day_of_month / 31)
+    result = pd.Series(cos_component, index=df.index)
+    result.name = "day_of_month_cos"
+    return result
+
+
+def feature_month_of_year_sin(df: DataFrame) -> Series:
+    """Month of year (cyclical encoding - sine component, 1-12)."""
+    if not isinstance(df.index, pd.DatetimeIndex):
+        if 'date' in df.columns:
+            dates = pd.to_datetime(df['date'])
+        else:
+            result = pd.Series(np.nan, index=df.index)
+            result.name = "month_of_year_sin"
+            return result
+    else:
+        dates = df.index
+    
+    month = dates.month
+    sin_component = np.sin(2 * np.pi * month / 12)
+    result = pd.Series(sin_component, index=df.index)
+    result.name = "month_of_year_sin"
+    return result
+
+
+def feature_month_of_year_cos(df: DataFrame) -> Series:
+    """Month of year (cyclical encoding - cosine component)."""
+    if not isinstance(df.index, pd.DatetimeIndex):
+        if 'date' in df.columns:
+            dates = pd.to_datetime(df['date'])
+        else:
+            result = pd.Series(np.nan, index=df.index)
+            result.name = "month_of_year_cos"
+            return result
+    else:
+        dates = df.index
+    
+    month = dates.month
+    cos_component = np.cos(2 * np.pi * month / 12)
+    result = pd.Series(cos_component, index=df.index)
+    result.name = "month_of_year_cos"
+    return result
+
+
+def feature_is_month_end(df: DataFrame) -> Series:
+    """Binary flag: 1 if within last 3 days of month, else 0."""
+    if not isinstance(df.index, pd.DatetimeIndex):
+        if 'date' in df.columns:
+            dates = pd.to_datetime(df['date'])
+        else:
+            result = pd.Series(np.nan, index=df.index)
+            result.name = "is_month_end"
+            return result
+    else:
+        dates = df.index
+    
+    # Get last day of month for each date
+    last_day = dates + pd.offsets.MonthEnd(0)
+    days_until_end = (last_day - dates).days
+    is_end = (days_until_end <= 2).astype(float)  # Last 3 days (0, 1, 2)
+    
+    result = pd.Series(is_end, index=df.index)
+    result.name = "is_month_end"
+    return result
+
+
+def feature_is_quarter_end(df: DataFrame) -> Series:
+    """Binary flag: 1 if within last week of quarter, else 0."""
+    if not isinstance(df.index, pd.DatetimeIndex):
+        if 'date' in df.columns:
+            dates = pd.to_datetime(df['date'])
+        else:
+            result = pd.Series(np.nan, index=df.index)
+            result.name = "is_quarter_end"
+            return result
+    else:
+        dates = df.index
+    
+    # Get last day of quarter for each date
+    last_day = dates + pd.offsets.QuarterEnd(0)
+    days_until_end = (last_day - dates).days
+    is_end = (days_until_end <= 5).astype(float)  # Last week (0-5 days)
+    
+    result = pd.Series(is_end, index=df.index)
+    result.name = "is_quarter_end"
+    return result

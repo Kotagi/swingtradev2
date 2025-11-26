@@ -119,3 +119,20 @@ features:
   volume_breakout:           1
   volume_distribution:       1
   
+  # Priority 1: Market Context Features (5 features)
+  relative_strength_spy_5d:  1
+  relative_strength_spy_20d: 1
+  rs_rank_20d:               1
+  outperformance_flag:       1
+  market_correlation_20d:    1
+  
+  # Priority 1: Time-Based Features (8 features)
+  day_of_week_sin:          1
+  day_of_week_cos:          1
+  day_of_month_sin:         1
+  day_of_month_cos:         1
+  month_of_year_sin:        1
+  month_of_year_cos:        1
+  is_month_end:             1
+  is_quarter_end:           1
+  

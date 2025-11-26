@@ -763,6 +763,28 @@ def main() -> None:
         write_sectors_csv(sectors, args.sectors_file)
     else:
         logging.info("Skipping sector file write (--no-sectors specified)")
+    
+    # Download SPY for market context features
+    logging.info("Downloading SPY data for market context features...")
+    try:
+        spy_file = Path(args.raw_folder) / "SPY.csv"
+        if not spy_file.exists() or args.full_refresh:
+            spy_data = yf.download(
+                tickers="SPY",
+                start=args.start_date,
+                end=args.end_date or datetime.today().strftime("%Y-%m-%d"),
+                progress=False,
+                auto_adjust=False
+            )
+            if not spy_data.empty:
+                spy_data.to_csv(spy_file)
+                logging.info(f"SPY data saved to {spy_file}")
+            else:
+                logging.warning("SPY download returned empty data")
+        else:
+            logging.info(f"SPY data already exists at {spy_file}, skipping (use --full to redownload)")
+    except Exception as e:
+        logging.warning(f"Failed to download SPY data: {e}")
 
 
 if __name__ == "__main__":

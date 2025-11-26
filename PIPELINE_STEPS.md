@@ -155,9 +155,16 @@ python src/swing_trade_app.py train --tune --diagnostics
 - `--tune`: Perform hyperparameter tuning (RandomizedSearchCV) - **Recommended**
 - `--n-iter`: Number of hyperparameter search iterations (default: 20)
 - `--cv`: Use cross-validation for hyperparameter tuning (slower but more robust)
+- `--cv-folds`: Number of CV folds (default: 3, or 5 for TimeSeriesSplit)
 - `--no-early-stop`: Disable early stopping (train for full n_estimators)
 - `--plots`: Generate training curves and feature importance charts (requires matplotlib)
 - `--diagnostics`: Show SHAP diagnostics (requires shap library)
+- `--fast`: Use reduced hyperparameter space for quicker tuning
+- `--imbalance-multiplier`: Class imbalance multiplier (default: 1.0, try 2.0-3.0 for more trades)
+- `--train-end`: Training data end date (YYYY-MM-DD, default: 2022-12-31)
+- `--val-end`: Validation data end date (YYYY-MM-DD, default: 2023-12-31)
+- `--horizon`: Trade horizon in days (e.g., 5, 30). Used to auto-detect label column.
+- `--label-col`: Label column name (e.g., 'label_5d', 'label_30d'). Auto-detected if not specified.
 
 **What it does:**
 - **Enhanced data splitting:** Train/Validation/Test split by date:
@@ -166,20 +173,27 @@ python src/swing_trade_app.py train --tune --diagnostics
   - Test: 2024-01-01 onwards
 - Loads all feature data from `data/features_labeled/`
 - Filters features based on `config/train_features.yaml`
-- Trains baseline models (DummyClassifier, LogisticRegression)
+- **Feature normalization/scaling:**
+  - Automatically identifies which features need scaling vs those already normalized
+  - Features already normalized (kept as-is): Pattern features (0-1), percentile features (0-1), crossover signals (-1, 0, 1)
+  - Features scaled (StandardScaler): Price-based features, unbounded percentages, z-scores, MACD, OBV, etc.
+  - Fits StandardScaler on training data only (prevents data leakage)
+  - Transforms train/validation/test sets using the fitted scaler
+  - Saves scaler with model for consistent inference
+- Trains baseline models (DummyClassifier, LogisticRegression with scaling)
 - **Hyperparameter tuning:** Searches 9 hyperparameters (n_estimators, max_depth, learning_rate, etc.)
 - **Early stopping:** Prevents overfitting using validation set
 - Trains XGBoost classifier with improved class imbalance handling
 - **Comprehensive evaluation:** ROC AUC, Average Precision, F1 Score, Confusion Matrix, Precision/Recall/Specificity
 - **Feature importance:** Always displays top 20 features with rankings
-- Saves model, features, and training metadata
+- Saves model, scaler, features, and training metadata
 
 **Output:** 
-- Trained model file: `models/xgb_classifier_selected_features.pkl`
+- Trained model file: `models/xgb_classifier_selected_features.pkl` (includes model, scaler, features, metadata)
 - Training metadata: `models/training_metadata.json`
 - Training curves plot: `models/xgb_training_curves.png` (if `--plots` used)
 - Feature importance chart: `models/feature_importance_chart.png` (if `--plots` used)
-- Console metrics: Comprehensive evaluation metrics
+- Console metrics: Comprehensive evaluation metrics including feature normalization summary
 
 **Metrics Shown:**
 - **Baseline comparisons:** DummyClassifier, LogisticRegression, XGBoost AUC scores
@@ -221,13 +235,20 @@ python src/swing_trade_app.py backtest \
 - `--strategy`: `model`, `oracle`, or `rsi`
 - `--model-threshold`: Probability threshold for model signals (0.0-1.0)
 - `--position-size`: Dollar amount per trade
+- `--stop-loss`: Stop-loss threshold as decimal (e.g., -0.075 for -7.5%). If not specified and return-threshold is provided, uses 2:1 risk-reward (return_threshold / 2)
 - `--output`: Optional CSV file to save trades
 
 **What it does:**
-- Loads trained model and feature data
+- Loads trained model, scaler, and feature data
+- **Applies feature scaling:** Automatically scales features during prediction using the saved scaler
 - Generates entry signals based on strategy
-- Simulates trades: enter at open, exit after horizon days
+- Simulates trades with configurable exit logic:
+  - Exit at return threshold (if reached)
+  - Exit at stop-loss (2:1 risk-reward by default, configurable)
+  - Exit at time horizon (if neither threshold reached)
+- Prevents overlapping trades (only one position per ticker at a time)
 - Calculates returns and P&L for each trade
+- Tracks exit reasons (target_reached, stop_loss, time_limit, end_of_data)
 - Aggregates performance metrics
 
 **Output:** 
@@ -244,17 +265,175 @@ python src/swing_trade_app.py backtest \
 - Sharpe Ratio
 - Profit Factor
 - Average Holding Days
+- Exit Reasons Breakdown (target_reached, stop_loss, time_limit, end_of_data)
+- Time Limit Trades Analysis (win/loss breakdown, return distribution)
+
+---
+
+### **Step 5.5: Analyze Stop-Loss Trades** (Optional)
+**Purpose:** Analyze patterns in stop-loss trades to identify risk factors and improve entry filters
+
+**Command:**
+```bash
+python src/analyze_stop_losses.py \
+  --horizon 30 \
+  --return-threshold 0.15 \
+  --model-threshold 0.80 \
+  --stop-loss -0.075
+```
+
+**Parameters:**
+- `--horizon`: Trade window (must match features)
+- `--return-threshold`: Return threshold (must match features)
+- `--model-threshold`: Model probability threshold
+- `--stop-loss`: Stop-loss threshold (e.g., -0.075 for -7.5%)
+- `--trades-csv`: Optional CSV file with existing trades (if not provided, runs backtest)
+- `--use-validation`: Use validation data (2023) for analysis instead of test data (default: True)
+- `--train-end`: Training data end date (default: 2022-12-31)
+- `--val-end`: Validation data end date (default: 2023-12-31)
+- `--output`: Optional JSON file to save analysis results
+
+**What it does:**
+- Runs backtest on validation data (2023) to generate trades (or loads from CSV)
+- Identifies stop-loss trades vs winning trades
+- **Feature analysis:** Compares feature distributions between stop-loss and winners
+  - Calculates mean differences and effect sizes
+  - Identifies top features that predict stop-losses
+  - Generates filter recommendations based on significant differences
+- **Timing analysis:** Analyzes patterns in entry timing
+  - Day of week distribution
+  - Month distribution
+  - Days to stop-loss distribution
+- **Return analysis:** Analyzes stop-loss return distribution
+- Provides actionable filter recommendations
+
+**Output:**
+- Console analysis report with:
+  - Stop-loss vs winner statistics
+  - Top features that differ (with effect sizes)
+  - Filter recommendations with thresholds
+  - Timing patterns (day of week, month, days to stop-loss)
+  - Return distribution analysis
+- Optional JSON file with detailed results
+
+**Key Insights:**
+- Identifies which features correlate with stop-loss trades
+- Reveals timing patterns (e.g., Monday/Tuesday entries, October risk)
+- Provides specific filter thresholds to reduce stop-loss rate
+- **Important:** Uses validation data (2023) by default to avoid data leakage when creating filters
+
+**Example Output:**
+- Top risk factors: Negative RSI slope, low market correlation, price near support
+- Timing risks: Monday/Tuesday entries (53% of stop-losses), October (24.8% of stop-losses)
+- Filter recommendations: `rsi_slope > -1.349`, `market_correlation_20d > 0.532`, etc.
+
+---
+
+### **Step 5.6: Apply Entry Filters** (Optional)
+**Purpose:** Apply entry filters to reduce stop-loss trades and improve backtest performance
+
+**Command:**
+```bash
+# Use default filters (from stop-loss analysis)
+python src/apply_entry_filters.py \
+  --horizon 30 \
+  --return-threshold 0.15 \
+  --model-threshold 0.80 \
+  --stop-loss -0.075
+
+# Disable timing filters
+python src/apply_entry_filters.py \
+  --horizon 30 \
+  --return-threshold 0.15 \
+  --no-timing-filters
+
+# Add custom filters
+python src/apply_entry_filters.py \
+  --horizon 30 \
+  --return-threshold 0.15 \
+  --custom-filter rsi_slope ">" 0.5 \
+  --custom-filter market_correlation_20d ">" 0.6
+```
+
+**Parameters:**
+- `--horizon`: Trade window (must match features)
+- `--return-threshold`: Return threshold (must match features)
+- `--model-threshold`: Model probability threshold (default: 0.80)
+- `--stop-loss`: Stop-loss threshold (e.g., -0.075 for -7.5%)
+- `--position-size`: Position size per trade (default: 1000.0)
+- `--test-start-date`: Test data start date (default: 2024-01-01)
+- `--test-end-date`: Test data end date (default: None, all available)
+- `--use-default-filters`: Use default filters from stop-loss analysis (default: True)
+- `--no-timing-filters`: Disable timing filters (Monday/Tuesday, October)
+- `--custom-filter`: Add custom filter (can be used multiple times)
+  - Format: `--custom-filter FEATURE OPERATOR THRESHOLD`
+  - Example: `--custom-filter rsi_slope ">" 0.5`
+
+**What it does:**
+- Loads trained model, scaler, and feature data
+- **Applies default filters** (17 feature-based filters from stop-loss analysis):
+  - Momentum filters: `rsi_slope > -1.349`, `log_return_1d > -0.017`, `log_return_5d > -0.057`
+  - Market context: `relative_strength_spy_5d > -4.269`, `market_correlation_20d > 0.532`
+  - Price action: `candle_body_pct > -25.37`, `close_position_in_range > 0.368`, `price_near_support < 0.443`
+  - Overbought: `weekly_rsi_14w < 44.455`, `trend_consistency < 35.638`
+  - Time-based: `month_of_year_cos > 0.172`, `day_of_month_cos > 0.039`
+- **Applies timing filters** (if enabled):
+  - Avoids Monday/Tuesday entries (53% of stop-losses in validation data)
+  - Avoids October entries (24.8% of stop-losses in validation data)
+- Filters entry signals: Only enters when both model signal AND all filters pass
+- Runs backtest with filtered signals
+- Compares performance to baseline (without filters)
+
+**Output:**
+- Console metrics: Same as regular backtest, plus:
+  - Filter configuration summary
+  - Stop-loss rate comparison (with vs without filters)
+  - Exit reasons breakdown
+
+**Default Filters (from validation data analysis):**
+- **Momentum:** RSI slope, 1-day return, 5-day return thresholds
+- **Market Context:** Relative strength vs SPY, market correlation
+- **Price Action:** Candle body, close position, support/resistance proximity
+- **Overbought:** Weekly RSI, trend consistency, high vs close
+- **Time-Based:** Month/day cyclical features
+- **Timing:** Avoid Monday/Tuesday, avoid October
+
+**Best Practices:**
+1. **First analyze stop-losses** on validation data (Step 5.5)
+2. **Test filters on validation data** to verify they help
+3. **Then test on test data** (2024+) for out-of-sample evaluation
+4. **Start with default filters**, then customize based on results
+5. **Monitor trade count** - if filters reduce trades too much, relax thresholds
+
+**Note:** Filters are derived from validation data (2023) to prevent data leakage. Test on test data (2024+) for true out-of-sample performance.
 
 ---
 
 ### **Step 6: Identify Current Trades**
-**Purpose:** Find current trading opportunities using the trained model
+**Purpose:** Find current trading opportunities using the trained model with optional entry filters
 
 **Command:**
 ```bash
+# Basic identification
 python src/swing_trade_app.py identify \
   --min-probability 0.6 \
   --top-n 20 \
+  --output current_opportunities.csv
+
+# With recommended filters (reduces false positives)
+python src/identify_trades.py \
+  --min-probability 0.6 \
+  --top-n 20 \
+  --use-recommended-filters \
+  --output current_opportunities.csv
+
+# With custom filters
+python src/identify_trades.py \
+  --min-probability 0.6 \
+  --top-n 20 \
+  --custom-filter candle_body_pct ">" -10 \
+  --custom-filter close_position_in_range ">" 0.40 \
+  --custom-filter weekly_rsi_14w "<" 42 \
   --output current_opportunities.csv
 ```
 
@@ -263,17 +442,38 @@ python src/swing_trade_app.py identify \
 - `--top-n`: Maximum number of opportunities to return
 - `--output`: Optional CSV file to save results
 - `--model`: Path to model file (default: `models/xgb_classifier_selected_features.pkl`)
+- `--data-dir`: Directory containing feature Parquet files (default: `data/features_labeled`)
+- `--tickers-file`: Path to CSV file with ticker symbols (default: `data/tickers/sp500_tickers.csv`)
+- `--use-recommended-filters`: Use recommended filters from stop-loss analysis (default: False)
+- `--custom-filter`: Add custom filter (can be used multiple times)
+  - Format: `--custom-filter FEATURE OPERATOR THRESHOLD`
+  - Example: `--custom-filter candle_body_pct ">" -10`
+  - Operators: `>`, `<`, `>=`, `<=`
 
 **What it does:**
-- Loads trained model and feature list
+- Loads trained model, scaler, and feature list
+- **Applies feature scaling:** Automatically scales features during prediction using the saved scaler
 - For each ticker, loads latest feature data
-- Generates predictions using the model
+- **Applies entry filters** (if enabled):
+  - Filters are applied **before** making predictions
+  - Only tickers that pass all filters get predictions
+  - Reduces false positives by filtering out high-risk entry conditions
+- Generates predictions using the model (with proper feature scaling)
 - Filters by probability threshold
 - Fetches current prices from yfinance
 - Ranks opportunities by confidence
 
+**Recommended Filters (from stop-loss analysis):**
+When using `--use-recommended-filters`, the following 5 filters are applied:
+1. **`candle_body_pct > -10`** - Avoids very bearish candles (effect size: -0.725)
+2. **`close_position_in_range > 0.40`** - Only enters when price is in upper portion of daily range (effect size: -0.646)
+3. **`weekly_rsi_14w < 42`** - Avoids overbought weekly RSI conditions (effect size: 0.603)
+4. **`market_correlation_20d > 0.60`** - Only enters when stock is moving with the market (effect size: -0.497)
+5. **`volatility_regime > 60`** - Prefers higher volatility environments (effect size: -0.464)
+
 **Output:**
 - Console table: Top opportunities with probabilities and prices
+- Filter summary: Shows which filters were applied
 - Optional CSV file with detailed results
 
 **Columns Shown:**
@@ -281,6 +481,57 @@ python src/swing_trade_app.py identify \
 - Prediction probability (0.0-1.0)
 - Current price
 - Date of analysis
+
+**Best Practices:**
+1. **Start without filters** to see baseline opportunities
+2. **Add recommended filters** to reduce false positives
+3. **Customize filters** based on your risk tolerance and backtest results
+4. **Monitor trade count** - if filters reduce opportunities too much, relax thresholds
+5. **Use same filters** in backtest and identification for consistency
+
+---
+
+### **Step 6.5: Compare Filters** (Optional)
+**Purpose:** Compare backtest performance with and without entry filters
+
+**Command:**
+```bash
+python src/compare_filters.py \
+  --horizon 30 \
+  --return-threshold 0.15 \
+  --model-threshold 0.80 \
+  --stop-loss -0.075
+```
+
+**Parameters:**
+- `--horizon`: Trade window (must match features)
+- `--return-threshold`: Return threshold (must match features)
+- `--model-threshold`: Model probability threshold
+- `--stop-loss`: Stop-loss threshold (e.g., -0.075 for -7.5%)
+- `--position-size`: Position size per trade (default: 1000.0)
+- `--test-start-date`: Test data start date (default: 2024-01-01)
+- `--test-end-date`: Test data end date (default: None)
+
+**What it does:**
+- Runs backtest **without filters** (baseline)
+- Runs backtest **with all default filters**
+- Compares metrics side-by-side:
+  - Total trades, win rate, returns, P&L, Sharpe ratio, profit factor
+  - Stop-loss rate comparison
+  - Trade count reduction
+- Analyzes which filters are applied (checks feature availability)
+- Identifies missing features (filters that couldn't be applied)
+
+**Output:**
+- Side-by-side comparison table
+- Change metrics (baseline vs filtered)
+- Filter analysis (which filters were applied, which are missing)
+
+**Use Cases:**
+- Verify filters improve performance before deploying
+- Identify which filters are too restrictive
+- Check feature availability in test data
+- Optimize filter thresholds
 
 ---
 
@@ -330,6 +581,10 @@ data/features_labeled/*.parquet
 models/xgb_classifier_selected_features.pkl
     ↓ [Step 5: Backtest]
 Performance Metrics
+    ↓ [Step 5.5: Analyze Stop-Losses] (Optional)
+Stop-Loss Analysis & Filter Recommendations
+    ↓ [Step 5.6: Apply Entry Filters] (Optional)
+Filtered Backtest Results
     ↓ [Step 6: Identify]
 Current Trading Opportunities
 ```
@@ -351,13 +606,24 @@ Current Trading Opportunities
 2. Build features (Step 3) - only if parameters changed
 3. Train model (Step 4) - only if features changed
 4. Backtest (Step 5) - verify performance
-5. Identify trades (Step 6) - find current opportunities
+5. Identify trades (Step 6) - find current opportunities (with filters if desired)
 
 ### Testing New Parameters:
 1. Build features (Step 3) - with new horizon/threshold
 2. Train model (Step 4)
 3. Backtest (Step 5) - compare results
-4. Identify trades (Step 6)
+4. Analyze stop-losses (Step 5.5) - identify risk factors
+5. Apply entry filters (Step 5.6) - improve performance
+6. Compare filters (Step 6.5) - verify improvements
+7. Identify trades (Step 6)
+
+### Improving Model Performance:
+1. Run backtest (Step 5) - establish baseline
+2. Analyze stop-losses (Step 5.5) - on validation data
+3. Apply entry filters (Step 5.6) - test on validation data first
+4. Compare filters (Step 6.5) - verify filters help
+5. Test on test data (Step 5.6) - out-of-sample evaluation
+6. Identify trades (Step 6) - with filters applied
 
 ---
 
@@ -393,7 +659,16 @@ python src/swing_trade_app.py clean --resume  # Optional, included in full pipel
 python src/swing_trade_app.py features --horizon 5 --threshold 0.05
 python src/swing_trade_app.py train
 python src/swing_trade_app.py backtest --horizon 5 --return-threshold 0.05
+
+# Optional: Improve performance with filters
+python src/analyze_stop_losses.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss -0.075
+python src/apply_entry_filters.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss -0.075
+python src/compare_filters.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss -0.075
+
 python src/swing_trade_app.py identify --min-probability 0.6 --top-n 20
+
+# With filters (recommended)
+python src/identify_trades.py --min-probability 0.6 --top-n 20 --use-recommended-filters
 ```
 
 ## Recent Improvements
@@ -427,6 +702,12 @@ python src/swing_trade_app.py identify --min-probability 0.6 --top-n 20
 - ✅ Feature redundancy documentation
 
 ### Training Step
+- ✅ **Feature normalization/scaling:**
+  - Automatic identification of features to scale vs keep as-is
+  - StandardScaler applied to price-based and unbounded features
+  - Pattern/percentile features kept in original scale (already normalized)
+  - Scaler fitted on training data only (prevents data leakage)
+  - Scaler saved with model for consistent inference
 - ✅ Hyperparameter tuning with RandomizedSearchCV
 - ✅ Early stopping to prevent overfitting
 - ✅ Cross-validation support
@@ -436,4 +717,34 @@ python src/swing_trade_app.py identify --min-probability 0.6 --top-n 20
 - ✅ Training curves visualization (optional)
 - ✅ Optimized parallelization
 - ✅ Fast mode for quicker tuning
+- ✅ Configurable data splits (train/val/test dates)
+- ✅ Configurable class imbalance handling (imbalance multiplier)
+- ✅ Dynamic label column detection (supports different horizons)
+
+### Backtest Step
+- ✅ **Data leakage prevention:** Uses only test data (2024-01-01 onwards) by default
+- ✅ Configurable exit logic (return threshold, stop-loss, time limit)
+- ✅ Stop-loss functionality (2:1 risk-reward by default)
+- ✅ Prevents overlapping trades (one position per ticker)
+- ✅ Comprehensive metrics (annual return, max capital invested, date range)
+- ✅ Exit reason tracking (target_reached, stop_loss, time_limit)
+- ✅ Time limit trade analysis
+
+### Stop-Loss Analysis (New)
+- ✅ **Pattern identification:** Analyzes stop-loss trades vs winners
+- ✅ **Feature analysis:** Identifies which features predict stop-losses
+- ✅ **Timing analysis:** Reveals day-of-week and month patterns
+- ✅ **Filter recommendations:** Provides specific thresholds to reduce stop-loss rate
+- ✅ **Validation data focus:** Uses validation data (2023) by default to prevent data leakage
+
+### Entry Filters (New)
+- ✅ **Default filters:** 17 feature-based filters from stop-loss analysis
+- ✅ **Timing filters:** Avoids high-risk entry periods (Monday/Tuesday, October)
+- ✅ **Custom filters:** Support for user-defined filter thresholds
+- ✅ **Integration:** Seamlessly integrates with backtest workflow
+- ✅ **Performance comparison:** Compares filtered vs baseline results
+- ✅ **Identify pipeline filters:** Entry filters now available in trade identification (Step 6)
+  - Recommended filters: 5 key filters based on stop-loss analysis
+  - Custom filter support: Add your own feature-based filters
+  - Applied before predictions: Reduces false positives proactively
 
