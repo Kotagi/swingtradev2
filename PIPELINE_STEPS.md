@@ -8,20 +8,66 @@ Your swing trading ML pipeline consists of 7 main steps that transform raw stock
 ## Step-by-Step Pipeline
 
 ### **Step 1: Download Stock Data**
-**Purpose:** Download historical OHLCV (Open, High, Low, Close, Volume) data from yfinance
+**Purpose:** Download historical OHLCV (Open, High, Low, Close, Volume) data from yfinance, including shares outstanding and public float from SEC EDGAR
 
-**Command:**
+**Command (via main app):**
 ```bash
 python src/swing_trade_app.py download --full
 ```
 
-**What it does:**
-- Downloads raw stock data for all tickers in `data/tickers/sp500_tickers.csv`
-- Fetches split factors and sector information
-- Saves individual CSV files to `data/raw/`
-- Creates/updates `data/tickers/sectors.csv`
+**Command (direct):**
+```bash
+python src/download_data.py --tickers-file data/tickers/sp500_tickers.csv --start-date 2008-01-01 --end-date 2025-12-31
+```
 
-**Output:** Raw CSV files in `data/raw/` (one per ticker)
+**All Available Arguments:**
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--tickers-file` | `data/tickers/sp500_tickers.csv` | Path to file with one ticker symbol per line |
+| `--start-date` | `2008-01-01` | Start date for historical data (YYYY-MM-DD) |
+| `--end-date` | Today's date (if not specified) | End date for historical data (YYYY-MM-DD, exclusive). If omitted, defaults to today |
+| `--raw-folder` | `data/raw` | Directory where raw CSV files are saved |
+| `--sectors-file` | `data/tickers/sectors.csv` | Output file for ticker→sector mapping |
+| `--chunk-size` | `100` | Number of tickers per bulk HTTP request |
+| `--pause` | `1.0` | Initial seconds to sleep between chunks (adaptive) |
+| `--max-retries` | `3` | Maximum retry attempts for failed downloads |
+| `--full` | `False` | Force full redownload of all tickers (ignore existing CSVs) |
+| `--no-sectors` | `False` | Skip fetching and writing sector information |
+| `--resume` | `False` | Resume from last checkpoint (skips already completed tickers) |
+
+**What it does:**
+- Downloads raw stock data for all tickers in the tickers file
+- Fetches split factors and sector information
+- Saves individual CSV files to `data/raw/` with columns: Open, High, Low, Close, Volume, split_coefficient
+- Creates/updates `data/tickers/sectors.csv`
+- Downloads SPY data for market context features
+- **Incremental updates:** Only downloads new data by default (use `--full` to force redownload)
+- **Resume capability:** Use `--resume` to continue from where you left off
+- **Adaptive rate limiting:** Automatically adjusts pause time between chunks based on performance
+
+**Output:** Raw CSV files in `data/raw/` (one per ticker) with OHLCV data and split coefficients
+
+**Examples:**
+```bash
+# Full redownload of all tickers
+python src/swing_trade_app.py download --full
+
+# Download specific date range
+python src/download_data.py --start-date 2020-01-01 --end-date 2024-12-31
+
+# Resume from checkpoint (skip already downloaded tickers)
+python src/download_data.py --resume
+
+# Custom tickers file and output location
+python src/download_data.py --tickers-file data/tickers/custom_tickers.csv --raw-folder data/raw_custom
+
+# Skip sector information
+python src/download_data.py --no-sectors
+
+# Increase retry attempts for unreliable connections
+python src/download_data.py --max-retries 5
+```
 
 **Alternative:** Use existing batch file
 ```bash
@@ -43,12 +89,15 @@ Or directly:
 python src/clean_data.py --raw-dir data/raw --clean-dir data/clean
 ```
 
-**Options:**
-- `--raw-dir` / `-r`: Input directory (default: `data/raw`)
-- `--clean-dir` / `-c`: Output directory (default: `data/clean`)
-- `--resume`: Skip already-cleaned files (resume from previous run)
-- `--workers` / `-w`: Number of parallel workers (default: 4)
-- `--verbose` / `-v`: Show detailed cleaning steps
+**All Available Arguments:**
+
+| Argument | Short | Default | Description |
+|----------|-------|---------|-------------|
+| `--raw-dir` | `-r` | `data/raw` | Input directory containing raw CSV files |
+| `--clean-dir` | `-c` | `data/clean` | Output directory where cleaned Parquet files will be written |
+| `--resume` | | `False` | Skip files that have already been cleaned (resume from previous run) |
+| `--workers` | `-w` | `4` | Number of parallel workers for processing |
+| `--verbose` | `-v` | `False` | Show detailed cleaning steps (DEBUG logs) |
 
 **What it does:**
 - **Parallel processing:** Cleans multiple files concurrently for faster processing
@@ -78,11 +127,17 @@ python src/clean_data.py --raw-dir data/raw --clean-dir data/clean
 python src/swing_trade_app.py features --horizon 5 --threshold 0.05
 ```
 
-**Parameters:**
-- `--horizon`: Trade window in days (e.g., 5 = hold for 5 days)
-- `--threshold`: Minimum return threshold (e.g., 0.05 = 5% return)
-- `--config`: Feature configuration file (default: `config/features.yaml`)
-- `--full`: Force full recomputation (ignores cache)
+**All Available Arguments:**
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--horizon` | `5` | Trade window in days (e.g., 5 = hold for 5 days) |
+| `--threshold` | `0.0` | Minimum return threshold (e.g., 0.05 = 5% return) |
+| `--config` | `config/features.yaml` | Feature configuration file path |
+| `--input-dir` | `data/clean` | Input directory containing cleaned Parquet files |
+| `--output-dir` | `data/features_labeled` | Output directory for feature Parquet files |
+| `--feature-set` | `None` | Feature set name (e.g., 'v1', 'v2'). If specified, automatically sets config and output-dir. Default: uses explicit paths |
+| `--full` / `--force-full` | `False` | Force full recomputation (ignores cache, recomputes all tickers) |
 
 **What it does:**
 - **Parallel processing:** Uses joblib for multi-core feature computation
@@ -91,45 +146,107 @@ python src/swing_trade_app.py features --horizon 5 --threshold 0.05
 - **Caching:** Skips up-to-date files automatically (use `--full` to force recompute)
 - **Performance optimized:** Uses efficient DataFrame concatenation (no fragmentation warnings)
 - Loads cleaned data from `data/clean/`
-- Computes **105+ technical indicators** across multiple categories
+- Computes **53 technical indicators** across multiple categories
 - **Data leakage prevention:** Forward-looking features removed from registry
-- **Ichimoku fixes:** Leading spans modified to avoid lookahead bias
 - Creates binary labels: 1 if future return > threshold, else 0
 - Saves feature + label data to `data/features_labeled/`
 - **Summary statistics:** Reports features computed, validation issues, processing time
 
 **Output:** Feature Parquet files in `data/features_labeled/` (one per ticker)
 
-**Key Features Computed (105+ total):**
+**Key Features Computed (53 total):**
 
-**Original Features (~50):**
-- **Momentum indicators:** RSI, MACD, Stochastic (with variants)
-- **Trend indicators:** SMA, EMA (multiple timeframes), ADX, Ichimoku
-- **Volatility indicators:** ATR, Bollinger Bands
-- **Volume indicators:** OBV (raw, percent change, z-score), volume ratios
-- **Price action:** Returns, gaps, breakouts, z-scores, percentiles
-- **Pattern recognition:** Candlestick patterns (engulfing, hammer, doji, morning/evening star, etc.)
+**Price Features (3):**
+- **price**: Raw closing price (for filtering, not ML input)
+- **price_log**: Log-transformed closing price (ln(close)) - compresses price differences
+- **price_vs_ma200**: Price normalized to 200-day MA (close / SMA200) - long-term context
 
-**Phase 1 New Features (55):**
-- **Support & Resistance (12):** Resistance/support levels (20d, 50d), distances, touches, pivot points, Fibonacci levels
-- **Volatility Regime (10):** ATR percentiles, volatility trends, BB squeeze/expansion, volatility flags
-- **Trend Strength (11):** ADX variations (20d, 50d), trend consistency, EMA alignment, MA slopes, trend duration, reversal signals
-- **Multi-Timeframe Weekly (14):** Weekly SMAs, EMAs, RSI, MACD, returns, volume ratios, trend strength
-- **Volume Profile (8):** VWAP, price vs VWAP, volume climax/dry-up, volume trends, breakouts, distribution
+**Return Features (6):**
+- **daily_return**: Daily return % clipped to ±20% - daily momentum
+- **gap_pct**: Gap % (open - prev_close) / prev_close, clipped to ±20% - overnight momentum
+- **weekly_return_5d**: 5-day return % clipped to ±30% - weekly momentum
+- **monthly_return_21d**: 21-day return % clipped to ±50% - monthly momentum
+- **quarterly_return_63d**: 63-day return % clipped to ±100% - quarterly momentum
+- **ytd_return**: Year-to-Date return % clipped to (-1, +2) - YTD performance
+
+**52-Week Features (3):**
+- **dist_52w_high**: Distance to 52-week high clipped to (-1, 0.5) - breakout potential
+- **dist_52w_low**: Distance to 52-week low clipped to (-0.5, 2) - support level
+- **pos_52w**: Position within 52-week range (0=low, 1=high) - relative strength
+
+**Moving Average Features (8):**
+- **sma20_ratio**: Price / SMA20 clipped to [0.5, 1.5] - short-term trend
+- **sma50_ratio**: Price / SMA50 clipped to [0.5, 1.5] - medium-term trend
+- **sma200_ratio**: Price / SMA200 clipped to [0.5, 2.0] - long-term trend
+- **sma20_sma50_ratio**: SMA20 / SMA50 clipped to [0.8, 1.2] - short/medium crossover
+- **sma50_sma200_ratio**: SMA50 / SMA200 clipped to [0.6, 1.4] - Golden Cross/Death Cross
+- **sma50_slope**: 5-day change in SMA50 / close clipped to [-0.1, 0.1] - medium-term momentum
+- **sma200_slope**: 10-day change in SMA200 / close clipped to [-0.1, 0.1] - long-term momentum
+- **kama_slope**: KAMA (Kaufman Adaptive Moving Average) slope normalized by price, clipped to [-0.1, 0.1] - adaptive trend strength, works better in choppy tickers
+
+**Volatility Features (7):**
+- **volatility_5d**: 5-day rolling std of returns clipped to [0, 0.15] - short-term volatility
+- **volatility_21d**: 21-day rolling std of returns clipped to [0, 0.15] - medium-term volatility
+- **volatility_ratio**: Volatility ratio (vol5/vol21) clipped to [0, 2] - identifies volatility expansion/compression regimes, helps differentiate choppy vs trending markets
+- **atr14_normalized**: ATR14 / close clipped to [0, 0.2] - true range volatility (accounts for gaps)
+- **bollinger_band_width**: Log-normalized BB width (log1p((upper-lower)/mid)) - volatility compression/expansion, predicts breakouts
+- **ttm_squeeze_on**: Binary flag (0/1) - TTM Squeeze condition (BB inside KC) - volatility contraction, #1 breakout indicator
+- **ttm_squeeze_momentum**: Normalized momentum (close - SMA20) / close - momentum direction during squeeze
+
+**Volume Features (5):**
+- **log_volume**: Log-transformed volume (log1p(volume)) - normalized volume
+- **log_avg_volume_20d**: Log-transformed 20-day average volume - smoothed volume baseline
+- **relative_volume**: Log-transformed volume ratio (log1p(volume/vol_avg20)) clipped to [0,10] - unusual volume activity
+- **chaikin_money_flow**: CMF (20-period) clipped to [-1, 1] - accumulation vs distribution, combines price with volume
+- **obv_momentum**: OBV rate of change (10-day pct change) clipped to [-0.5, 0.5] - volume acceleration, works with breakouts and squeezes
+
+**Momentum Features (9):**
+- **rsi14**: RSI14 centered to [-1, +1] range: (rsi-50)/50 - overbought/oversold
+- **macd_histogram_normalized**: MACD histogram / close - momentum acceleration/deceleration, most predictive part of MACD
+- **ppo_histogram**: PPO (Percentage Price Oscillator) histogram clipped to [-0.2, 0.2] - percentage-based momentum acceleration/deceleration, scale-invariant and cross-ticker comparable
+- **dpo**: DPO (Detrended Price Oscillator, 20-period) normalized by price, clipped to [-0.2, 0.2] - cyclical indicator that removes long-term trend, highlights short-term cycles, helps detect cycle peaks/troughs and mean-reversion zones
+- **roc10**: ROC (Rate of Change) 10-period clipped to [-0.5, 0.5] - short-term momentum velocity, highly predictive in breakouts and pullbacks
+- **roc20**: ROC (Rate of Change) 20-period clipped to [-0.7, 0.7] - medium-term momentum velocity, more expressive form of momentum than basic log returns
+- **stochastic_k14**: Stochastic %K (14-period) in [0, 1] range - position within trading range, better than RSI in many scenarios
+- **cci20**: CCI (Commodity Channel Index, 20-period) normalized with tanh(cci/100) - standardized distance from trend oscillator, captures trend exhaustion & reversion points
+- **williams_r14**: Williams %R (14-period) normalized to [0, 1] range - range momentum/reversion oscillator, very sensitive to reversal points, strong complement to RSI and Stoch
+
+**Market Context (1):**
+- **beta_spy_252d**: Rolling beta vs SPY (252-day) normalized to [0, 1] - market correlation
+
+**Candlestick Features (3):**
+- **candle_body_pct**: Body / range in [0, 1] - candle strength
+- **candle_upper_wick_pct**: Upper wick / range in [0, 1] - selling pressure at highs
+- **candle_lower_wick_pct**: Lower wick / range in [0, 1] - buying pressure at lows
+
+**Price Action Features (4):**
+- **higher_high_10d**: Binary flag (0/1) - current close > previous 10-day max - bullish momentum
+- **higher_low_10d**: Binary flag (0/1) - current close > previous 10-day min - trend continuation
+- **donchian_position**: Position within Donchian channel (20-period) in [0, 1] range - breakout structure
+- **donchian_breakout**: Binary flag (0/1) - close > donchian_high_20 - breakout detection
+
+**Trend Features (5):**
+- **trend_residual**: Deviation from linear trend (50-day regression) clipped to [-0.2, 0.2] - noise vs trend
+- **adx14**: ADX (14-period) normalized to [0, 1] range (adx/100) - trend strength independent of direction, fills gap in trend strength measurement
+- **aroon_up**: Aroon Up (25-period) normalized to [0, 1] range - days since highest high, uptrend maturity (fresh/maturing/exhausted)
+- **aroon_down**: Aroon Down (25-period) normalized to [0, 1] range - days since lowest low, downtrend maturity (starting/ending)
+- **aroon_oscillator**: Aroon Oscillator (25-period) normalized to [0, 1] range - trend dominance indicator (aroon_up - aroon_down), net trend pressure, helps identify early trend reversals
 
 **Feature Organization:**
-- Features are categorized (momentum, trend, volume, volatility, pattern, price_action, support_resistance, volatility_regime, trend_strength, multi_timeframe, volume_profile)
+- Features are organized by category: price, returns, 52-week, moving averages, volatility, volume, momentum, market context, candlestick, price action, and trend
+- All 53 features are currently enabled in `config/features.yaml`
+- See `FEATURE_GUIDE.md` for complete feature documentation including:
+  - Detailed calculation methods for each feature
+  - Normalization techniques used
+  - Feature characteristics and value propositions
+  - Complete reference guide for all 37 features
 - See `FEATURE_REDUNDANCY_GUIDE.md` for feature selection recommendations
 - See `FEATURE_ROADMAP.md` for complete feature roadmap and future additions
-- See `PHASE1_FEATURE_ANALYSIS.md` for Phase 1 feature breakdown
-- See `FUTURE_FEATURES.md` for features requiring additional data sources
 - See `features/metadata.py` for feature metadata and categories
 
 **Performance Notes:**
 - Feature computation is optimized with efficient DataFrame operations
-- Weekly features use resampling and forward-fill for multi-timeframe analysis
-- Percentile calculations use optimized vectorized operations
-- Processing time scales with number of features and tickers (expect ~2-5 minutes for 493 tickers with 105 features)
+- Processing time scales with number of features and tickers (expect ~1-2 minutes for 493 tickers with 53 features)
 
 ---
 
@@ -149,22 +266,43 @@ python src/swing_trade_app.py train --tune --cv
 
 # Full diagnostics with SHAP analysis
 python src/swing_trade_app.py train --tune --diagnostics
+
+# Train model with custom name
+python src/swing_trade_app.py train --model-output models/my_experiment_v1.pkl
+
+# Train model with feature set (auto-named)
+python src/swing_trade_app.py train --feature-set v2
+
+# Train model with feature set and custom name
+python src/swing_trade_app.py train --feature-set v2 --model-output models/custom_v2_model.pkl
+
+# Train model with custom date range (exclude older data)
+python src/swing_trade_app.py train --train-start 2020-01-01 --train-end 2022-12-31
+
+# Train model with specific date range
+python src/swing_trade_app.py train --train-start 2018-01-01 --train-end 2021-12-31 --val-end 2022-12-31
 ```
 
-**Options:**
-- `--tune`: Perform hyperparameter tuning (RandomizedSearchCV) - **Recommended**
-- `--n-iter`: Number of hyperparameter search iterations (default: 20)
-- `--cv`: Use cross-validation for hyperparameter tuning (slower but more robust)
-- `--cv-folds`: Number of CV folds (default: 3, or 5 for TimeSeriesSplit)
-- `--no-early-stop`: Disable early stopping (train for full n_estimators)
-- `--plots`: Generate training curves and feature importance charts (requires matplotlib)
-- `--diagnostics`: Show SHAP diagnostics (requires shap library)
-- `--fast`: Use reduced hyperparameter space for quicker tuning
-- `--imbalance-multiplier`: Class imbalance multiplier (default: 1.0, try 2.0-3.0 for more trades)
-- `--train-end`: Training data end date (YYYY-MM-DD, default: 2022-12-31)
-- `--val-end`: Validation data end date (YYYY-MM-DD, default: 2023-12-31)
-- `--horizon`: Trade horizon in days (e.g., 5, 30). Used to auto-detect label column.
-- `--label-col`: Label column name (e.g., 'label_5d', 'label_30d'). Auto-detected if not specified.
+**All Available Arguments:**
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--tune` | `False` | Perform hyperparameter tuning (RandomizedSearchCV) - **Recommended** |
+| `--n-iter` | `20` | Number of iterations for hyperparameter search |
+| `--cv` | `False` | Use cross-validation for hyperparameter tuning (slower but more robust) |
+| `--cv-folds` | `None` (auto: 3, or 2 if `--fast`) | Number of CV folds. Lower = faster but less robust |
+| `--no-early-stop` | `False` | Disable early stopping (train for full n_estimators) |
+| `--plots` | `False` | Generate training curves and feature importance plots (requires matplotlib) |
+| `--diagnostics` | `False` | Compute and print SHAP diagnostics (requires shap library) |
+| `--fast` | `False` | Use faster hyperparameter tuning (reduced search space, fewer CV folds). ~3-5x faster but slightly less optimal |
+| `--imbalance-multiplier` | `1.0` | Multiplier for class imbalance handling. Increase to 2.0-3.0 to favor positive class more. Higher = more trades predicted |
+| `--train-start` | `None` (use all available) | Training data start date (YYYY-MM-DD). Default: None (use all available data from the beginning). Use to exclude older data (e.g., '2020-01-01' to start from 2020) |
+| `--train-end` | `None` (defaults to `2022-12-31`) | Training data end date (YYYY-MM-DD). Use more recent dates (e.g., 2020-12-31) for recent market patterns |
+| `--val-end` | `None` (defaults to `2023-12-31`) | Validation data end date (YYYY-MM-DD) |
+| `--horizon` | `None` (auto-detected) | Trade horizon in days (e.g., 5, 30). Used to auto-detect label column (label_{horizon}d) |
+| `--label-col` | `None` (auto-detected) | Label column name (e.g., 'label_5d', 'label_30d'). Auto-detected if not specified |
+| `--feature-set` | `None` (defaults to 'v1') | Feature set name (e.g., 'v1', 'v2'). If specified, automatically sets data directory and train config |
+| `--model-output` | `None` (auto-named) | Custom model output file path (e.g., 'models/my_custom_model.pkl' or 'my_custom_model.pkl'). If not specified, uses default naming based on feature set or 'xgb_classifier_selected_features.pkl' |
 
 **What it does:**
 - **Enhanced data splitting:** Train/Validation/Test split by date:
@@ -189,11 +327,16 @@ python src/swing_trade_app.py train --tune --diagnostics
 - Saves model, scaler, features, and training metadata
 
 **Output:** 
-- Trained model file: `models/xgb_classifier_selected_features.pkl` (includes model, scaler, features, metadata)
+- Trained model file: `models/xgb_classifier_selected_features.pkl` (default) or custom path if `--model-output` specified (includes model, scaler, features, metadata)
 - Training metadata: `models/training_metadata.json`
 - Training curves plot: `models/xgb_training_curves.png` (if `--plots` used)
 - Feature importance chart: `models/feature_importance_chart.png` (if `--plots` used)
 - Console metrics: Comprehensive evaluation metrics including feature normalization summary
+
+**Model Naming:**
+- **Default:** `models/xgb_classifier_selected_features.pkl`
+- **With feature set:** `models/xgb_classifier_selected_features_{feature_set}.pkl` (e.g., `xgb_classifier_selected_features_v2.pkl`)
+- **Custom name:** Use `--model-output` to specify a custom path (e.g., `--model-output models/my_experiment_v1.pkl` or `--model-output my_experiment_v1.pkl`)
 
 **Metrics Shown:**
 - **Baseline comparisons:** DummyClassifier, LogisticRegression, XGBoost AUC scores
@@ -229,14 +372,21 @@ python src/swing_trade_app.py backtest \
   --position-size 1000
 ```
 
-**Parameters:**
-- `--horizon`: Trade window (must match features)
-- `--return-threshold`: Return threshold (must match features)
-- `--strategy`: `model`, `oracle`, or `rsi`
-- `--model-threshold`: Probability threshold for model signals (0.0-1.0)
-- `--position-size`: Dollar amount per trade
-- `--stop-loss`: Stop-loss threshold as decimal (e.g., -0.075 for -7.5%). If not specified and return-threshold is provided, uses 2:1 risk-reward (return_threshold / 2)
-- `--output`: Optional CSV file to save trades
+**All Available Arguments:**
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--horizon` | *Required* | Trade window in days (must match features) |
+| `--return-threshold` | *Required* | Return threshold (e.g., 0.05 for 5%, must match features) |
+| `--strategy` | `model` | Backtest strategy: `model` (use trained model), `oracle` (perfect hindsight), `rsi` (RSI < 30) |
+| `--model` | `models/xgb_classifier_selected_features.pkl` | Path to trained model (required for model strategy) |
+| `--model-threshold` | `0.5` | Probability threshold for model signals (0.0-1.0) |
+| `--position-size` | `1000.0` | Position size per trade in dollars |
+| `--stop-loss` | `None` (auto: 2:1 risk-reward) | Stop-loss threshold as decimal (e.g., -0.075 for -7.5%). If not specified and return-threshold is provided, uses 2:1 risk-reward (return_threshold / 2) |
+| `--output` | `None` | Optional CSV file to save trades |
+| `--data-dir` | `data/features_labeled` | Directory containing feature Parquet files |
+| `--tickers-file` | `data/tickers/sp500_tickers.csv` | Path to CSV file with ticker symbols |
+| `--test-start-date` | `2024-01-01` | Start date for test data (YYYY-MM-DD). Only data after this date will be backtested. Default: 2024-01-01 (to avoid data leakage from training/validation) |
 
 **What it does:**
 - Loads trained model, scaler, and feature data
@@ -282,16 +432,19 @@ python src/analyze_stop_losses.py \
   --stop-loss -0.075
 ```
 
-**Parameters:**
-- `--horizon`: Trade window (must match features)
-- `--return-threshold`: Return threshold (must match features)
-- `--model-threshold`: Model probability threshold
-- `--stop-loss`: Stop-loss threshold (e.g., -0.075 for -7.5%)
-- `--trades-csv`: Optional CSV file with existing trades (if not provided, runs backtest)
-- `--use-validation`: Use validation data (2023) for analysis instead of test data (default: True)
-- `--train-end`: Training data end date (default: 2022-12-31)
-- `--val-end`: Validation data end date (default: 2023-12-31)
-- `--output`: Optional JSON file to save analysis results
+**All Available Arguments:**
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--horizon` | `30` | Trade window in days (for running backtest if trades-csv not provided, must match features) |
+| `--return-threshold` | `0.15` | Return threshold (for running backtest if trades-csv not provided, must match features) |
+| `--model-threshold` | `0.85` | Model probability threshold (for running backtest if trades-csv not provided) |
+| `--stop-loss` | `None` (auto: 2:1 risk-reward) | Stop-loss threshold (e.g., -0.075 for -7.5%, for running backtest if trades-csv not provided) |
+| `--trades-csv` | `None` | CSV file with existing backtest trades (if not provided, will run backtest) |
+| `--use-validation` | `True` | Use validation data (2023) for analysis instead of test data |
+| `--train-end` | `2022-12-31` | Training data end date (YYYY-MM-DD) |
+| `--val-end` | `2023-12-31` | Validation data end date (YYYY-MM-DD) |
+| `--output` | `None` | Optional JSON file to save analysis results |
 
 **What it does:**
 - Runs backtest on validation data (2023) to generate trades (or loads from CSV)
@@ -355,19 +508,20 @@ python src/apply_entry_filters.py \
   --custom-filter market_correlation_20d ">" 0.6
 ```
 
-**Parameters:**
-- `--horizon`: Trade window (must match features)
-- `--return-threshold`: Return threshold (must match features)
-- `--model-threshold`: Model probability threshold (default: 0.80)
-- `--stop-loss`: Stop-loss threshold (e.g., -0.075 for -7.5%)
-- `--position-size`: Position size per trade (default: 1000.0)
-- `--test-start-date`: Test data start date (default: 2024-01-01)
-- `--test-end-date`: Test data end date (default: None, all available)
-- `--use-default-filters`: Use default filters from stop-loss analysis (default: True)
-- `--no-timing-filters`: Disable timing filters (Monday/Tuesday, October)
-- `--custom-filter`: Add custom filter (can be used multiple times)
-  - Format: `--custom-filter FEATURE OPERATOR THRESHOLD`
-  - Example: `--custom-filter rsi_slope ">" 0.5`
+**All Available Arguments:**
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--horizon` | *Required* | Trade window in days (must match features) |
+| `--return-threshold` | *Required* | Return threshold (e.g., 0.15 for 15%, must match features) |
+| `--model-threshold` | `0.80` | Model probability threshold |
+| `--stop-loss` | `None` (auto: 2:1 risk-reward) | Stop-loss threshold (e.g., -0.075 for -7.5%) |
+| `--position-size` | `1000.0` | Position size per trade in dollars |
+| `--test-start-date` | `2024-01-01` | Test data start date (YYYY-MM-DD) |
+| `--test-end-date` | `None` (all available) | Test data end date (YYYY-MM-DD) |
+| `--use-default-filters` | `True` | Use default filters from stop-loss analysis |
+| `--no-timing-filters` | `False` | Disable timing filters (Monday/Tuesday, October) |
+| `--custom-filter` | `None` | Add custom filter (can be used multiple times). Format: `--custom-filter FEATURE OPERATOR THRESHOLD` (e.g., `--custom-filter rsi_slope ">" 0.5`) |
 
 **What it does:**
 - Loads trained model, scaler, and feature data
@@ -437,18 +591,18 @@ python src/identify_trades.py \
   --output current_opportunities.csv
 ```
 
-**Parameters:**
-- `--min-probability`: Minimum prediction probability (0.0-1.0)
-- `--top-n`: Maximum number of opportunities to return
-- `--output`: Optional CSV file to save results
-- `--model`: Path to model file (default: `models/xgb_classifier_selected_features.pkl`)
-- `--data-dir`: Directory containing feature Parquet files (default: `data/features_labeled`)
-- `--tickers-file`: Path to CSV file with ticker symbols (default: `data/tickers/sp500_tickers.csv`)
-- `--use-recommended-filters`: Use recommended filters from stop-loss analysis (default: False)
-- `--custom-filter`: Add custom filter (can be used multiple times)
-  - Format: `--custom-filter FEATURE OPERATOR THRESHOLD`
-  - Example: `--custom-filter candle_body_pct ">" -10`
-  - Operators: `>`, `<`, `>=`, `<=`
+**All Available Arguments:**
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--min-probability` | `0.5` | Minimum prediction probability to consider (0.0-1.0) |
+| `--top-n` | `20` | Maximum number of opportunities to return |
+| `--output` | `None` | Optional CSV file to save results |
+| `--model` | `models/xgb_classifier_selected_features.pkl` | Path to trained model pickle file |
+| `--data-dir` | `data/features_labeled` | Directory containing feature Parquet files |
+| `--tickers-file` | `data/tickers/sp500_tickers.csv` | Path to CSV file with ticker symbols |
+| `--use-recommended-filters` | `False` | Use recommended filters from stop-loss analysis |
+| `--custom-filter` | `None` | Add custom filter (can be used multiple times). Format: `--custom-filter FEATURE OPERATOR THRESHOLD` (e.g., `--custom-filter candle_body_pct ">" -10`). Operators: `>`, `<`, `>=`, `<=` |
 
 **What it does:**
 - Loads trained model, scaler, and feature list
@@ -503,14 +657,17 @@ python src/compare_filters.py \
   --stop-loss -0.075
 ```
 
-**Parameters:**
-- `--horizon`: Trade window (must match features)
-- `--return-threshold`: Return threshold (must match features)
-- `--model-threshold`: Model probability threshold
-- `--stop-loss`: Stop-loss threshold (e.g., -0.075 for -7.5%)
-- `--position-size`: Position size per trade (default: 1000.0)
-- `--test-start-date`: Test data start date (default: 2024-01-01)
-- `--test-end-date`: Test data end date (default: None)
+**All Available Arguments:**
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--horizon` | *Required* | Trade window in days (must match features) |
+| `--return-threshold` | *Required* | Return threshold (e.g., 0.15 for 15%, must match features) |
+| `--model-threshold` | `0.80` | Model probability threshold |
+| `--stop-loss` | `None` (auto: 2:1 risk-reward) | Stop-loss threshold (e.g., -0.075 for -7.5%) |
+| `--position-size` | `1000.0` | Position size per trade in dollars |
+| `--test-start-date` | `2024-01-01` | Test data start date (YYYY-MM-DD) |
+| `--test-end-date` | `None` (all available) | Test data end date (YYYY-MM-DD) |
 
 **What it does:**
 - Runs backtest **without filters** (baseline)
@@ -548,11 +705,20 @@ python src/swing_trade_app.py full-pipeline \
   --top-n 20
 ```
 
-**Options:**
-- `--skip-download`: Skip data download step
-- `--skip-train`: Skip model training step
-- `--full-download`: Force full data redownload
-- `--full-features`: Force full feature recomputation
+**All Available Arguments:**
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--horizon` | *Required* | Trade window in days |
+| `--return-threshold` | *Required* | Return threshold (e.g., 0.05 for 5%) |
+| `--position-size` | `1000.0` | Position size per trade in dollars |
+| `--model-threshold` | `0.5` | Model probability threshold |
+| `--min-probability` | `0.5` | Minimum prediction probability for trade identification |
+| `--top-n` | `20` | Maximum number of opportunities to return |
+| `--full-download` | `False` | Force full data redownload |
+| `--full-features` | `False` | Force full feature recomputation |
+| `--skip-download` | `False` | Skip data download step |
+| `--skip-train` | `False` | Skip model training step |
 
 **What it does:**
 - Executes steps 1-6 in sequence:
@@ -629,13 +795,18 @@ Current Trading Opportunities
 
 ## Key Configuration Files
 
-- **`config/features.yaml`**: Enable/disable technical indicators
-- **`config/train_features.yaml`**: Select features for model training
+- **`config/features.yaml`**: Enable/disable technical indicators (all 53 features enabled by default)
+- **`config/train_features.yaml`**: Select features for model training (all 53 features enabled by default)
 - **`config/trading_config.yaml`**: Default trading parameters
 - **`data/tickers/sp500_tickers.csv`**: List of tickers to analyze
 
 ## Documentation Files
 
+- **`FEATURE_GUIDE.md`**: **Complete feature documentation** - Comprehensive guide to all 37 features including:
+  - Detailed calculation methods for each feature
+  - Normalization techniques and ranges
+  - Feature characteristics and value propositions
+  - Complete reference guide organized by category
 - **`FEATURE_ROADMAP.md`**: Complete feature roadmap with all planned features (Phase 1-3)
 - **`PHASE1_FEATURE_ANALYSIS.md`**: Detailed analysis of Phase 1 features and data requirements
 - **`PHASE1_IMPLEMENTATION_SUMMARY.md`**: Summary of Phase 1 feature implementation
@@ -688,18 +859,15 @@ python src/identify_trades.py --min-probability 0.6 --top-n 20 --use-recommended
 - ✅ Enhanced error handling for edge cases
 
 ### Feature Step
-- ✅ **105+ features** across 11 categories
-- ✅ **Phase 1 features implemented:** Support/Resistance, Volatility Regime, Trend Strength, Multi-Timeframe, Volume Profile
+- ✅ **53 features** across 11 categories (price, returns, 52-week, moving averages, volatility, volume, momentum, market context, candlestick, price action, trend)
 - ✅ Performance optimized (efficient DataFrame operations, no fragmentation)
 - ✅ Feature validation (infinities, NaNs, constant values)
 - ✅ Data leakage prevention (forward-looking features removed)
-- ✅ Ichimoku lookahead bias fixes
 - ✅ Standardized column name handling
 - ✅ Parallel processing with joblib
-- ✅ Optimized percentile calculations
 - ✅ Comprehensive summary statistics
 - ✅ Feature metadata system with categories
-- ✅ Feature redundancy documentation
+- ✅ Ownership features removed (not consistent and cannot be trusted)
 
 ### Training Step
 - ✅ **Feature normalization/scaling:**

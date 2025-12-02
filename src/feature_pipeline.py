@@ -17,9 +17,11 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-# Add project root to Python path
+# Add project root and src to Python path
 PROJECT_ROOT = Path(__file__).parent.parent
+SRC_DIR = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(SRC_DIR))
 
 import numpy as np
 import pandas as pd
@@ -28,6 +30,12 @@ from joblib import Parallel, delayed
 from utils.logger import setup_logger
 from features.registry import load_enabled_features
 from utils.labeling import label_future_return
+from feature_set_manager import (
+    get_feature_set_config_path,
+    get_feature_set_data_path,
+    feature_set_exists,
+    DEFAULT_FEATURE_SET
+)
 
 
 def validate_feature(series: pd.Series, feature_name: str) -> Tuple[bool, List[str]]:
@@ -183,9 +191,11 @@ def process_file(
 
         # 3) Generate binary labels
         close_col = 'Close' if 'Close' in df_feat.columns else 'close'
+        high_col = 'High' if 'High' in df_feat.columns else 'high'
         df_labeled = label_future_return(
             df_feat,
             close_col=close_col,
+            high_col=high_col,
             horizon=label_horizon,
             threshold=label_threshold,
             label_name=f"label_{label_horizon}d"
@@ -325,11 +335,16 @@ def main(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Feature pipeline with optional full-refresh."
+        description="Feature pipeline with optional full-refresh and feature set support."
     )
-    parser.add_argument("--input-dir",  required=True, help="Cleaned Parqs")
-    parser.add_argument("--output-dir", required=True, help="Features Parqs")
-    parser.add_argument("--config",     required=True, help="features.yaml")
+    parser.add_argument("--input-dir",  help="Cleaned Parquet directory")
+    parser.add_argument("--output-dir", help="Features Parquet directory")
+    parser.add_argument("--config",     help="features.yaml config file path")
+    parser.add_argument(
+        "--feature-set",
+        type=str,
+        help=f"Feature set name (e.g., 'v1', 'v2'). If specified, automatically sets --config and --output-dir. Default: '{DEFAULT_FEATURE_SET}'"
+    )
     parser.add_argument("--horizon",    type=int,   default=5,   help="Label days")
     parser.add_argument("--threshold",  type=float, default=0.0, help="Return thresh")
     parser.add_argument(
@@ -340,10 +355,37 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    # Handle feature set vs explicit paths
+    if args.feature_set:
+        # Use feature set
+        if not feature_set_exists(args.feature_set):
+            print(f"Error: Feature set '{args.feature_set}' does not exist.")
+            print(f"Available feature sets: {', '.join([DEFAULT_FEATURE_SET])}")
+            sys.exit(1)
+        
+        config_path = str(get_feature_set_config_path(args.feature_set))
+        output_dir = str(get_feature_set_data_path(args.feature_set))
+        
+        # input_dir defaults to data/clean if not specified
+        input_dir = args.input_dir or str(Path(__file__).parent.parent / "data" / "clean")
+        
+        print(f"Using feature set: {args.feature_set}")
+        print(f"  Config: {config_path}")
+        print(f"  Output: {output_dir}")
+    else:
+        # Use explicit paths (backward compatibility)
+        if not args.input_dir or not args.output_dir or not args.config:
+            print("Error: Either --feature-set must be specified, or all of --input-dir, --output-dir, and --config must be provided.")
+            sys.exit(1)
+        
+        input_dir = args.input_dir
+        output_dir = args.output_dir
+        config_path = args.config
+
     main(
-        input_dir=args.input_dir,
-        output_dir=args.output_dir,
-        config_path=args.config,
+        input_dir=input_dir,
+        output_dir=output_dir,
+        config_path=config_path,
         label_horizon=args.horizon,
         label_threshold=args.threshold,
         full_refresh=args.full_refresh

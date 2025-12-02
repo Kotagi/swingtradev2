@@ -116,7 +116,7 @@ def main():
         "--return-threshold",
         type=float,
         required=True,
-        help="Return threshold (e.g., 0.15 for 15%)"
+        help="Return threshold (e.g., 0.15 for 15%%)"
     )
     parser.add_argument(
         "--model-threshold",
@@ -128,7 +128,7 @@ def main():
         "--stop-loss",
         type=float,
         default=None,
-        help="Stop-loss threshold (e.g., -0.075 for -7.5%)"
+        help="Stop-loss threshold (e.g., -0.075 for -7.5%%)"
     )
     parser.add_argument(
         "--position-size",
@@ -155,6 +155,12 @@ def main():
         help="Use default filters from stop-loss analysis (default: True)"
     )
     parser.add_argument(
+        "--no-default-filters",
+        action="store_true",
+        default=False,
+        help="Disable default filters from stop-loss analysis (use only custom filters)"
+    )
+    parser.add_argument(
         "--no-timing-filters",
         action="store_true",
         default=False,
@@ -173,7 +179,10 @@ def main():
     # Build entry filters
     entry_filters = {}
     
-    if args.use_default_filters:
+    # Use default filters unless explicitly disabled
+    use_defaults = args.use_default_filters and not args.no_default_filters
+    
+    if use_defaults:
         entry_filters.update(get_default_filters())
         print("\nUsing default filters from stop-loss analysis:")
         for feat, (op, val) in sorted(entry_filters.items()):

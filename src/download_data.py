@@ -38,6 +38,14 @@ import traceback
 import pandas as pd
 import numpy as np
 import yfinance as yf
+try:
+    from finvizfinance.quote import finvizfinance
+    FINVIZ_AVAILABLE = True
+except ImportError:
+    # Fallback if finvizfinance is not installed
+    finvizfinance = None
+    FINVIZ_AVAILABLE = False
+# Ownership features removed - not consistent and cannot be trusted
 from tqdm import tqdm
 
 # —— CONFIGURATION —— #
@@ -440,7 +448,12 @@ def download_data(
     os.makedirs(raw_folder, exist_ok=True)
     sectors = []
     total = len(tickers)
-    yf_end = end_date or datetime.today().strftime("%Y-%m-%d")
+    # yfinance's end parameter is exclusive, so add 1 day to include today's data
+    if end_date:
+        yf_end = end_date
+    else:
+        # Use tomorrow's date to ensure today's data is included
+        yf_end = (datetime.today() + timedelta(days=1)).strftime("%Y-%m-%d")
     
     # Resume capability
     checkpoint_file = Path(raw_folder) / '.download_checkpoint.json'
@@ -769,10 +782,12 @@ def main() -> None:
     try:
         spy_file = Path(args.raw_folder) / "SPY.csv"
         if not spy_file.exists() or args.full_refresh:
+            # yfinance's end parameter is exclusive, so add 1 day to include today's data
+            spy_end_date = args.end_date or (datetime.today() + timedelta(days=1)).strftime("%Y-%m-%d")
             spy_data = yf.download(
                 tickers="SPY",
                 start=args.start_date,
-                end=args.end_date or datetime.today().strftime("%Y-%m-%d"),
+                end=spy_end_date,
                 progress=False,
                 auto_adjust=False
             )

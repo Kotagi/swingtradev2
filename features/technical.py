@@ -14,26 +14,99 @@ import pandas as pd
 import pandas_ta_classic as ta
 from pandas import Series, DataFrame
 from typing import Optional
+from sklearn.linear_model import LinearRegression
+from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Cache for SPY data to avoid reloading
+_SPY_DATA_CACHE = None
 
 
-def _get_column(df: DataFrame, col_name: str) -> Series:
+def _load_spy_data() -> Optional[DataFrame]:
+    """
+    Load SPY data from CSV file for beta calculation.
+    
+    SPY data is stored in data/raw/SPY.csv and is used for market context features.
+    This function caches the loaded data to avoid reloading on every call.
+    
+    Returns:
+        DataFrame with SPY data (columns: Date, Open, High, Low, Close, Volume, etc.)
+        or None if file not found or error loading.
+    """
+    global _SPY_DATA_CACHE
+    
+    # Return cached data if available
+    if _SPY_DATA_CACHE is not None:
+        return _SPY_DATA_CACHE
+    
+    # Try to load SPY data from CSV
+    project_root = Path.cwd()
+    spy_file = project_root / "data" / "raw" / "SPY.csv"
+    
+    if not spy_file.exists():
+        # Try alternative location (cleaned data)
+        spy_file = project_root / "data" / "clean" / "SPY.csv"
+        if not spy_file.exists():
+            return None
+    
+    try:
+        # Read CSV file - structure is:
+        # Row 0: Column names (Price, Adj Close, Close, High, Low, Open, Volume)
+        # Row 1: "Date", NaN, NaN, ...
+        # Row 2+: Actual data
+        # Read first row to get column names, then skip row 1
+        header_row = pd.read_csv(spy_file, nrows=0)
+        column_names = header_row.columns.tolist()
+        
+        # Read data starting from row 3 (skip first 3 rows: header, Date row, and first data row)
+        # Actually, skip 2 rows and filter out the "Date" row
+        spy_data = pd.read_csv(spy_file, skiprows=2, names=column_names)
+        
+        # Remove the "Date" row if it exists
+        spy_data = spy_data[spy_data.iloc[:, 0] != 'Date'].copy()
+        
+        # The first column (Price) contains dates
+        date_col = spy_data.columns[0]
+        spy_data[date_col] = pd.to_datetime(spy_data[date_col])
+        spy_data = spy_data.set_index(date_col)
+        
+        # Ensure index is sorted
+        spy_data = spy_data.sort_index()
+        
+        # Cache the data
+        _SPY_DATA_CACHE = spy_data
+        return spy_data
+    except Exception as e:
+        # Return None on any error
+        return None
+
+
+def _get_column(df: DataFrame, col_name: str, required: bool = True) -> Series:
     """
     Get a column from DataFrame with case-insensitive matching.
     
     Args:
         df: Input DataFrame.
         col_name: Column name to find (case-insensitive).
+        required: If True, raise KeyError if column not found. If False, return NaN Series.
     
     Returns:
-        Series from the DataFrame.
+        Series from the DataFrame, or NaN Series if not found and required=False.
     
     Raises:
-        KeyError: If column not found in any case variation.
+        KeyError: If column not found and required=True.
     """
     col_lower = col_name.lower()
     for col in df.columns:
         if col.lower() == col_lower:
             return df[col]
+    
+    if not required:
+        # Return NaN Series with same index as df
+        return pd.Series(np.nan, index=df.index, name=col_name)
+    
     raise KeyError(f"DataFrame must contain '{col_name}' column (case-insensitive)")
 
 
@@ -148,2136 +221,2503 @@ def feature_log_return_5d(df: DataFrame) -> Series:
     lr5.name = "log_return_5d"
     return lr5
 
-def feature_5d_return(df: DataFrame) -> Series:
+
+def feature_price(df: DataFrame) -> Series:
     """
-    Compute 5-day forward return: (close_{t+5} / close_t) - 1.
-
+    Return the current closing price (raw price value).
+    
+    This is the base price feature, useful for filtering by price ranges
+    (e.g., $1-$5, >$5, >$10) similar to Finviz filters.
+    
     Args:
-        df: Input DataFrame with 'close' prices.
-
+        df: Input DataFrame with a 'close' price column.
+    
     Returns:
-        Series named '5d_return' of forward returns.
+        Series named 'price' containing closing prices.
     """
     close = _get_close_series(df)
-    s = close.shift(-5) / close - 1
-    s.name = "5d_return"
-    return s
+    price = close.copy()
+    price.name = "price"
+    return price
 
 
-def feature_10d_return(df: DataFrame) -> Series:
+def feature_price_log(df: DataFrame) -> Series:
     """
-    Compute 10-day forward return: (close_{t+10} / close_t) - 1.
-
+    Compute log price: ln(close).
+    
+    Log price squashes huge differences between high and low priced stocks,
+    making it more suitable for ML models that need normalized inputs.
+    Prefer this over raw price for ML applications.
+    
     Args:
-        df: Input DataFrame with 'close' prices.
-
+        df: Input DataFrame with a 'close' price column.
+    
     Returns:
-        Series named '10d_return' of forward returns.
+        Series named 'price_log' containing natural log of closing prices.
     """
     close = _get_close_series(df)
-    s = close.shift(-10) / close - 1
-    s.name = "10d_return"
-    return s
+    price_log = np.log(close)
+    price_log.name = "price_log"
+    return price_log
 
-def feature_close_vs_ma10(df: DataFrame) -> Series:
+
+def feature_price_vs_ma200(df: DataFrame) -> Series:
     """
-    Compute the ratio of today's close to its 10-day simple moving average.
-
-    Steps:
-      1. Retrieve closing price series (handles 'close'/'Close').
-      2. Compute 10-day SMA.
-      3. Divide close_t by SMA10 and name the result.
-
+    Compute price normalized relative to 200-day moving average: close / SMA(200).
+    
+    This normalizes price relative to a long-term baseline, making it comparable
+    across different price ranges. Values > 1.0 indicate price above long-term average,
+    values < 1.0 indicate price below long-term average.
+    
     Args:
-        df: Input DataFrame with a 'close' column.
-
+        df: Input DataFrame with a 'close' price column.
+    
     Returns:
-        Series named 'close_vs_ma10' of close/SMA10 ratios.
+        Series named 'price_vs_ma200' containing price / SMA(200) ratios.
     """
     close = _get_close_series(df)
-    sma10 = close.rolling(window=10, min_periods=1).mean()
-    ratio = close / sma10
-    ratio.name = "close_vs_ma10"
+    sma200 = close.rolling(window=200, min_periods=1).mean()
+    ratio = close / sma200
+    ratio.name = "price_vs_ma200"
     return ratio
 
-def feature_close_vs_ma20(df: DataFrame) -> Series:
-    """
-    Compute the ratio of today's close to its 20-day simple moving average.
 
-    Steps:
-      1. Retrieve the closing price series (handles upper/lower case).
-      2. Compute the 20-day SMA (min_periods=1 so you don’t introduce NaNs early).
-      3. Divide close_t by SMA20 and name the result.
+def feature_daily_return(df: DataFrame) -> Series:
+    """
+    Compute daily return as percentage: (close_t / close_{t-1} - 1) * 100.
+    
+    Normalized by clipping to [-0.2, 0.2] to cap extreme moves at ±20%.
+    This prevents outliers from dominating the feature and makes it more
+    suitable for ML models.
+    
     Args:
-        df: Input DataFrame with a 'close' or 'Close' column.
+        df: Input DataFrame with a 'close' price column.
+    
     Returns:
-        Series named 'close_vs_ma20' of close/SMA20 ratios.
+        Series named 'daily_return' containing clipped daily percentage returns.
     """
     close = _get_close_series(df)
-    sma20 = close.rolling(window=20, min_periods=1).mean()
-    ratio = close / sma20
-    ratio.name = "close_vs_ma20"
-    return ratio
+    daily_ret = close.pct_change()
+    # Clip to ±20% to normalize extreme moves
+    daily_ret = daily_ret.clip(-0.2, 0.2)
+    daily_ret.name = "daily_return"
+    return daily_ret
 
-def feature_close_zscore_20(df: DataFrame) -> Series:
+
+def feature_gap_pct(df: DataFrame) -> Series:
     """
-    Compute the 20-day rolling z-score of today’s close:
-      (close_t − mean(close_{t-19..t})) / std(close_{t-19..t}).
-
-    Steps:
-      1. Retrieve closing-price series (handles upper/lower case).
-      2. Compute 20-day rolling mean & std (min_periods=1 to avoid NaNs early).
-      3. Subtract mean from close and divide by std.
-      4. Name the Series 'close_zscore_20'.
-
-    Args:
-        df: Input DataFrame with a 'close' or 'Close' column.
-
-    Returns:
-        Series named 'close_zscore_20', centered at 0 with unit variance.
-    """
-    close = _get_close_series(df)
-    mean20 = close.rolling(window=20, min_periods=1).mean()
-    std20  = close.rolling(window=20, min_periods=1).std().replace(0, np.nan)
-    zscore = (close - mean20) / std20
-    zscore.name = "close_zscore_20"
-    return zscore
-
-def feature_price_percentile_20d(df: DataFrame) -> Series:
-    """
-    Compute the 20-day rolling percentile rank of today’s close.
-
-    Steps:
-      1. Retrieve the closing-price series (handles upper/lower case).
-      2. For each day t, take the last 20 closes (including t).
-      3. Compute the percentile of close_t among that window:
-         (# of window values ≤ close_t − 1) / (window_size − 1)
-      4. Name the resulting Series for downstream use.
-
-    Args:
-        df: Input DataFrame with a 'close' column.
-
-    Returns:
-        Series named 'price_percentile_20d' with values in [0,1].
-    """
-    close = _get_close_series(df)
-    def pct_rank(window: np.ndarray) -> float:
-        # window[-1] is today's close; rank among window
-        today = window[-1]
-        # count how many are less than today
-        less_equal = np.sum(window <= today) - 1
-        denom = len(window) - 1
-        return float(less_equal / denom) if denom > 0 else 0.5
-
-    pct = close.rolling(window=20, min_periods=1) \
-               .apply(pct_rank, raw=True)
-    pct.name = "price_percentile_20d"
-    return pct
-
-def feature_gap_up_pct(df: DataFrame) -> Series:
-    """
-    Compute the percent gap-up at open relative to prior close:
-      (open_t / close_{t-1} - 1) * 100.
-
-    Steps:
-      1. Retrieve the closing-price series (handles ‘close’/‘Close’).
-      2. Retrieve today’s opening price (df['open']).
-      3. Shift close by 1 day to get prior close.
-      4. Compute (open_t / close_{t-1} − 1) * 100.
-      5. Name the Series 'gap_up_pct'.
-
+    Compute gap percentage: (open_t - close_{t-1}) / close_{t-1}.
+    
+    This measures the gap between today's open and yesterday's close.
+    Positive values indicate gap-up, negative values indicate gap-down.
+    
+    Normalized by clipping to [-0.2, 0.2] to cap extreme gaps at ±20%.
+    This prevents outliers from dominating the feature and makes it more
+    suitable for ML models.
+    
     Args:
         df: Input DataFrame with 'open' and 'close' columns.
-
+    
     Returns:
-        Series named 'gap_up_pct' with values in percent.
+        Series named 'gap_pct' containing clipped gap percentages.
     """
     close = _get_close_series(df)
     openp = _get_open_series(df)
-    gap = (openp / close.shift(1) - 1) * 100
-    gap.name = "gap_up_pct"
-    return gap
+    prev_close = close.shift(1)
+    gap_pct = (openp - prev_close) / prev_close
+    # Clip to ±20% to normalize extreme gaps
+    gap_pct = gap_pct.clip(-0.2, 0.2)
+    gap_pct.name = "gap_pct"
+    return gap_pct
 
-def feature_daily_range_pct(df: DataFrame) -> Series:
+
+def feature_weekly_return_5d(df: DataFrame) -> Series:
     """
-    Compute the percent size of the intraday high-low range relative to open:
-      ((high_t − low_t) / open_t) × 100.
-
-    Steps:
-      1. Retrieve today’s open (handles ‘open’/‘Open’), high, and low series.
-      2. Compute range = high_t − low_t.
-      3. Divide by open_t and multiply by 100.
-      4. Name the Series 'daily_range_pct'.
-
+    Compute 5-day (weekly) return: close.pct_change(5).
+    
+    This measures the percentage return over 5 trading days (approximately one week).
+    Calculated as: (close_t / close_{t-5} - 1).
+    
+    Normalized by clipping to [-0.3, 0.3] to cap extreme moves at ±30%.
+    This prevents outliers from dominating the feature and makes it more
+    suitable for ML models.
+    
     Args:
-        df: DataFrame with 'open','high','low' columns.
-
+        df: Input DataFrame with a 'close' price column.
+    
     Returns:
-        Series named 'daily_range_pct' giving range% per bar.
+        Series named 'weekly_return_5d' containing clipped 5-day percentage returns.
     """
-    openp = _get_open_series(df)
-    highp = _get_high_series(df)
-    lowp  = _get_low_series(df)
+    close = _get_close_series(df)
+    ret_5 = close.pct_change(5)
+    # Clip to ±30% to normalize extreme moves
+    ret_5 = ret_5.clip(-0.3, 0.3)
+    ret_5.name = "weekly_return_5d"
+    return ret_5
 
-    # compute percent range
-    pct = ((highp - lowp) / openp) * 100
-    pct.name = "daily_range_pct"
-    return pct
+
+def feature_monthly_return_21d(df: DataFrame) -> Series:
+    """
+    Compute 21-day (monthly) return: close.pct_change(21).
+    
+    This measures the percentage return over 21 trading days (approximately one month).
+    Calculated as: (close_t / close_{t-21} - 1).
+    
+    Normalized by clipping to [-0.5, 0.5] to cap extreme moves at ±50%.
+    This prevents outliers from dominating the feature and makes it more
+    suitable for ML models.
+    
+    Args:
+        df: Input DataFrame with a 'close' price column.
+    
+    Returns:
+        Series named 'monthly_return_21d' containing clipped 21-day percentage returns.
+    """
+    close = _get_close_series(df)
+    ret_21 = close.pct_change(21)
+    # Clip to ±50% to normalize extreme moves
+    ret_21 = ret_21.clip(-0.5, 0.5)
+    ret_21.name = "monthly_return_21d"
+    return ret_21
+
+
+def feature_quarterly_return_63d(df: DataFrame) -> Series:
+    """
+    Compute 63-day (quarterly) return: close.pct_change(63).
+    
+    This measures the percentage return over 63 trading days (approximately one quarter).
+    Calculated as: (close_t / close_{t-63} - 1).
+    
+    Normalized by clipping to [-1.0, 1.0] to cap extreme moves at ±100%.
+    This prevents outliers from dominating the feature and makes it more
+    suitable for ML models.
+    
+    Args:
+        df: Input DataFrame with a 'close' price column.
+    
+    Returns:
+        Series named 'quarterly_return_63d' containing clipped 63-day percentage returns.
+    """
+    close = _get_close_series(df)
+    ret_63 = close.pct_change(63)
+    # Clip to ±100% to normalize extreme moves
+    ret_63 = ret_63.clip(-1.0, 1.0)
+    ret_63.name = "quarterly_return_63d"
+    return ret_63
+
+
+def feature_ytd_return(df: DataFrame) -> Series:
+    """
+    Compute Year-to-Date (YTD) return: close / first_close_of_year - 1.
+    
+    This measures the percentage return from the first trading day of the year
+    to the current date. Calculated as: close / close.groupby(year).transform('first') - 1.
+    
+    Normalized by clipping to [-1.0, 2.0] to cap extreme moves:
+    - Minimum: -100% (total loss)
+    - Maximum: +200% (triple the value)
+    
+    This prevents outliers from dominating the feature and makes it more
+    suitable for ML models.
+    
+    Args:
+        df: Input DataFrame with a 'close' price column and DatetimeIndex.
+    
+    Returns:
+        Series named 'ytd_return' containing clipped YTD percentage returns.
+    """
+    close = _get_close_series(df)
+    
+    # Ensure index is DatetimeIndex
+    if not isinstance(close.index, pd.DatetimeIndex):
+        close.index = pd.to_datetime(close.index)
+    
+    # Get first close price of each year
+    first_close_of_year = close.groupby(close.index.year).transform('first')
+    
+    # Calculate YTD return: (current_close / first_close_of_year) - 1
+    ytd = (close / first_close_of_year) - 1
+    
+    # Clip to (-1, +2) to normalize extreme moves
+    ytd = ytd.clip(-1.0, 2.0)
+    ytd.name = "ytd_return"
+    return ytd
+
+
+def feature_dist_52w_high(df: DataFrame) -> Series:
+    """
+    Compute 52-week high distance: (close / high_52w) - 1.
+    
+    This measures how far the current price is from the 52-week (252 trading days) high.
+    Calculated as: close / close.rolling(252).max() - 1.
+    
+    Values:
+    - 0.0: Price is at the 52-week high
+    - Negative: Price is below the 52-week high (more negative = further below)
+    - Positive: Price is above the 52-week high (rare, but possible with new highs)
+    
+    Normalized by clipping to [-1.0, 0.5] to cap extreme values:
+    - Minimum: -100% (price is half of 52-week high)
+    - Maximum: +50% (price is 1.5x the 52-week high)
+    
+    This prevents outliers from dominating the feature and makes it more
+    suitable for ML models.
+    
+    Args:
+        df: Input DataFrame with a 'close' price column.
+    
+    Returns:
+        Series named 'dist_52w_high' containing clipped 52-week high distance.
+    """
+    close = _get_close_series(df)
+    
+    # Calculate 52-week (252 trading days) high
+    high_52 = close.rolling(window=252, min_periods=1).max()
+    
+    # Calculate distance: (current_price / 52w_high) - 1
+    dist_52_high = (close / high_52) - 1
+    
+    # Clip to (-1, 0.5) to normalize extreme values
+    dist_52_high = dist_52_high.clip(-1.0, 0.5)
+    dist_52_high.name = "dist_52w_high"
+    return dist_52_high
+
+
+def feature_dist_52w_low(df: DataFrame) -> Series:
+    """
+    Compute 52-week low distance: (close / low_52w) - 1.
+    
+    This measures how far the current price is from the 52-week (252 trading days) low.
+    Calculated as: close / close.rolling(252).min() - 1.
+    
+    Values:
+    - 0.0: Price is at the 52-week low
+    - Positive: Price is above the 52-week low (more positive = further above)
+    - Negative: Price is below the 52-week low (rare, but possible with new lows)
+    
+    Normalized by clipping to [-0.5, 2.0] to cap extreme values:
+    - Minimum: -50% (price is half of 52-week low)
+    - Maximum: +200% (price is 3x the 52-week low)
+    
+    This prevents outliers from dominating the feature and makes it more
+    suitable for ML models.
+    
+    Args:
+        df: Input DataFrame with a 'close' price column.
+    
+    Returns:
+        Series named 'dist_52w_low' containing clipped 52-week low distance.
+    """
+    close = _get_close_series(df)
+    
+    # Calculate 52-week (252 trading days) low
+    low_52 = close.rolling(window=252, min_periods=1).min()
+    
+    # Calculate distance: (current_price / 52w_low) - 1
+    dist_52_low = (close / low_52) - 1
+    
+    # Clip to (-0.5, 2) to normalize extreme values
+    dist_52_low = dist_52_low.clip(-0.5, 2.0)
+    dist_52_low.name = "dist_52w_low"
+    return dist_52_low
+
+
+def feature_pos_52w(df: DataFrame) -> Series:
+    """
+    Compute 52-week position: (close - low_52) / (high_52 - low_52).
+    
+    This measures the normalized position of the current price within the 52-week range.
+    Calculated as: (close - low_52) / (high_52 - low_52).
+    
+    Values:
+    - 0.0: Price is at the 52-week low
+    - 1.0: Price is at the 52-week high
+    - 0.5: Price is at the midpoint of the 52-week range
+    - Values between 0 and 1 represent the position within the range
+    
+    Normalized by clipping to [0.0, 1.0] to ensure values stay within bounds.
+    This prevents division by zero errors and makes the feature suitable for ML models.
+    
+    Args:
+        df: Input DataFrame with a 'close' price column.
+    
+    Returns:
+        Series named 'pos_52w' containing clipped 52-week position (0=low, 1=high).
+    """
+    close = _get_close_series(df)
+    
+    # Calculate 52-week (252 trading days) high and low
+    high_52 = close.rolling(window=252, min_periods=1).max()
+    low_52 = close.rolling(window=252, min_periods=1).min()
+    
+    # Calculate position: (current_price - low) / (high - low)
+    range_52 = high_52 - low_52
+    # Avoid division by zero (when high == low, position is 0.5 or use close position)
+    pos_52 = (close - low_52) / range_52.replace(0, 1)  # Replace 0 with 1 to avoid division by zero
+    
+    # Clip to [0, 1] to normalize and handle edge cases
+    pos_52 = pos_52.clip(0.0, 1.0)
+    pos_52.name = "pos_52w"
+    return pos_52
+
+
+def feature_sma20_ratio(df: DataFrame) -> Series:
+    """
+    Compute SMA20 ratio: close / SMA(20).
+    
+    This measures the current price relative to the 20-day simple moving average.
+    Calculated as: close / close.rolling(20).mean().
+    
+    Values:
+    - 1.0: Price equals the SMA20
+    - > 1.0: Price is above the SMA20 (bullish)
+    - < 1.0: Price is below the SMA20 (bearish)
+    
+    Normalized by clipping to [0.5, 1.5] to cap extreme values:
+    - Minimum: 0.5 (price is half of SMA20)
+    - Maximum: 1.5 (price is 1.5x the SMA20)
+    
+    This prevents outliers from dominating the feature and makes it more
+    suitable for ML models.
+    
+    Args:
+        df: Input DataFrame with a 'close' price column.
+    
+    Returns:
+        Series named 'sma20_ratio' containing clipped SMA20 ratios.
+    """
+    close = _get_close_series(df)
+    
+    # Calculate 20-day SMA
+    sma20 = close.rolling(window=20, min_periods=1).mean()
+    
+    # Calculate ratio: current_price / SMA20
+    feat = close / sma20
+    
+    # Clip to [0.5, 1.5] to normalize extreme values
+    feat = feat.clip(0.5, 1.5)
+    feat.name = "sma20_ratio"
+    return feat
+
+
+def feature_sma50_ratio(df: DataFrame) -> Series:
+    """
+    Compute SMA50 ratio: close / SMA(50).
+    
+    This measures the current price relative to the 50-day simple moving average.
+    Calculated as: close / close.rolling(50).mean().
+    
+    Values:
+    - 1.0: Price equals the SMA50
+    - > 1.0: Price is above the SMA50 (bullish)
+    - < 1.0: Price is below the SMA50 (bearish)
+    
+    Normalized by clipping to [0.5, 1.5] to cap extreme values:
+    - Minimum: 0.5 (price is half of SMA50)
+    - Maximum: 1.5 (price is 1.5x the SMA50)
+    
+    This prevents outliers from dominating the feature and makes it more
+    suitable for ML models.
+    
+    Args:
+        df: Input DataFrame with a 'close' price column.
+    
+    Returns:
+        Series named 'sma50_ratio' containing clipped SMA50 ratios.
+    """
+    close = _get_close_series(df)
+    
+    # Calculate 50-day SMA
+    sma50 = close.rolling(window=50, min_periods=1).mean()
+    
+    # Calculate ratio: current_price / SMA50
+    feat = close / sma50
+    
+    # Clip to [0.5, 1.5] to normalize extreme values
+    feat = feat.clip(0.5, 1.5)
+    feat.name = "sma50_ratio"
+    return feat
+
+
+def feature_sma200_ratio(df: DataFrame) -> Series:
+    """
+    Compute SMA200 ratio: close / SMA(200).
+    
+    This measures the current price relative to the 200-day simple moving average.
+    Calculated as: close / close.rolling(200).mean().
+    
+    Values:
+    - 1.0: Price equals the SMA200
+    - > 1.0: Price is above the SMA200 (bullish, long-term uptrend)
+    - < 1.0: Price is below the SMA200 (bearish, long-term downtrend)
+    
+    Normalized by clipping to [0.5, 2.0] to cap extreme values:
+    - Minimum: 0.5 (price is half of SMA200)
+    - Maximum: 2.0 (price is 2x the SMA200)
+    
+    This prevents outliers from dominating the feature and makes it more
+    suitable for ML models.
+    
+    Args:
+        df: Input DataFrame with a 'close' price column.
+    
+    Returns:
+        Series named 'sma200_ratio' containing clipped SMA200 ratios.
+    """
+    close = _get_close_series(df)
+    
+    # Calculate 200-day SMA
+    sma200 = close.rolling(window=200, min_periods=1).mean()
+    
+    # Calculate ratio: current_price / SMA200
+    feat = close / sma200
+    
+    # Clip to [0.5, 2.0] to normalize extreme values
+    feat = feat.clip(0.5, 2.0)
+    feat.name = "sma200_ratio"
+    return feat
+
+
+def feature_sma20_sma50_ratio(df: DataFrame) -> Series:
+    """
+    Compute SMA20/SMA50 ratio: SMA(20) / SMA(50).
+    
+    This measures the relationship between short-term (20-day) and medium-term (50-day)
+    moving averages. It's a moving average crossover indicator.
+    
+    Values:
+    - 1.0: SMA20 equals SMA50 (neutral)
+    - > 1.0: SMA20 above SMA50 (bullish crossover, uptrend)
+    - < 1.0: SMA20 below SMA50 (bearish crossover, downtrend)
+    
+    Normalized by clipping to [0.8, 1.2] to cap extreme values:
+    - Minimum: 0.8 (SMA20 is 80% of SMA50)
+    - Maximum: 1.2 (SMA20 is 120% of SMA50)
+    
+    This prevents outliers from dominating the feature and makes it more
+    suitable for ML models.
+    
+    Args:
+        df: Input DataFrame with a 'close' price column.
+    
+    Returns:
+        Series named 'sma20_sma50_ratio' containing clipped SMA20/SMA50 ratios.
+    """
+    close = _get_close_series(df)
+    
+    # Calculate 20-day and 50-day SMAs
+    sma20 = close.rolling(window=20, min_periods=1).mean()
+    sma50 = close.rolling(window=50, min_periods=1).mean()
+    
+    # Calculate ratio: SMA20 / SMA50
+    feat = sma20 / sma50
+    
+    # Clip to [0.8, 1.2] to normalize extreme values
+    feat = feat.clip(0.8, 1.2)
+    feat.name = "sma20_sma50_ratio"
+    return feat
+
+
+def feature_sma50_sma200_ratio(df: DataFrame) -> Series:
+    """
+    Compute SMA50/SMA200 ratio: SMA(50) / SMA(200).
+    
+    This measures the relationship between medium-term (50-day) and long-term (200-day)
+    moving averages. It's a classic moving average crossover indicator (Golden Cross/Death Cross).
+    
+    Values:
+    - 1.0: SMA50 equals SMA200 (neutral)
+    - > 1.0: SMA50 above SMA200 (Golden Cross, bullish long-term trend)
+    - < 1.0: SMA50 below SMA200 (Death Cross, bearish long-term trend)
+    
+    Normalized by clipping to [0.6, 1.4] to cap extreme values:
+    - Minimum: 0.6 (SMA50 is 60% of SMA200)
+    - Maximum: 1.4 (SMA50 is 140% of SMA200)
+    
+    This prevents outliers from dominating the feature and makes it more
+    suitable for ML models.
+    
+    Args:
+        df: Input DataFrame with a 'close' price column.
+    
+    Returns:
+        Series named 'sma50_sma200_ratio' containing clipped SMA50/SMA200 ratios.
+    """
+    close = _get_close_series(df)
+    
+    # Calculate 50-day and 200-day SMAs
+    sma50 = close.rolling(window=50, min_periods=1).mean()
+    sma200 = close.rolling(window=200, min_periods=1).mean()
+    
+    # Calculate ratio: SMA50 / SMA200
+    feat = sma50 / sma200
+    
+    # Clip to [0.6, 1.4] to normalize extreme values
+    feat = feat.clip(0.6, 1.4)
+    feat.name = "sma50_sma200_ratio"
+    return feat
+
+
+def feature_sma50_slope(df: DataFrame) -> Series:
+    """
+    Compute SMA50 slope: sma50.diff(5) / close.
+    
+    This measures the 5-day change in the 50-day moving average, normalized by the current price.
+    It indicates the rate of change (slope) of the medium-term trend.
+    
+    Values:
+    - 0.0: SMA50 is flat (no change over 5 days)
+    - > 0.0: SMA50 is rising (bullish momentum)
+    - < 0.0: SMA50 is falling (bearish momentum)
+    
+    Normalized by clipping to [-0.1, 0.1] to cap extreme values:
+    - Minimum: -0.1 (SMA50 falling by 10% of price over 5 days)
+    - Maximum: +0.1 (SMA50 rising by 10% of price over 5 days)
+    
+    This prevents outliers from dominating the feature and makes it more
+    suitable for ML models.
+    
+    Args:
+        df: Input DataFrame with a 'close' price column.
+    
+    Returns:
+        Series named 'sma50_slope' containing clipped SMA50 slope values.
+    """
+    close = _get_close_series(df)
+    
+    # Calculate 50-day SMA
+    sma50 = close.rolling(window=50, min_periods=1).mean()
+    
+    # Calculate 5-day change in SMA50, normalized by current price
+    feat = sma50.diff(5) / close
+    
+    # Clip to [-0.1, 0.1] to normalize extreme values
+    feat = feat.clip(-0.1, 0.1)
+    feat.name = "sma50_slope"
+    return feat
+
+
+def feature_sma200_slope(df: DataFrame) -> Series:
+    """
+    Compute SMA200 slope: sma200.diff(10) / close.
+    
+    This measures the 10-day change in the 200-day moving average, normalized by the current price.
+    It indicates the rate of change (slope) of the long-term trend.
+    
+    Values:
+    - 0.0: SMA200 is flat (no change over 10 days)
+    - > 0.0: SMA200 is rising (bullish long-term momentum)
+    - < 0.0: SMA200 is falling (bearish long-term momentum)
+    
+    Normalized by clipping to [-0.1, 0.1] to cap extreme values:
+    - Minimum: -0.1 (SMA200 falling by 10% of price over 10 days)
+    - Maximum: +0.1 (SMA200 rising by 10% of price over 10 days)
+    
+    This prevents outliers from dominating the feature and makes it more
+    suitable for ML models.
+    
+    Args:
+        df: Input DataFrame with a 'close' price column.
+    
+    Returns:
+        Series named 'sma200_slope' containing clipped SMA200 slope values.
+    """
+    close = _get_close_series(df)
+    
+    # Calculate 200-day SMA
+    sma200 = close.rolling(window=200, min_periods=1).mean()
+    
+    # Calculate 10-day change in SMA200, normalized by current price
+    feat = sma200.diff(10) / close
+    
+    # Clip to [-0.1, 0.1] to normalize extreme values
+    feat = feat.clip(-0.1, 0.1)
+    feat.name = "sma200_slope"
+    return feat
+
+
+def feature_volatility_5d(df: DataFrame) -> Series:
+    """
+    Compute 5-day volatility: close.pct_change().rolling(5).std().
+    
+    This measures the standard deviation of daily returns over a 5-day rolling window.
+    Higher values indicate more volatile price movements.
+    
+    Normalized by clipping to [0.0, 0.15] to cap extreme values:
+    - Minimum: 0.0 (no volatility)
+    - Maximum: 0.15 (15% daily volatility)
+    
+    This prevents outliers from dominating the feature and makes it more
+    suitable for ML models.
+    
+    Args:
+        df: Input DataFrame with a 'close' price column.
+    
+    Returns:
+        Series named 'volatility_5d' containing clipped 5-day volatility values.
+    """
+    close = _get_close_series(df)
+    
+    # Calculate 5-day rolling standard deviation of daily returns
+    vol_5 = close.pct_change().rolling(window=5, min_periods=1).std()
+    
+    # Clip to [0, 0.15] to normalize extreme values
+    vol_5 = vol_5.clip(0.0, 0.15)
+    vol_5.name = "volatility_5d"
+    return vol_5
+
+
+def feature_volatility_21d(df: DataFrame) -> Series:
+    """
+    Compute 21-day volatility: close.pct_change().rolling(21).std().
+    
+    This measures the standard deviation of daily returns over a 21-day rolling window.
+    Higher values indicate more volatile price movements over the medium term.
+    
+    Normalized by clipping to [0.0, 0.15] to cap extreme values:
+    - Minimum: 0.0 (no volatility)
+    - Maximum: 0.15 (15% daily volatility)
+    
+    This prevents outliers from dominating the feature and makes it more
+    suitable for ML models.
+    
+    Args:
+        df: Input DataFrame with a 'close' price column.
+    
+    Returns:
+        Series named 'volatility_21d' containing clipped 21-day volatility values.
+    """
+    close = _get_close_series(df)
+    
+    # Calculate 21-day rolling standard deviation of daily returns
+    vol_21 = close.pct_change().rolling(window=21, min_periods=1).std()
+    
+    # Clip to [0, 0.15] to normalize extreme values
+    vol_21 = vol_21.clip(0.0, 0.15)
+    vol_21.name = "volatility_21d"
+    return vol_21
+
+
+def feature_volatility_ratio(df: DataFrame) -> Series:
+    """
+    Compute Volatility Ratio: short-term volatility (5-day) vs long-term volatility (21-day).
+    
+    The ratio of short-term volatility to long-term volatility identifies volatility
+    expansion/compression regimes more cleanly than ATR alone.
+    
+    This is extremely important for predicting swing duration and follow-through.
+    
+    Calculation:
+    1. vol5 = volatility_5d (already computed)
+    2. vol21 = volatility_21d (already computed)
+    3. volatility_ratio = vol5 / vol21
+    4. Normalize by clipping to [0, 2]
+    
+    Normalized by clipping to [0, 2]:
+    - > 1: Volatility expanding (short-term vol > long-term vol)
+    - < 1: Volatility contracting (short-term vol < long-term vol)
+    - ≈ 1: Stable regime (short-term vol ≈ long-term vol)
+    - Range: [0, 2]
+    - Identifies volatility expansion/compression regimes
+    
+    Why it adds value:
+    - Captures regime shifts
+    - Improves breakout & pullback predictions
+    - Helps differentiate choppy vs trending markets
+    - More cleanly identifies volatility expansion/compression than ATR alone
+    - Extremely important for predicting swing duration and follow-through
+    
+    Args:
+        df: Input DataFrame with 'close' column.
+    
+    Returns:
+        Series named 'volatility_ratio' containing normalized volatility ratio values.
+    """
+    # Get existing volatility features
+    vol5 = feature_volatility_5d(df)
+    vol21 = feature_volatility_21d(df)
+    
+    # Step 1: Calculate volatility ratio
+    # volatility_ratio = vol5 / vol21
+    # Handle division by zero (when vol21 is 0)
+    volatility_ratio = vol5 / (vol21 + 1e-10)
+    
+    # Step 2: Normalize by clipping to [0, 2]
+    volatility_ratio = volatility_ratio.clip(0.0, 2.0)
+    
+    volatility_ratio.name = "volatility_ratio"
+    return volatility_ratio
+
+
+def feature_atr14_normalized(df: DataFrame) -> Series:
+    """
+    Compute normalized ATR14: ATR(14) / close.
+    
+    This measures the Average True Range over 14 days, normalized by the current price.
+    ATR measures volatility based on the true range (high-low, high-prev_close, low-prev_close).
+    
+    True Range calculation:
+    - TR = max(high - low, abs(high - prev_close), abs(low - prev_close))
+    - ATR14 = rolling mean of TR over 14 days
+    
+    Normalized by clipping to [0.0, 0.2] to cap extreme values:
+    - Minimum: 0.0 (no volatility)
+    - Maximum: 0.2 (ATR is 20% of price)
+    
+    This prevents outliers from dominating the feature and makes it more
+    suitable for ML models.
+    
+    Args:
+        df: Input DataFrame with 'high', 'low', and 'close' columns.
+    
+    Returns:
+        Series named 'atr14_normalized' containing clipped normalized ATR14 values.
+    """
+    close = _get_close_series(df)
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    
+    # Calculate True Range components
+    tr1 = high - low
+    tr2 = (high - close.shift(1)).abs()
+    tr3 = (low - close.shift(1)).abs()
+    
+    # True Range is the maximum of the three components
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    
+    # Calculate ATR14 (14-day rolling mean of True Range)
+    atr14 = tr.rolling(window=14, min_periods=1).mean()
+    
+    # Normalize by current price
+    feat = atr14 / close
+    
+    # Clip to [0, 0.2] to normalize extreme values
+    feat = feat.clip(0.0, 0.2)
+    feat.name = "atr14_normalized"
+    return feat
+
+
+def feature_log_volume(df: DataFrame) -> Series:
+    """
+    Compute log volume: np.log1p(volume).
+    
+    This transforms volume using the natural logarithm of (1 + volume).
+    The log1p function is used to handle zero volumes gracefully and compress
+    the wide range of volume values into a more manageable scale.
+    
+    Already normalized by the log transformation, which naturally compresses
+    large values and handles the wide range of volume data.
+    
+    Args:
+        df: Input DataFrame with a 'volume' column.
+    
+    Returns:
+        Series named 'log_volume' containing log-transformed volume values.
+    """
+    volume = _get_volume_series(df)
+    
+    # Apply log1p transformation (log(1 + volume))
+    feat = np.log1p(volume)
+    feat.name = "log_volume"
+    return feat
+
+
+def feature_log_avg_volume_20d(df: DataFrame) -> Series:
+    """
+    Compute log average volume (20-day): np.log1p(volume.rolling(20).mean()).
+    
+    This transforms the 20-day rolling average of volume using the natural logarithm.
+    It provides a smoothed, normalized view of volume trends over the medium term.
+    
+    Already normalized by the log transformation, which naturally compresses
+    large values and handles the wide range of volume data.
+    
+    Args:
+        df: Input DataFrame with a 'volume' column.
+    
+    Returns:
+        Series named 'log_avg_volume_20d' containing log-transformed 20-day average volume.
+    """
+    volume = _get_volume_series(df)
+    
+    # Calculate 20-day rolling average volume
+    vol_avg20 = volume.rolling(window=20, min_periods=1).mean()
+    
+    # Apply log1p transformation
+    feat = np.log1p(vol_avg20)
+    feat.name = "log_avg_volume_20d"
+    return feat
+
+
+def feature_relative_volume(df: DataFrame) -> Series:
+    """
+    Compute relative volume: np.log1p((volume / vol_avg20).clip(0, 10)).
+    
+    This measures current volume relative to the 20-day average volume.
+    Values > 1.0 indicate above-average volume, values < 1.0 indicate below-average volume.
+    
+    Normalized by:
+    1. Clipping the ratio to [0, 10] to cap extreme values
+    2. Applying log1p transformation to compress the scale
+    
+    This prevents outliers from dominating the feature and makes it more
+    suitable for ML models.
+    
+    Args:
+        df: Input DataFrame with a 'volume' column.
+    
+    Returns:
+        Series named 'relative_volume' containing log-transformed relative volume values.
+    """
+    volume = _get_volume_series(df)
+    
+    # Calculate 20-day rolling average volume
+    vol_avg20 = volume.rolling(window=20, min_periods=1).mean()
+    
+    # Calculate relative volume: current volume / average volume
+    rvol = volume / vol_avg20
+    
+    # Clip to [0, 10] to normalize extreme values
+    rvol = rvol.clip(0, 10)
+    
+    # Apply log1p transformation to compress scale
+    feat = np.log1p(rvol)
+    feat.name = "relative_volume"
+    return feat
+
+
+def feature_rsi14(df: DataFrame) -> Series:
+    """
+    Compute RSI14 (Relative Strength Index) with centered normalization.
+    
+    RSI calculation:
+    1. Calculate price change: delta = close.diff()
+    2. Separate gains and losses:
+       - gain = delta.clip(lower=0)  (positive changes)
+       - loss = -delta.clip(upper=0)  (negative changes, made positive)
+    3. Calculate 14-day averages:
+       - avg_gain = gain.rolling(14).mean()
+       - avg_loss = loss.rolling(14).mean()
+    4. Calculate relative strength: rs = avg_gain / avg_loss
+    5. Calculate RSI: rsi = 100 - (100 / (1 + rs))
+    
+    Normalized (centered) by: (rsi - 50) / 50
+    This transforms RSI from [0, 100] range to [-1, +1] range:
+    - -1.0: RSI = 0 (extremely oversold)
+    - 0.0: RSI = 50 (neutral)
+    - +1.0: RSI = 100 (extremely overbought)
+    
+    Args:
+        df: Input DataFrame with a 'close' price column.
+    
+    Returns:
+        Series named 'rsi14' containing centered RSI14 values in [-1, +1] range.
+    """
+    close = _get_close_series(df)
+    
+    # Calculate price change
+    delta = close.diff()
+    
+    # Separate gains and losses
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    
+    # Calculate 14-day rolling averages
+    avg_gain = gain.rolling(window=14, min_periods=1).mean()
+    avg_loss = loss.rolling(window=14, min_periods=1).mean()
+    
+    # Avoid division by zero
+    avg_loss = avg_loss.replace(0, 1e-10)
+    
+    # Calculate relative strength
+    rs = avg_gain / avg_loss
+    
+    # Calculate RSI (0-100 range)
+    rsi = 100 - (100 / (1 + rs))
+    
+    # Normalize (center) to [-1, +1] range
+    feat = (rsi - 50) / 50
+    
+    feat.name = "rsi14"
+    return feat
+
 
 def feature_candle_body_pct(df: DataFrame) -> Series:
     """
-    Compute the percent size of the candle body relative to the high-low range:
-      ((close_t − open_t) / (high_t − low_t)) * 100
-
-    Steps:
-      1. Retrieve open, high, low, and close series (case-insensitive).
-      2. Compute body = close − open.
-      3. Compute range = high − low, replacing any 0 with NaN to avoid divide-by-zero.
-      4. Compute (body / range) * 100 and name the Series.
+    Compute candle body percentage: body / range.
+    
+    This measures the size of the candle body relative to the total candle range.
+    Calculated as: abs(close - open) / (high - low).
+    
+    Values are already in [0, 1] range:
+    - 0.0: No body (doji - open equals close)
+    - 1.0: Full body (no wicks - body equals range)
+    
     Args:
-        df: Input DataFrame with 'open','high','low','close' columns.
+        df: Input DataFrame with 'open', 'high', 'low', and 'close' columns.
+    
     Returns:
-        Series named 'candle_body_pct' with values in [-∞,∞], clipped by typical range.
+        Series named 'candle_body_pct' containing body percentage values in [0, 1] range.
     """
+    close = _get_close_series(df)
     openp = _get_open_series(df)
-    highp = _get_high_series(df)
-    lowp  = _get_low_series(df)
-    close = _get_close_series(df)
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    
+    # Calculate body (absolute difference between open and close)
+    body = (close - openp).abs()
+    
+    # Calculate range (high - low), replace 0 with NaN to avoid division by zero
+    range_ = (high - low).replace(0, np.nan)
+    
+    # Calculate body percentage
+    body_pct = body / range_
+    
+    body_pct.name = "candle_body_pct"
+    return body_pct
 
-    body = close - openp
-    rng  = (highp - lowp).replace(0, np.nan)
-    pct  = (body / rng) * 100
-    pct.name = "candle_body_pct"
-    return pct
 
-def feature_close_position_in_range(df: DataFrame) -> Series:
+def feature_candle_upper_wick_pct(df: DataFrame) -> Series:
     """
-    Compute the relative position of the close within the intraday range:
-      (close_t − low_t) / (high_t − low_t).
-
-    Steps:
-      1. Retrieve closing-price series (handles 'close'/'Close').
-      2. Retrieve high and low series (handles lower/upper case).
-      3. Compute range = high_t − low_t, replacing zeros with NaN to avoid divide-by-zero.
-      4. Compute (close_t − low_t) / range.
-      5. Name the Series 'close_position_in_range'.
-
+    Compute upper wick percentage: upper_wick / range.
+    
+    This measures the size of the upper wick relative to the total candle range.
+    Calculated as: (high - max(close, open)) / (high - low).
+    
+    Values are already in [0, 1] range:
+    - 0.0: No upper wick (high equals max(close, open))
+    - 1.0: Full upper wick (entire range is upper wick)
+    
     Args:
-        df: Input DataFrame with 'close','high','low' columns.
-
+        df: Input DataFrame with 'open', 'high', 'low', and 'close' columns.
+    
     Returns:
-        Series named 'close_position_in_range' in [0,1], where 0 means close==low, 1 means close==high.
-    """
-    close = _get_close_series(df)
-    highp = _get_high_series(df)
-    lowp  = _get_low_series(df)
-
-    # avoid division by zero
-    rng = (highp - lowp).replace(0, np.nan)
-
-    pos = (close - lowp) / rng
-    pos.name = "close_position_in_range"
-    return pos
-
-def feature_high_vs_close(df: DataFrame) -> Series:
-    """
-    Compute the percent difference between the intraday high and the close:
-      (high_t / close_t - 1) * 100
-
-    Steps:
-      1. Retrieve today’s close via our _get_close_series helper.
-      2. Retrieve today’s high price (handles 'high'/'High').
-      3. Compute (high_t / close_t - 1) * 100.
-      4. Name the Series 'high_vs_close'.
-
-    Args:
-        df: DataFrame with 'high' and 'close' columns.
-
-    Returns:
-        Series named 'high_vs_close' giving the intraday extension above close.
+        Series named 'candle_upper_wick_pct' containing upper wick percentage values in [0, 1] range.
     """
     close = _get_close_series(df)
-    highp = _get_high_series(df)
-    pct = (highp / close - 1) * 100
-    pct.name = "high_vs_close"
-    return pct
+    openp = _get_open_series(df)
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    
+    # Calculate upper wick: high - max(close, open)
+    # Using close.where(close >= openp, openp) gives max(close, open)
+    upper = high - close.where(close >= openp, openp)
+    
+    # Calculate range (high - low), replace 0 with NaN to avoid division by zero
+    range_ = (high - low).replace(0, np.nan)
+    
+    # Calculate upper wick percentage
+    upper_pct = upper / range_
+    
+    upper_pct.name = "candle_upper_wick_pct"
+    return upper_pct
 
-def feature_rolling_max_5d_breakout(df: DataFrame) -> Series:
+
+def feature_candle_lower_wick_pct(df: DataFrame) -> Series:
     """
-    Compute the percent that today’s close exceeds the max close of the prior 5 days:
-      max_prev5 = max(close_{t-5..t-1})
-      breakout_pct = max( (close_t / max_prev5 - 1) , 0 ) * 100
-
-    Steps:
-      1. Retrieve the closing-price series (via _get_close_series).
-      2. Shift by 1 day and take a 5-day rolling max (min_periods=1).
-      3. Divide today’s close by that prior-5-day max, subtract 1.
-      4. Clip negative values to 0 (only positive breakouts).
-      5. Multiply by 100 and name the Series.
-
+    Compute lower wick percentage: lower_wick / range.
+    
+    This measures the size of the lower wick relative to the total candle range.
+    Calculated as: (min(close, open) - low) / (high - low).
+    
+    Values are already in [0, 1] range:
+    - 0.0: No lower wick (low equals min(close, open))
+    - 1.0: Full lower wick (entire range is lower wick)
+    
     Args:
-        df: Input DataFrame with a 'close' or 'Close' column.
-
+        df: Input DataFrame with 'open', 'high', 'low', and 'close' columns.
+    
     Returns:
-        Series named 'rolling_max_5d_breakout' giving % breakout over the prior 5-day high.
+        Series named 'candle_lower_wick_pct' containing lower wick percentage values in [0, 1] range.
     """
     close = _get_close_series(df)
-    # prior 5-day high
-    prev_max5 = close.shift(1).rolling(window=5, min_periods=1).max()
-    # percent above that high, clip negatives to zero
-    pct = ((close / prev_max5 - 1).clip(lower=0)) * 100
-    pct.name = "rolling_max_5d_breakout"
-    return pct
+    openp = _get_open_series(df)
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    
+    # Calculate lower wick: min(close, open) - low
+    # Using close.where(close <= openp, openp) gives min(close, open)
+    lower = close.where(close <= openp, openp) - low
+    
+    # Calculate range (high - low), replace 0 with NaN to avoid division by zero
+    range_ = (high - low).replace(0, np.nan)
+    
+    # Calculate lower wick percentage
+    lower_pct = lower / range_
+    
+    lower_pct.name = "candle_lower_wick_pct"
+    return lower_pct
 
-def feature_rolling_min_5d_breakdown(df: DataFrame) -> Series:
+
+def feature_higher_high_10d(df: DataFrame) -> Series:
     """
-    Compute the percent that today’s close falls below the min close of the prior 5 days:
-      min_prev5 = min(close_{t-5..t-1})
-      breakdown_pct = max((min_prev5 - close_t) / min_prev5, 0) * 100
-
-    Steps:
-      1. Retrieve the closing-price series via _get_close_series.
-      2. Shift by 1 day and take a 5-day rolling minimum (min_periods=1).
-      3. Compute (min_prev5 - close_t) / min_prev5.
-      4. Clip negative values to 0 (only positive breakdowns).
-      5. Multiply by 100 and name the Series.
-
+    Compute higher high (10-day) binary flag.
+    
+    This indicates if the current close is higher than the maximum close
+    of the previous 10 days. A higher high suggests bullish momentum.
+    
+    Calculated as: (close > close.shift(1).rolling(10).max()).astype(int)
+    
+    Values are binary (0/1):
+    - 0: Current close is NOT higher than previous 10-day max
+    - 1: Current close IS higher than previous 10-day max (higher high)
+    
     Args:
-        df: Input DataFrame with 'close' or 'Close' column.
-
+        df: Input DataFrame with a 'close' price column.
+    
     Returns:
-        Series named 'rolling_min_5d_breakdown'.
+        Series named 'higher_high_10d' containing binary values (0 or 1).
     """
     close = _get_close_series(df)
-    prev_min5 = close.shift(1).rolling(window=5, min_periods=1).min()
-    pct = ((prev_min5 - close) / prev_min5).clip(lower=0) * 100
-    pct.name = "rolling_min_5d_breakdown"
-    return pct
+    
+    # Calculate max of previous 10 days (excluding current day)
+    prev_10d_max = close.shift(1).rolling(window=10, min_periods=1).max()
+    
+    # Check if current close is higher than previous 10-day max
+    hh = (close > prev_10d_max).astype(int)
+    
+    hh.name = "higher_high_10d"
+    return hh
 
-def feature_atr(df: DataFrame, period: int = 14) -> Series:
+
+def feature_higher_low_10d(df: DataFrame) -> Series:
     """
-    Compute Average True Range (ATR) over a given period via pandas-ta.
-
+    Compute higher low (10-day) binary flag.
+    
+    This indicates if the current close is higher than the minimum close
+    of the previous 10 days. A higher low suggests bullish momentum and
+    potential trend continuation.
+    
+    Calculated as: (close > close.shift(1).rolling(10).min()).astype(int)
+    
+    Values are binary (0/1):
+    - 0: Current close is NOT higher than previous 10-day min
+    - 1: Current close IS higher than previous 10-day min (higher low)
+    
     Args:
-        df: Input DataFrame with 'high', 'low', 'close' columns.
-        period: Lookback length for ATR calculation.
-
+        df: Input DataFrame with a 'close' price column.
+    
     Returns:
-        Series named 'atr_{period}' of ATR values.
+        Series named 'higher_low_10d' containing binary values (0 or 1).
     """
-    s = ta.atr(
-        high=_get_high_series(df),
-        low=_get_low_series(df),
-        close=_get_close_series(df),
-        length=period
+    close = _get_close_series(df)
+    
+    # Calculate min of previous 10 days (excluding current day)
+    prev_10d_min = close.shift(1).rolling(window=10, min_periods=1).min()
+    
+    # Check if current close is higher than previous 10-day min
+    hl = (close > prev_10d_min).astype(int)
+    
+    hl.name = "higher_low_10d"
+    return hl
+
+
+def _trend_residual_window(prices: np.ndarray) -> float:
+    """
+    Helper function to calculate trend residual for a single window.
+    
+    Performs linear regression on the last 50 prices and returns the
+    normalized residual of the last value.
+    
+    Args:
+        prices: Array of price values (should be length 50).
+    
+    Returns:
+        Normalized residual value (actual - fitted) / actual for the last price.
+    """
+    if len(prices) < 50 or np.isnan(prices).any():
+        return np.nan
+    
+    # Create index array for regression (0 to 49)
+    idx = np.arange(len(prices)).reshape(-1, 1)
+    vals = prices.reshape(-1, 1)
+    
+    # Fit linear regression
+    model = LinearRegression().fit(idx, vals)
+    fitted = model.predict(idx).flatten()
+    
+    # Calculate residual: (actual - fitted) / actual
+    resid = (vals.flatten() - fitted) / vals.flatten()
+    
+    # Return the last residual value
+    return resid[-1]
+
+
+def feature_trend_residual(df: DataFrame) -> Series:
+    """
+    Compute trend residual (noise vs trend) using linear regression.
+    
+    This feature measures how much the current price deviates from a linear
+    trend fitted over the previous 50 days. A positive residual indicates
+    the price is above the trend line, while negative indicates below.
+    
+    Calculated by:
+    1. Fitting linear regression to last 50 close values
+    2. Calculating residual: (actual - fitted) / actual
+    3. Taking the last residual value
+    4. Clipping to [-0.2, 0.2]
+    
+    Values are clipped to [-0.2, 0.2]:
+    - Negative: Price below trend (potential oversold)
+    - Positive: Price above trend (potential overbought)
+    - Near 0: Price follows trend closely
+    
+    Args:
+        df: Input DataFrame with a 'close' price column.
+    
+    Returns:
+        Series named 'trend_residual' containing normalized residual values.
+    """
+    close = _get_close_series(df)
+    
+    # Apply rolling window regression (50 days)
+    # Using rolling.apply with the helper function
+    resid = close.rolling(window=50, min_periods=50).apply(
+        _trend_residual_window, raw=True
     )
-    s.name = f"atr_{period}"
-    return s
-
-def feature_atr_pct_of_price(df: DataFrame) -> Series:
-    """
-    Compute the Average True Range as a percent of today's close:
-      atr_pct_of_price = (ATR_t / close_t) * 100
-
-    Steps:
-      1. Compute ATR (using our existing feature_atr helper).
-      2. Retrieve the closing-price series via _get_close_series.
-      3. Divide ATR by close and multiply by 100.
-      4. Name the Series 'atr_pct_of_price'.
-
-    Args:
-        df: Input DataFrame with 'high','low','close' columns.
-
-    Returns:
-        Series named 'atr_pct_of_price'.
-    """
-    # 1) get raw ATR
-    atr = feature_atr(df)
-    # 2) get close
-    close = _get_close_series(df)
-    # 3) pct of price
-    pct = (atr / close) * 100
-    pct.name = "atr_pct_of_price"
-    return pct
-
-def feature_bb_width(df: DataFrame, period: int = 20, std_dev: float = 2.0) -> Series:
-    """
-    Compute Bollinger Band width: (upper_band - lower_band) / middle_band.
-
-    Uses pandas-ta's bbands function.
-
-    Args:
-        df: Input DataFrame with 'close' column.
-        period: Window length for moving average and bands.
-        std_dev: Multiplier for standard deviation in bands.
-
-    Returns:
-        Series named 'bb_width_{period}' of band widths.
-    """
-    bb = ta.bbands(close=df["close"], length=period, std=std_dev)
-    # Extract lower, middle, upper bands by column order
-    lower = bb.iloc[:, 0]
-    mid = bb.iloc[:, 1]
-    upper = bb.iloc[:, 2]
-    width = (upper - lower) / mid
-    width.name = f"bb_width_{period}"
-    return width
-
-
-def feature_ema_cross(df: DataFrame, span_short: int = 12, span_long: int = 26) -> Series:
-    """
-    Compute EMA difference: EMA(short) - EMA(long).
-
-    Args:
-        df: Input DataFrame with 'close' column.
-        span_short: Span for short EMA.
-        span_long: Span for long EMA.
-
-    Returns:
-        Series named 'ema_cross_{span_short}_{span_long}'.
-    """
-    e1 = ta.ema(df["close"], length=span_short)
-    e2 = ta.ema(df["close"], length=span_long)
-    diff = e1 - e2
-    diff.name = f"ema_cross_{span_short}_{span_long}"
-    return diff
-
-
-def feature_obv(df: DataFrame) -> Series:
-    """
-    Compute On-Balance Volume (OBV) via pandas-ta.
-
-    Args:
-        df: Input DataFrame with 'close' and 'volume' columns.
-
-    Returns:
-        Series named 'obv' of cumulative OBV values.
-    """
-    s = ta.obv(_get_close_series(df), _get_volume_series(df))
-    s.name = "obv"
-    return s
-
-
-def feature_obv_pct(df: DataFrame, length: int = 1) -> Series:
-    """
-    Compute daily percent change of OBV via Rate-of-Change.
     
-    Handles edge cases where OBV transitions from 0 to non-zero (which would
-    produce infinity in ROC calculation).
-
-    Args:
-        df: Input DataFrame with 'close' and 'volume' columns.
-        length: Period for percent change (default 1 day).
-
-    Returns:
-        Series named 'obv_pct' of percent changes, with infinities replaced by NaN.
-    """
-    obv = ta.obv(_get_close_series(df), _get_volume_series(df))
+    # Clip to [-0.2, 0.2]
+    resid = resid.clip(-0.2, 0.2)
     
-    # Compute ROC
-    s = ta.roc(obv, length=length)
+    resid.name = "trend_residual"
+    return resid
+
+
+# Ownership features removed - not consistent and cannot be trusted
+
+
+def feature_macd_histogram_normalized(df: DataFrame) -> Series:
+    """
+    Compute MACD Histogram (normalized by price): (macd_line - signal_line) / close.
     
-    # Handle infinity cases: when OBV goes from 0 to non-zero, ROC = infinity
-    # Replace infinities with NaN for downstream handling
-    s = s.replace([np.inf, -np.inf], np.nan)
+    MACD Histogram measures momentum acceleration vs. deceleration. The histogram
+    is the most predictive part of MACD — it shows the strength of the trend and
+    detects early momentum shifts.
     
-    s.name = "obv_pct"
-    return s
-
-
-def feature_obv_zscore(df: DataFrame, length: int = 20) -> Series:
-    """
-    Compute z-score of OBV relative to its moving average.
-
+    Calculation:
+    1. EMA(close, 12) - fast exponential moving average
+    2. EMA(close, 26) - slow exponential moving average
+    3. MACD line = EMA12 - EMA26
+    4. Signal line = EMA(MACD line, 9)
+    5. Histogram = MACD line - Signal line
+    6. Normalized = Histogram / close
+    
+    Normalization by price makes the feature scale-independent, allowing ML models
+    to compare values across different price ranges. This keeps everything in a
+    similar range regardless of stock price.
+    
+    Why it's valuable:
+    - Captures trend momentum
+    - Detects divergence
+    - Identifies turning points
+    - Shows acceleration vs deceleration
+    - Much more expressive than RSI alone
+    
     Args:
-        df: Input DataFrame with 'close' and 'volume' columns.
-        length: Window for z-score normalization.
-
+        df: Input DataFrame with a 'close' price column.
+    
     Returns:
-        Series named 'obv_z{length}' of z-scored values.
-    """
-    obv = ta.obv(df["close"], df["volume"])
-    s = ta.zscore(obv, length=length)
-    s.name = f"obv_z{length}"
-    return s
-
-def feature_volume_avg_ratio_5d(df: DataFrame) -> Series:
-    """
-    Compute the ratio of today's volume to the prior 5-day average volume.
-
-    Steps:
-      1. Retrieve today’s volume (handles 'volume'/'Volume').
-      2. Shift by 1 day and take a 5-day rolling mean (min_periods=1).
-      3. Replace any zero averages with NaN to avoid divide-by-zero.
-      4. Divide today’s volume by that prior-5-day average.
-      5. Replace infinities and NaNs with 0.0.
-      6. Name the Series 'volume_avg_ratio_5d'.
-
-    Args:
-        df: Input DataFrame with a 'volume' column.
-
-    Returns:
-        Series named 'volume_avg_ratio_5d'.
-    """
-    import numpy as np
-
-    vol = _get_volume_series(df)
-
-    # 2) Compute prior 5-day average volume
-    avg5 = vol.shift(1).rolling(window=5, min_periods=1).mean()
-
-    # 3) Prevent divide-by-zero
-    avg5 = avg5.replace(0, np.nan)
-
-    # 4) Compute ratio
-    ratio = vol / avg5
-
-    # 5) Clean up infinities and NaNs
-    ratio = ratio.replace([np.inf, -np.inf], 0.0).fillna(0.0)
-
-    # 6) Name and return
-    ratio.name = "volume_avg_ratio_5d"
-    return ratio
-
-def feature_rsi(df: DataFrame, period: int = 14) -> Series:
-    """
-    Compute Relative Strength Index (RSI) via pandas-ta.
-
-    Args:
-        df: Input DataFrame with 'close' column.
-        period: Lookback length for RSI.
-
-    Returns:
-        Series named 'rsi_{period}' of RSI values.
-    """
-    s = ta.rsi(df["close"], length=period)
-    s.name = f"rsi_{period}"
-    return s
-
-def feature_rsi_slope(df: DataFrame, period: int = 14, length: int = 3) -> Series:
-    """
-    Compute the average daily change (“slope”) of the period‐RSI over a lookback window.
-
-    Steps:
-      1. Compute the RSI via pandas‐ta over `period` days.
-      2. Shift that series by `length` days.
-      3. Subtract and divide by `length` to get per‐day slope.
-      4. Name the Series 'rsi_slope'.
-
-    Args:
-        df: Input DataFrame with a 'close' column.
-        period: Lookback length for RSI (default 14).  
-        length: Number of days over which to measure slope (default 5).
-
-    Returns:
-        Series named 'rsi_slope' of per‐day RSI changes.
-    """
-    # 1) Calculate RSI  
-    rsi_series = ta.rsi(df["close"], length=period)  # :contentReference[oaicite:0]{index=0}
-
-    # 2) Compute N-day difference, then annualize as per-day slope
-    slope = (rsi_series - rsi_series.shift(length)) / length
-
-    # 3) Clean up any NaNs (initial periods) if you like, or leave them  
-    slope.name = "rsi_slope"
-    return slope
-
-def feature_sma_5(df: DataFrame) -> Series:
-    """
-    Compute 5-day Simple Moving Average via pandas-ta.
-
-    Args:
-        df: Input DataFrame with 'close' column.
-
-    Returns:
-        Series named 'sma_5' of SMA values.
-    """
-    s = ta.sma(df["close"], length=5)
-    s.name = "sma_5"
-    return s
-
-
-def feature_ema_5(df: DataFrame) -> Series:
-    """
-    Compute 5-day Exponential Moving Average via pandas-ta.
-
-    Args:
-        df: Input DataFrame with 'close' column.
-
-    Returns:
-        Series named 'ema_5' of EMA values.
-    """
-    s = ta.ema(df["close"], length=5)
-    s.name = "ema_5"
-    return s
-
-
-def feature_sma_10(df: DataFrame) -> Series:
-    """
-    Compute 10-day Simple Moving Average via pandas-ta.
-
-    Args:
-        df: Input DataFrame with 'close' column.
-
-    Returns:
-        Series named 'sma_10' of SMA values.
-    """
-    s = ta.sma(df["close"], length=10)
-    s.name = "sma_10"
-    return s
-
-
-def feature_ema_10(df: DataFrame) -> Series:
-    """
-    Compute 10-day Exponential Moving Average via pandas-ta.
-
-    Args:
-        df: Input DataFrame with 'close' column.
-
-    Returns:
-        Series named 'ema_10' of EMA values.
-    """
-    s = ta.ema(df["close"], length=10)
-    s.name = "ema_10"
-    return s
-
-
-def feature_sma_50(df: DataFrame) -> Series:
-    """
-    Compute 50-day Simple Moving Average via pandas-ta.
-
-    Args:
-        df: Input DataFrame with 'close' column.
-
-    Returns:
-        Series named 'sma_50' of SMA values.
-    """
-    s = ta.sma(df["close"], length=50)
-    s.name = "sma_50"
-    return s
-
-
-def feature_ema_50(df: DataFrame) -> Series:
-    """
-    Compute 50-day Exponential Moving Average via pandas-ta.
-
-    Args:
-        df: Input DataFrame with 'close' column.
-
-    Returns:
-        Series named 'ema_50' of EMA values.
-    """
-    s = ta.ema(df["close"], length=50)
-    s.name = "ema_50"
-    return s
-
-def feature_macd_line(df: DataFrame, fast: int = 12, slow: int = 26) -> Series:
-    """
-    Compute the MACD line: the difference between fast and slow EMAs of close.
-
-    Steps:
-      1. Retrieve the closing‐price series via _get_close_series.
-      2. Compute the fast EMA (default length=12).
-      3. Compute the slow EMA (default length=26).
-      4. Subtract: fast_ema − slow_ema.
-      5. Name the Series 'macd_line'.
-
-    Args:
-        df: Input DataFrame with a 'close' column.
-        fast: Window for the fast EMA (default 12).
-        slow: Window for the slow EMA (default 26).
-
-    Returns:
-        Series named 'macd_line'.
+        Series named 'macd_histogram_normalized' containing normalized MACD histogram values.
     """
     close = _get_close_series(df)
-    # pandas_ta EMAs
-    ema_fast = ta.ema(close, length=fast)
-    ema_slow = ta.ema(close, length=slow)
-    macd = ema_fast - ema_slow
-    macd.name = "macd_line"
-    return macd
+    
+    # Step 1: Calculate EMAs
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    
+    # Step 2: Calculate MACD line
+    macd_line = ema12 - ema26
+    
+    # Step 3: Calculate signal line (EMA of MACD line)
+    signal_line = macd_line.ewm(span=9, adjust=False).mean()
+    
+    # Step 4: Calculate histogram
+    macd_hist = macd_line - signal_line
+    
+    # Step 5: Normalize by price
+    macd_hist_norm = macd_hist / close
+    
+    macd_hist_norm.name = "macd_histogram_normalized"
+    return macd_hist_norm
 
-def feature_macd_histogram(
-    df: DataFrame,
-    fast: int = 12,
-    slow: int = 26,
-    signal: int = 9
-) -> Series:
+
+def feature_ppo_histogram(df: DataFrame) -> Series:
     """
-    Compute the MACD histogram: the difference between the MACD line and its signal line.
-
-    Steps:
-      1. Retrieve close series via _get_close_series.
-      2. Compute fast EMA (length=fast) and slow EMA (length=slow).
-      3. macd_line = fast_ema − slow_ema.
-      4. signal_line = EMA(macd_line, length=signal).
-      5. histogram = macd_line − signal_line.
-      6. Name the Series 'macd_histogram'.
-
+    Compute PPO (Percentage Price Oscillator) Histogram: percentage-based momentum acceleration/deceleration.
+    
+    PPO measures momentum in percent, making it:
+    - Cross-ticker comparable
+    - Scale-invariant
+    - More stable across expensive vs cheap stocks
+    
+    PPO histogram = acceleration/deceleration of percentage momentum.
+    
+    Calculation:
+    1. Calculate two EMAs:
+       - ema12 = EMA(close, 12)
+       - ema26 = EMA(close, 26)
+    2. Calculate PPO line:
+       - ppo = (ema12 - ema26) / ema26
+    3. Calculate PPO signal:
+       - ppo_signal = EMA(ppo, 9)
+    4. Calculate PPO histogram:
+       - ppo_hist = ppo - ppo_signal
+    5. Normalize by clipping to [-0.2, 0.2]
+    
+    Normalized by clipping to [-0.2, 0.2]:
+    - Positive: PPO accelerating above signal (bullish momentum acceleration)
+    - Negative: PPO decelerating below signal (bearish momentum deceleration)
+    - Near 0: PPO and signal converging (momentum neutral)
+    - Range: [-0.2, 0.2] (typically ranges around [-0.1, 0.1])
+    - Scale-invariant and cross-ticker comparable
+    
+    Why it adds value:
+    - Less redundant with MACD than you'd think (percentage vs absolute)
+    - Captures percent-based momentum cleanly
+    - Often improves ML performance with multi-ticker training
+    - More stable across expensive vs cheap stocks
+    - Cross-ticker comparable (unlike MACD which is in price units)
+    
     Args:
-        df: Input DataFrame with a 'close' column.
-        fast: Window for the fast EMA (default 12).
-        slow: Window for the slow EMA (default 26).
-        signal: Window for the signal‐line EMA (default 9).
-
+        df: Input DataFrame with 'close' column.
+    
     Returns:
-        Series named 'macd_histogram'.
+        Series named 'ppo_histogram' containing normalized PPO histogram values.
     """
     close = _get_close_series(df)
-    ema_fast    = ta.ema(close, length=fast)
-    ema_slow    = ta.ema(close, length=slow)
-    macd_line   = ema_fast - ema_slow
-    signal_line = ta.ema(macd_line, length=signal)
-    hist        = macd_line - signal_line
-    hist.name   = "macd_histogram"
-    return hist
+    
+    # Step 1: Calculate two EMAs
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    
+    # Step 2: Calculate PPO line
+    # PPO = (ema12 - ema26) / ema26
+    ppo = (ema12 - ema26) / ema26
+    
+    # Step 3: Calculate PPO signal
+    # ppo_signal = EMA(ppo, 9)
+    ppo_signal = ppo.ewm(span=9, adjust=False).mean()
+    
+    # Step 4: Calculate PPO histogram
+    # ppo_hist = ppo - ppo_signal
+    ppo_hist = ppo - ppo_signal
+    
+    # Step 5: Normalize by clipping to [-0.2, 0.2]
+    # It typically ranges around [-0.1, 0.1], so clip to [-0.2, 0.2] for safety
+    ppo_hist_norm = ppo_hist.clip(-0.2, 0.2)
+    
+    ppo_hist_norm.name = "ppo_histogram"
+    return ppo_hist_norm
 
-def feature_macd_cross_signal(
-    df: DataFrame,
-    fast: int = 12,
-    slow: int = 26,
-    signal: int = 9
-) -> Series:
+
+def feature_dpo(df: DataFrame, period: int = 20) -> Series:
     """
-    Compute a -1/0/+1 signal for MACD line crossing its signal line.
-
-    Steps:
-      1. Retrieve close series via _get_close_series.
-      2. Compute fast and slow EMAs, then macd_line = fast_ema - slow_ema.
-      3. Compute signal_line = EMA(macd_line, length=signal).
-      4. Compute diff = macd_line - signal_line.
-      5. Detect cross:
-           +1 where diff shifts from ≤0 to >0 (bullish crossover)
-           -1 where diff shifts from ≥0 to <0 (bearish crossover)
-           0 otherwise
-      6. Name the Series 'macd_cross_signal'.
-
+    Compute DPO (Detrended Price Oscillator): cyclical indicator that removes long-term trend.
+    
+    DPO removes long-term trend and highlights short-term price cycles, helping ML detect:
+    - Cycle peaks
+    - Cycle troughs
+    - Trend pullbacks
+    - Mean-reversion zones
+    
+    Perfect for 10-30 day windows.
+    
+    Calculation:
+    1. Calculate centered SMA:
+       - period = 20
+       - sma = close.rolling(period).mean()
+       - shifted_sma = sma.shift(period//2 + 1)
+    2. Calculate DPO:
+       - dpo = close - shifted_sma
+    3. Normalize by closing price:
+       - dpo_norm = dpo / close
+    
+    Normalized by dividing by closing price (dpo / close):
+    - Positive: Price above detrended average (cycle peak, overextended)
+    - Negative: Price below detrended average (cycle trough, compressed)
+    - Near 0: Price at detrended average (neutral)
+    - Range: unbounded, but typically small values
+    - Highlights short-term price cycles
+    
+    Why it adds value:
+    - Gives the model cycle structure, which no other feature gives
+    - Helps detect "overextended" or "compressed" prices
+    - Complements CCI & Williams %R
+    - Removes long-term trend to focus on cyclical patterns
+    - Perfect for identifying mean-reversion zones
+    
     Args:
-        df: Input DataFrame with a 'close' column.
-        fast: Window for the fast EMA (default 12).
-        slow: Window for the slow EMA (default 26).
-        signal: Window for the signal‐line EMA (default 9).
-
+        df: Input DataFrame with 'close' column.
+        period: Period for SMA calculation (default 20).
+    
     Returns:
-        Series named 'macd_cross_signal' of int values in {-1,0,1}.
-    """
-    close       = _get_close_series(df)
-    ema_fast    = ta.ema(close, length=fast)
-    ema_slow    = ta.ema(close, length=slow)
-    macd_line   = ema_fast - ema_slow
-    signal_line = ta.ema(macd_line, length=signal)
-    diff        = macd_line - signal_line
-
-    # 1-day lagged diff
-    prev_diff = diff.shift(1)
-
-    # bullish cross: prev_diff <= 0, diff > 0
-    bullish = (prev_diff <= 0) & (diff > 0)
-    # bearish cross: prev_diff >= 0, diff < 0
-    bearish = (prev_diff >= 0) & (diff < 0)
-
-    signal = pd.Series(0, index=diff.index)
-    signal[bullish] = 1
-    signal[bearish] = -1
-    signal.name = "macd_cross_signal"
-    return signal
-
-def feature_stoch_k(
-    df: DataFrame,
-    length: int = 14,
-    smooth_k: int = 3
-) -> Series:
-    """
-    Compute the %K line of the Stochastic Oscillator:
-      %K_t = 100 × (close_t − lowest_low_{t−length+1…t}) 
-                    / (highest_high_{t−length+1…t} − lowest_low_{t−length+1…t})
-      then smoothed by a moving average of window `smooth_k`.
-
-    Steps:
-      1. Retrieve close, high, and low via _get_close_series / df.
-      2. Compute rolling lowest low and highest high over `length` bars.
-      3. Compute raw %K.
-      4. Smooth %K with an SMA of window `smooth_k` (min_periods=1).
-      5. Name the Series 'stoch_k'.
-
-    Args:
-        df: Input DataFrame with 'high','low','close' columns.
-        length: Lookback length for the oscillator (default 14).
-        smooth_k: Smoothing window for %K (default 3).
-
-    Returns:
-        Series named 'stoch_k' with values in [0,100].
+        Series named 'dpo' containing normalized DPO values.
     """
     close = _get_close_series(df)
-    highp = _get_high_series(df)
-    lowp  = _get_low_series(df)
+    
+    # Step 1: Calculate centered SMA
+    # period = 20
+    sma = close.rolling(window=period, min_periods=period).mean()
+    
+    # Shift the SMA by period//2 + 1 to center it
+    # For period = 20: shift = 20//2 + 1 = 10 + 1 = 11
+    shift_amount = period // 2 + 1
+    shifted_sma = sma.shift(shift_amount)
+    
+    # Step 2: Calculate DPO
+    # dpo = close - shifted_sma
+    dpo = close - shifted_sma
+    
+    # Step 3: Normalize by closing price
+    # dpo_norm = dpo / close
+    dpo_norm = dpo / close
+    
+    # Clip to reasonable range to handle extreme values
+    dpo_norm = dpo_norm.clip(-0.2, 0.2)
+    
+    dpo_norm.name = "dpo"
+    return dpo_norm
 
-    # 1) rolling extremes
-    lowest_low  = lowp.rolling(window=length, min_periods=1).min()
-    highest_high = highp.rolling(window=length, min_periods=1).max()
 
-    # 2) raw %K
-    raw_k = (close - lowest_low) / (highest_high - lowest_low) * 100
+def feature_roc10(df: DataFrame) -> Series:
+    """
+    Compute ROC (Rate of Change) 10-period: short-term momentum velocity indicator.
+    
+    ROC measures percentage velocity of price movement.
+    ROC10 captures short-term momentum.
+    
+    Different from log returns because ROC captures velocity, not simple percent change.
+    
+    Calculation:
+    1. roc10 = (close - close.shift(10)) / close.shift(10)
+    2. Normalize by clipping to [-0.5, 0.5]
+    
+    Normalized by clipping to [-0.5, 0.5]:
+    - Positive: Price rising over 10 periods (bullish momentum)
+    - Negative: Price falling over 10 periods (bearish momentum)
+    - Near 0: Price relatively stable (neutral momentum)
+    - Range: [-0.5, 0.5] (±50% change over 10 periods)
+    - Standardized and directional momentum indicator
+    
+    Why it adds value:
+    - Highly predictive in breakouts and pullbacks
+    - A more expressive form of momentum than basic log returns
+    - ROC10 + ROC20 = excellent short/medium-term momentum pair
+    - Captures velocity, not just simple percent change
+    - Standardized momentum indicator (unlike returns)
+    
+    Args:
+        df: Input DataFrame with 'close' column.
+    
+    Returns:
+        Series named 'roc10' containing normalized ROC10 values.
+    """
+    close = _get_close_series(df)
+    
+    # Step 1: Calculate ROC10
+    # roc10 = (close - close.shift(10)) / close.shift(10)
+    roc10 = (close - close.shift(10)) / close.shift(10)
+    
+    # Step 2: Normalize by clipping to [-0.5, 0.5]
+    roc10 = roc10.clip(-0.5, 0.5)
+    
+    roc10.name = "roc10"
+    return roc10
 
-    # 3) smooth
-    stoch_k = raw_k.rolling(window=smooth_k, min_periods=1).mean()
-    stoch_k.name = "stoch_k"
+
+def feature_roc20(df: DataFrame) -> Series:
+    """
+    Compute ROC (Rate of Change) 20-period: medium-term momentum velocity indicator.
+    
+    ROC measures percentage velocity of price movement.
+    ROC20 captures medium-term momentum.
+    
+    Different from log returns because ROC captures velocity, not simple percent change.
+    
+    Calculation:
+    1. roc20 = (close - close.shift(20)) / close.shift(20)
+    2. Normalize by clipping to [-0.7, 0.7]
+    
+    Normalized by clipping to [-0.7, 0.7]:
+    - Positive: Price rising over 20 periods (bullish momentum)
+    - Negative: Price falling over 20 periods (bearish momentum)
+    - Near 0: Price relatively stable (neutral momentum)
+    - Range: [-0.7, 0.7] (±70% change over 20 periods)
+    - Standardized and directional momentum indicator
+    
+    Why it adds value:
+    - Highly predictive in breakouts and pullbacks
+    - A more expressive form of momentum than basic log returns
+    - ROC10 + ROC20 = excellent short/medium-term momentum pair
+    - Captures velocity, not just simple percent change
+    - Standardized momentum indicator (unlike returns)
+    
+    Args:
+        df: Input DataFrame with 'close' column.
+    
+    Returns:
+        Series named 'roc20' containing normalized ROC20 values.
+    """
+    close = _get_close_series(df)
+    
+    # Step 1: Calculate ROC20
+    # roc20 = (close - close.shift(20)) / close.shift(20)
+    roc20 = (close - close.shift(20)) / close.shift(20)
+    
+    # Step 2: Normalize by clipping to [-0.7, 0.7]
+    roc20 = roc20.clip(-0.7, 0.7)
+    
+    roc20.name = "roc20"
+    return roc20
+
+
+def feature_stochastic_k14(df: DataFrame) -> Series:
+    """
+    Compute Stochastic Oscillator %K (14-period): (close - low_14) / (high_14 - low_14).
+    
+    Stochastic %K measures where price sits within the recent trading range.
+    Unlike RSI, it directly captures overbought/oversold relative to range.
+    
+    Calculation:
+    1. low_14 = lowest low over last 14 bars
+    2. high_14 = highest high over last 14 bars
+    3. %K = (close - low_14) / (high_14 - low_14)
+    
+    This gives a 0 → 1 value:
+    - 0.0: Close at the lowest low (extremely oversold)
+    - 0.5: Close in the middle of the range (neutral)
+    - 1.0: Close at the highest high (extremely overbought)
+    
+    Already normalized (0-1 range), so no additional normalization needed.
+    
+    Why it's valuable:
+    - Better than RSI in many trend scenarios
+    - Normalized across stocks
+    - Captures range compression & exhaustion
+    - Helps detect early reversals & continuation setups
+    
+    Args:
+        df: Input DataFrame with 'close', 'high', and 'low' columns.
+    
+    Returns:
+        Series named 'stochastic_k14' containing Stochastic %K values in [0, 1] range.
+    """
+    close = _get_close_series(df)
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    
+    # Step 1: Calculate rolling high/low over 14 periods
+    low_14 = low.rolling(window=14, min_periods=1).min()
+    high_14 = high.rolling(window=14, min_periods=1).max()
+    
+    # Step 2: Calculate Stochastic %K
+    # Handle division by zero (when high_14 == low_14, meaning no range)
+    range_14 = high_14 - low_14
+    range_14 = range_14.replace(0, np.nan)  # Replace 0 with NaN to avoid division by zero
+    
+    stoch_k = (close - low_14) / range_14
+    
+    # Clip to [0, 1] to handle any edge cases
+    stoch_k = stoch_k.clip(0.0, 1.0)
+    
+    stoch_k.name = "stochastic_k14"
     return stoch_k
 
-def feature_stoch_d(
-    df: DataFrame,
-    length: int = 14,
-    smooth_k: int = 3,
-    smooth_d: int = 3
-) -> Series:
+
+def feature_bollinger_band_width(df: DataFrame) -> Series:
     """
-    Compute the %D (signal) line of the Stochastic Oscillator:
-      1) %K_t  = 100 × (close_t − lowest_low_{t−length+1…t})
-                   / (highest_high_{t−length+1…t} − lowest_low_{t−length+1…t})
-      2) stoch_k_smoothed = SMA(%K, window=smooth_k)
-      3) %D_t  = SMA(stoch_k_smoothed, window=smooth_d)
-
-    Steps:
-      1. Retrieve close, high, low via _get_close_series / df.
-      2. Compute raw %K over `length` bars.
-      3. Smooth raw %K by `smooth_k` to get stoch_k.
-      4. Further smooth stoch_k by `smooth_d` to get stoch_d.
-      5. Name the Series 'stoch_d'.
-
+    Compute Bollinger Band Width (log normalized): log1p((upper_band - lower_band) / mid_band).
+    
+    Bollinger Band Width measures how "tight" or "expanded" price is relative to its
+    recent volatility. BB Width is one of the best predictors of breakouts and volatility
+    expansions.
+    
+    Calculation:
+    1. Middle band = SMA(close, 20)
+    2. Standard deviation = rolling_std(close, 20)
+    3. Upper band = mid + 2 * std
+    4. Lower band = mid - 2 * std
+    5. BB Width = (upper - lower) / mid
+    6. Normalized with log1p: bbw_log = log1p(bbw)
+    
+    Log normalization (log1p) works well because BB width can be very small or large,
+    and log1p compresses the range while handling small values gracefully.
+    
+    Why it's valuable:
+    - Captures volatility squeezes
+    - Predicts breakout probability
+    - Identifies trend exhaustion
+    - Detects range tightening
+    - Signals market regime shifts
+    - BB squeezes often precede strong 10-30 day swings (exactly what swing trading targets)
+    
     Args:
-        df: Input DataFrame with 'high', 'low', 'close' columns.
-        length: Lookback length for the oscillator (default 14).
-        smooth_k: Smoothing window for %K (default 3).
-        smooth_d: Smoothing window for %D (default 3).
-
+        df: Input DataFrame with a 'close' price column.
+    
     Returns:
-        Series named 'stoch_d' with values in [0,100].
+        Series named 'bollinger_band_width' containing log-normalized Bollinger Band Width values.
     """
     close = _get_close_series(df)
-    highp = _get_high_series(df)
-    lowp  = _get_low_series(df)
+    
+    # Step 1: Calculate middle band (SMA20)
+    mid = close.rolling(window=20, min_periods=1).mean()
+    
+    # Step 2: Calculate standard deviation (20-period)
+    std = close.rolling(window=20, min_periods=1).std()
+    
+    # Step 3: Calculate upper and lower bands
+    upper = mid + 2 * std
+    lower = mid - 2 * std
+    
+    # Step 4: Calculate Bollinger Band Width
+    # Handle division by zero (when mid is 0, which shouldn't happen but safety first)
+    mid_safe = mid.replace(0, np.nan)
+    bbw = (upper - lower) / mid_safe
+    
+    # Step 5: Log normalization
+    bbw_log = np.log1p(bbw)
+    
+    bbw_log.name = "bollinger_band_width"
+    return bbw_log
 
-    # 1) rolling extremes
-    lowest_low   = lowp.rolling(window=length, min_periods=1).min()
-    highest_high = highp.rolling(window=length, min_periods=1).max()
 
-    # 2) raw %K
-    raw_k = (close - lowest_low) / (highest_high - lowest_low) * 100
-
-    # 3) smooth %K
-    stoch_k = raw_k.rolling(window=smooth_k, min_periods=1).mean()
-
-    # 4) smooth %D
-    stoch_d = stoch_k.rolling(window=smooth_d, min_periods=1).mean()
-    stoch_d.name = "stoch_d"
-    return stoch_d
-
-def feature_stoch_cross(
-    df: DataFrame,
-    length: int = 14,
-    smooth_k: int = 3,
-    smooth_d: int = 3
-) -> Series:
+def feature_adx14(df: DataFrame) -> Series:
     """
-    Compute a -1/0/+1 signal when %K crosses its %D line.
-
-    Steps:
-      1. Compute stoch_k via rolling %K and SMA(length=smooth_k).
-      2. Compute stoch_d via SMA(stoch_k, window=smooth_d).
-      3. diff = stoch_k − stoch_d.
-      4. prev_diff = diff.shift(1).
-      5. Bullish cross (prev_diff <= 0 & diff > 0): +1  
-         Bearish cross (prev_diff >= 0 & diff < 0): −1  
-         Else: 0.
-      6. Name as 'stoch_cross'.
-
+    Compute ADX (Average Directional Index) 14-period, normalized to [0, 1] range.
+    
+    ADX measures trend strength, independent of direction. It tells whether the stock is:
+    - Trending strongly
+    - Ranging
+    - Losing momentum
+    - Entering trend continuation
+    
+    This is one of the most predictive free indicators.
+    
+    Calculation (14-day ADX):
+    1. True Range & Directional Movement:
+       - +DM = today's high - yesterday high (if positive and > -DM)
+       - -DM = yesterday low - today's low (if positive and > +DM)
+       - TR = max(high-low, abs(high-prev_close), abs(low-prev_close))
+    2. Smooth 14-day averages of +DM, -DM, and TR
+    3. DI lines:
+       - +DI = 100 * (+DM14 / TR14)
+       - -DI = 100 * (-DM14 / TR14)
+    4. DX = 100 * abs(+DI - -DI) / (+DI + -DI)
+    5. ADX = EMA(DX, 14)
+    6. Normalize: adx_norm = adx / 100
+    
+    Normalized to [0, 1] range:
+    - 0.0: No trend (ranging market)
+    - 0.25: Weak trend
+    - 0.50: Moderate trend
+    - 0.75: Strong trend
+    - 1.0: Very strong trend
+    
+    Why it adds value:
+    - Model currently knows trend direction (via slopes and HH/HL)
+    - But it does NOT know how strong the trend is
+    - ADX fills that gap perfectly
+    
     Args:
-        df: DataFrame with 'high','low','close'.
-        length: Lookback for raw %K (default 14).  
-        smooth_k: SMA window for %K (default 3).  
-        smooth_d: SMA window for %D (default 3).
-
+        df: Input DataFrame with 'high', 'low', and 'close' columns.
+    
     Returns:
-        Series named 'stoch_cross' of int values in {-1,0,1}.
+        Series named 'adx14' containing normalized ADX values in [0, 1] range.
     """
-    close   = _get_close_series(df)
-    highp   = df.get("high", df.get("High"))
-    lowp    = df.get("low",  df.get("Low"))
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    close = _get_close_series(df)
+    
+    # Step 1: Calculate True Range and Directional Movement
+    prev_high = high.shift(1)
+    prev_low = low.shift(1)
+    prev_close = close.shift(1)
+    
+    # True Range: max(high-low, abs(high-prev_close), abs(low-prev_close))
+    tr1 = high - low
+    tr2 = (high - prev_close).abs()
+    tr3 = (low - prev_close).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    
+    # Directional Movement
+    plus_dm = high - prev_high
+    minus_dm = prev_low - low
+    
+    # +DM: today's high - yesterday high (if positive and > -DM)
+    # -DM: yesterday low - today's low (if positive and > +DM)
+    plus_dm = plus_dm.where((plus_dm > 0) & (plus_dm > minus_dm), 0)
+    minus_dm = minus_dm.where((minus_dm > 0) & (minus_dm > plus_dm), 0)
+    
+    # Step 2: Smooth 14-day averages (using Wilder's smoothing method)
+    # Wilder's smoothing: first value is sum, then use: smoothed = prev_smoothed * (n-1)/n + current * 1/n
+    # For simplicity, we'll use rolling mean with min_periods=1 for initial values
+    # Then apply Wilder's smoothing formula
+    def wilder_smooth(series, period=14):
+        """Apply Wilder's smoothing method."""
+        smoothed = pd.Series(index=series.index, dtype=float)
+        for i in range(len(series)):
+            if i == 0:
+                smoothed.iloc[i] = series.iloc[i]
+            elif i < period:
+                # For first period values, use simple average
+                smoothed.iloc[i] = series.iloc[:i+1].mean()
+            else:
+                # Wilder's smoothing: prev * (n-1)/n + current * 1/n
+                smoothed.iloc[i] = smoothed.iloc[i-1] * (period - 1) / period + series.iloc[i] / period
+        return smoothed
+    
+    plus_dm14 = wilder_smooth(plus_dm, period=14)
+    minus_dm14 = wilder_smooth(minus_dm, period=14)
+    tr14 = wilder_smooth(tr, period=14)
+    
+    # Step 3: Calculate DI lines
+    # Handle division by zero
+    tr14_safe = tr14.replace(0, np.nan)
+    plus_di = 100 * (plus_dm14 / tr14_safe)
+    minus_di = 100 * (minus_dm14 / tr14_safe)
+    
+    # Step 4: Calculate DX
+    di_sum = plus_di + minus_di
+    di_sum_safe = di_sum.replace(0, np.nan)
+    dx = 100 * (plus_di - minus_di).abs() / di_sum_safe
+    
+    # Step 5: Calculate ADX (smoothed DX with EMA)
+    adx = dx.ewm(span=14, adjust=False).mean()
+    
+    # Step 6: Normalize to [0, 1] range
+    adx_norm = adx / 100
+    
+    # Clip to [0, 1] to handle any edge cases
+    adx_norm = adx_norm.clip(0.0, 1.0)
+    
+    adx_norm.name = "adx14"
+    return adx_norm
 
-    # raw %K
-    lowest = lowp.rolling(window=length, min_periods=1).min()
-    highest= highp.rolling(window=length, min_periods=1).max()
-    raw_k  = (close - lowest) / (highest - lowest) * 100
 
-    # smooth %K and %D
-    stoch_k = raw_k.rolling(window=smooth_k, min_periods=1).mean()
-    stoch_d = stoch_k.rolling(window=smooth_d, min_periods=1).mean()
-
-    diff     = stoch_k - stoch_d
-    prev_diff= diff.shift(1)
-
-    bullish  = (prev_diff <= 0) & (diff > 0)
-    bearish  = (prev_diff >= 0) & (diff < 0)
-
-    signal = pd.Series(0, index=diff.index)
-    signal[bullish] = 1
-    signal[bearish] = -1
-    signal.name = "stoch_cross"
-    return signal
-
-def feature_adx_14(df: DataFrame, period: int = 14) -> Series:
+def feature_chaikin_money_flow(df: DataFrame) -> Series:
     """
-    Compute 14-day Average Directional Index (ADX) via pandas-ta.
-
+    Compute Chaikin Money Flow (CMF) 20-period: sum(mfv over 20d) / sum(volume over 20d).
+    
+    CMF detects accumulation vs distribution, combining price movement WITH volume.
+    - Positive CMF → buying pressure / accumulation
+    - Negative CMF → selling pressure / distribution
+    
+    Volume-price flow is one of the strongest predictors of future swings.
+    
+    Calculation:
+    1. Money Flow Multiplier:
+       mfm = ((close - low) - (high - close)) / (high - low)
+       This simplifies to: mfm = (2*close - high - low) / (high - low)
+    2. Money Flow Volume:
+       mfv = mfm * volume
+    3. Chaikin Money Flow (20-day):
+       cmf = sum(mfv over 20d) / sum(volume over 20d)
+    4. Normalize: clip to [-1, 1]
+    
+    Already normalized between -1 and +1:
+    - -1.0: Strong selling pressure / distribution
+    - 0.0: Neutral (balanced buying/selling)
+    - +1.0: Strong buying pressure / accumulation
+    
+    Why it adds value:
+    - CMF exposes quiet accumulation before breakouts
+    - Combines price action with volume (stronger signal than price alone)
+    - Detects institutional accumulation/distribution
+    - One of the strongest predictors of future swings
+    
     Args:
-        df: Input DataFrame with 'high', 'low', 'close' columns.
-        period: Lookback length for ADX.
-
+        df: Input DataFrame with 'close', 'high', 'low', and 'volume' columns.
+    
     Returns:
-        Series named 'adx_{period}' of ADX values.
+        Series named 'chaikin_money_flow' containing CMF values in [-1, 1] range.
     """
-    adx_df = ta.adx(
-        high=_get_high_series(df),
-        low=_get_low_series(df),
-        close=_get_close_series(df),
-        length=period
-    )
-    s = adx_df[f"ADX_{period}"]
-    s.name = f"adx_{period}"
-    return s
+    close = _get_close_series(df)
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    volume = _get_volume_series(df)
+    
+    # Step 1: Calculate Money Flow Multiplier
+    # mfm = ((close - low) - (high - close)) / (high - low)
+    # Simplifies to: mfm = (2*close - high - low) / (high - low)
+    range_hl = high - low
+    range_hl = range_hl.replace(0, np.nan)  # Handle division by zero
+    
+    mfm = (2 * close - high - low) / range_hl
+    
+    # Step 2: Calculate Money Flow Volume
+    mfv = mfm * volume
+    
+    # Step 3: Calculate Chaikin Money Flow (20-day)
+    # cmf = sum(mfv over 20d) / sum(volume over 20d)
+    mfv_sum_20d = mfv.rolling(window=20, min_periods=1).sum()
+    volume_sum_20d = volume.rolling(window=20, min_periods=1).sum()
+    
+    # Handle division by zero
+    volume_sum_20d_safe = volume_sum_20d.replace(0, np.nan)
+    cmf = mfv_sum_20d / volume_sum_20d_safe
+    
+    # Step 4: Clip to [-1, 1] range
+    cmf = cmf.clip(-1.0, 1.0)
+    
+    cmf.name = "chaikin_money_flow"
+    return cmf
 
-def feature_ichimoku_conversion(df: DataFrame, period: int = 9) -> Series:
+
+def feature_donchian_position(df: DataFrame) -> Series:
     """
-    Conversion Line (Tenkan-sen): midpoint of highest high and lowest low over `period` bars.
-
-    Steps:
-      1. Retrieve high/low via df.
-      2. Compute rolling max(high, window=period) and min(low, window=period).
-      3. Take their average.
-      4. Name Series 'ichimoku_conversion'.
-
+    Compute Donchian Channel position: (close - donchian_low_20) / (donchian_high_20 - donchian_low_20).
+    
+    Donchian channels measure breakout levels. Markets trend when breaking out of established ranges.
+    This feature measures the normalized position of price within the 20-period Donchian channel.
+    
+    Calculation:
+    1. donchian_high_20 = rolling_max(high, 20)
+    2. donchian_low_20 = rolling_min(low, 20)
+    3. donchian_position = (close - donchian_low_20) / (donchian_high_20 - donchian_low_20)
+    
+    Already normalized to [0, 1] range:
+    - 0.0: Close at the lowest low (at lower channel)
+    - 0.5: Close in the middle of the channel
+    - 1.0: Close at the highest high (at upper channel)
+    - Values > 1.0: Breakout above upper channel (clipped to 1.0)
+    - Values < 0.0: Breakdown below lower channel (clipped to 0.0)
+    
+    Why it adds value:
+    - Model captures trend shape, but not breakout structure
+    - Donchian provides a clean, ML-friendly breakout signal
+    - Measures position within established trading range
+    - Identifies when price is near breakout levels
+    
     Args:
-        df: DataFrame with 'high' and 'low' columns.
-        period: Lookback for conversion line (default 9).
-
+        df: Input DataFrame with 'close', 'high', and 'low' columns.
+    
     Returns:
-        Series named 'ichimoku_conversion'.
-    """
-    highp = _get_high_series(df)
-    lowp  = _get_low_series(df)
-    conv = (highp.rolling(period, min_periods=1).max() +
-            lowp.rolling(period,  min_periods=1).min()) / 2
-    conv.name = "ichimoku_conversion"
-    return conv
-
-
-def feature_ichimoku_base(df: DataFrame, period: int = 26) -> Series:
-    """
-    Base Line (Kijun-sen): midpoint of highest high and lowest low over `period` bars.
-
-    Steps analogous to conversion line but with longer period.
-    """
-    highp = _get_high_series(df)
-    lowp  = _get_low_series(df)
-    base = (highp.rolling(period, min_periods=1).max() +
-            lowp.rolling(period,  min_periods=1).min()) / 2
-    base.name = "ichimoku_base"
-    return base
-
-
-def feature_ichimoku_lead_span_a(
-    df: DataFrame,
-    conv_period: int = 9,
-    base_period: int = 26,
-    shift: int = 26
-) -> Series:
-    """
-    Leading Span A (Senkou Span A): midpoint of Conversion and Base lines.
-    
-    WARNING: Original Ichimoku shifts this forward, which causes lookahead bias.
-    This version does NOT shift forward to avoid using future data in ML models.
-    
-    Steps:
-      1. Compute conversion & base via their feature functions.
-      2. Average them (without forward shift).
-    """
-    conv = feature_ichimoku_conversion(df, period=conv_period)
-    base = feature_ichimoku_base(df,    period=base_period)
-    # Do NOT shift forward - that would be lookahead bias
-    span_a = (conv + base) / 2
-    span_a.name = "ichimoku_lead_span_a"
-    return span_a
-
-
-def feature_ichimoku_lead_span_b(
-    df: DataFrame,
-    period: int = 52,
-    shift: int = 26
-) -> Series:
-    """
-    Leading Span B (Senkou Span B): midpoint of highest high & lowest low over `period` bars.
-    
-    WARNING: Original Ichimoku shifts this forward, which causes lookahead bias.
-    This version does NOT shift forward to avoid using future data in ML models.
-    
-    Steps:
-      1. Compute rolling max(high, window=period) and min(low, window=period).
-      2. Average them (without forward shift).
-    """
-    highp = _get_high_series(df)
-    lowp  = _get_low_series(df)
-    # Do NOT shift forward - that would be lookahead bias
-    span_b = (highp.rolling(period, min_periods=1).max() +
-              lowp.rolling(period,  min_periods=1).min()) / 2
-    span_b.name = "ichimoku_lead_span_b"
-    return span_b
-
-
-def feature_ichimoku_lagging_span(
-    df: DataFrame,
-    shift: int = 26
-) -> Series:
-    """
-    Lagging Span (Chikou Span): today's close shifted backward by `shift` bars.
-    
-    WARNING: This uses past data shifted forward, which can cause issues in ML.
-    Consider using this only for visualization, not as a predictive feature.
-    
-    Steps:
-      1. Retrieve close via _get_close_series.
-      2. Shift backward (negative shift) by `shift` bars.
+        Series named 'donchian_position' containing normalized position within Donchian channel [0, 1].
     """
     close = _get_close_series(df)
-    lag = close.shift(-shift)
-    lag.name = "ichimoku_lagging_span"
-    return lag
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    
+    # Step 1: Calculate Donchian channels (20-period)
+    donchian_high_20 = high.rolling(window=20, min_periods=1).max()
+    donchian_low_20 = low.rolling(window=20, min_periods=1).min()
+    
+    # Step 2: Calculate position within channel
+    # Handle division by zero (when high == low, meaning no range)
+    channel_range = donchian_high_20 - donchian_low_20
+    channel_range = channel_range.replace(0, np.nan)  # Replace 0 with NaN to avoid division by zero
+    
+    donchian_position = (close - donchian_low_20) / channel_range
+    
+    # Clip to [0, 1] to handle breakouts/breakdowns
+    donchian_position = donchian_position.clip(0.0, 1.0)
+    
+    donchian_position.name = "donchian_position"
+    return donchian_position
 
-def feature_bullish_engulfing(df: DataFrame) -> Series:
+
+def feature_donchian_breakout(df: DataFrame) -> Series:
     """
-    Flag when today’s bullish candle fully engulfs yesterday’s bearish candle.
-
-    Steps:
-      1. Retrieve today’s open/close and yesterday’s open/close (shifted by 1).
-      2. Identify a bearish prior bar: prev_close < prev_open.
-      3. Identify a bullish current bar: close_t > open_t.
-      4. Check engulf:
-         - today’s open < prev_close
-         - today’s close > prev_open
-      5. Combine conditions into a binary Series.
-
+    Compute Donchian Channel breakout: binary flag indicating if close > prior 20-day high close.
+    
+    Donchian channels measure breakout levels. Markets trend when breaking out of established ranges.
+    This feature identifies when price breaks above the prior 20-day highest close (non-lookahead).
+    
+    Calculation (non-lookahead):
+    1. prior_20d_high_close = close.rolling(20, min_periods=20).max().shift(1)
+    2. donchian_breakout = (close > prior_20d_high_close).astype(int)
+    
+    This uses the prior 20-day highest CLOSE (not high), shifted by 1 bar to avoid lookahead bias.
+    The shift ensures we only use information available before the current bar.
+    
+    Binary flag (0 or 1):
+    - 0: Close is NOT above prior 20-day high close (no breakout)
+    - 1: Close IS above prior 20-day high close (breakout detected)
+    
+    Why it adds value:
+    - Model captures trend shape, but not breakout structure
+    - Donchian provides a clean, ML-friendly breakout signal
+    - Breakouts often precede strong trending moves
+    - Binary signal is easy for ML models to interpret
+    - Non-lookahead implementation ensures no data leakage
+    
     Args:
-        df: Input DataFrame with 'open' and 'close' columns.
-
+        df: Input DataFrame with 'close' column.
+    
     Returns:
-        Series named 'bullish_engulfing' with values 1.0 or 0.0.
+        Series named 'donchian_breakout' containing binary values (0 or 1).
     """
-    import numpy as np
-
-    openp  = _get_open_series(df)
-    closep = _get_close_series(df)
-
-    # yesterday’s values
-    prev_open  = openp.shift(1)
-    prev_close = closep.shift(1)
-
-    # 2) prior bearish
-    prior_bear = prev_close < prev_open
-    # 3) current bullish
-    curr_bull = closep > openp
-    # 4) engulf conditions
-    engulps = (openp < prev_close) & (closep > prev_open)
-
-    # 5) flag
-    flag = (prior_bear & curr_bull & engulps).astype(float)
-    flag.name = "bullish_engulfing"
-    return flag
-
-def feature_bearish_engulfing(df: DataFrame) -> Series:
-    """
-    Flag when today’s bearish candle fully engulfs yesterday’s bullish candle.
-
-    Steps:
-      1. Get today’s open/close and yesterday’s (shifted by 1).
-      2. Prior bullish: prev_close > prev_open.
-      3. Current bearish: close_t < open_t.
-      4. Engulf: today’s open > prev_close AND today’s close < prev_open.
-      5. Combine into 1.0/0.0 flag.
-    """
-    openp   = _get_open_series(df)
-    closep  = _get_close_series(df)
-    prev_o  = openp.shift(1); prev_c = closep.shift(1)
-    prior_bull = prev_c > prev_o
-    curr_bear  = closep < openp
-    engulps    = (openp > prev_c) & (closep < prev_o)
-    flag       = (prior_bull & curr_bear & engulps).astype(float)
-    flag.name  = "bearish_engulfing"
-    return flag
-
-
-def feature_hammer_signal(df: DataFrame, body_pct: float = 0.3, shadow_ratio: float = 2.0) -> Series:
-    """
-    Flag hammer candles: small real body near top with long lower shadow.
-
-    Steps:
-      1. Get open/high/low/close.
-      2. Compute body = abs(close−open), range = high−low.
-      3. Lower shadow = min(open,close) − low.
-      4. Conditions:
-         • body <= body_pct * range
-         • lower_shadow >= shadow_ratio * body
-         • upper_shadow <= body_pct * range
-      5. Flag 1.0/0.0.
-    """
-    openp  = _get_open_series(df)
-    closep = _get_close_series(df)
-    highp  = _get_high_series(df)
-    lowp   = _get_low_series(df)
-    body   = (closep - openp).abs()
-    rng    = highp - lowp
-    lower  = np.minimum(openp, closep) - lowp
-    upper  = highp - np.maximum(openp, closep)
-    cond   = (
-        (body <= body_pct * rng) &
-        (lower >= shadow_ratio * body) &
-        (upper <= body_pct * rng)
-    )
-    sig       = cond.astype(float)
-    sig.name  = "hammer_signal"
-    return sig
-
-
-def feature_shooting_star_signal(df: DataFrame, body_pct: float = 0.3, shadow_ratio: float = 2.0) -> Series:
-    """
-    Flag shooting-star candles: small real body near bottom with long upper shadow.
-
-    Steps:
-      1. Get OHLC.
-      2. body, range, upper=high−max(open,close), lower=min(open,close)−low.
-      3. Conditions:
-         • body <= body_pct * range
-         • upper >= shadow_ratio * body
-         • lower <= body_pct * range
-      4. Flag 1.0/0.0.
-    """
-    openp  = _get_open_series(df)
-    closep = _get_close_series(df)
-    highp  = _get_high_series(df)
-    lowp   = _get_low_series(df)
-    body   = (closep - openp).abs()
-    rng    = highp - lowp
-    upper  = highp - np.maximum(openp, closep)
-    lower  = np.minimum(openp, closep) - lowp
-    cond   = (
-        (body <= body_pct * rng) &
-        (upper >= shadow_ratio * body) &
-        (lower <= body_pct * rng)
-    )
-    sig       = cond.astype(float)
-    sig.name  = "shooting_star_signal"
-    return sig
-
-
-def feature_marubozu_white(df: DataFrame, pct_tol: float = 0.05) -> Series:
-    openp  = df.get("open", df.get("Open"))
-    closep = _get_close_series(df)
-    highp  = df.get("high", df.get("High"))
-    lowp   = df.get("low",  df.get("Low"))
-    rng    = highp - lowp
-    tol    = pct_tol * rng
-
-    cond = (
-        ((openp - lowp).abs() <= tol) &
-        ((highp - closep).abs() <= tol) &
-        (closep > openp)
-    )
-    flag      = cond.astype(float)
-    flag.name = "marubozu_white"
-    return flag
-
-
-def feature_marubozu_black(df: DataFrame, pct_tol: float = 0.05) -> Series:
-    openp  = df.get("open", df.get("Open"))
-    closep = _get_close_series(df)
-    highp  = df.get("high", df.get("High"))
-    lowp   = df.get("low",  df.get("Low"))
-    rng    = highp - lowp
-    tol    = pct_tol * rng
-
-    cond = (
-        ((highp - openp).abs() <= tol) &
-        ((closep - lowp).abs()    <= tol) &
-        (closep < openp)
-    )
-    flag      = cond.astype(float)
-    flag.name = "marubozu_black"
-    return flag
-
-def feature_doji_signal(df: DataFrame, pct_tol: float = 0.1) -> Series:
-    """
-    Flag Doji: tiny real body relative to range.
-
-    Steps:
-      1. body=abs(close−open), range=high−low.
-      2. Flag body <= pct_tol * range.
-    """
-    openp  = _get_open_series(df)
-    closep = _get_close_series(df)
-    highp  = _get_high_series(df)
-    lowp   = _get_low_series(df)
-    body   = (closep - openp).abs()
-    rng    = highp - lowp
-    flag      = (body <= pct_tol * rng).astype(float)
-    flag.name = "doji_signal"
-    return flag
-
-
-def feature_long_legged_doji(df: DataFrame, pct_tol: float = 0.1, shadow_ratio: float = 2.0) -> Series:
-    """
-    Flag long-legged Doji: tiny body + long shadows.
-
-    Steps:
-      1. raw Doji (pct_tol).
-      2. Shadows = (high−max) and (min−low).
-      3. Both shadows >= shadow_ratio*body.
-    """
-    openp  = _get_open_series(df)
-    closep = _get_close_series(df)
-    highp  = _get_high_series(df)
-    lowp   = _get_low_series(df)
-    body   = (closep - openp).abs()
-    rng    = highp - lowp; tol = pct_tol * rng
-    raw    = body <= tol
-    upper  = highp - np.maximum(openp, closep)
-    lower  = np.minimum(openp, closep) - lowp
-    cond   = raw & (upper >= shadow_ratio * body) & (lower >= shadow_ratio * body)
-    flag      = cond.astype(float)
-    flag.name = "long_legged_doji"
-    return flag
-
-
-def feature_morning_star(df: DataFrame) -> Series:
-    """
-    Flag Morning Star: bearish bar → small body → bullish bar closing > midpoint of bar1.
-
-    Note: a loose 3-bar test for a 5-7 day setup.
-
-    Steps:
-      1. bar1 bearish, bar2 small body, bar3 bullish.
-      2. bar3 close > midpoint of bar1 (avg(open1,close1)).
-    """
-    openp  = df.get("open", df.get("Open")); closep = _get_close_series(df)
-    prev1_o, prev1_c = openp.shift(2), closep.shift(2)
-    prev2_o, prev2_c = openp.shift(1), closep.shift(1)
-    # 1) conditions
-    c1 = prev1_c < prev1_o   # bar1 bearish
-    highp = _get_high_series(df)
-    lowp = _get_low_series(df)
-    c2 = (prev2_c - prev2_o).abs() <= 0.3*(highp.shift(1) - lowp.shift(1))
-    c3 = closep > openp      # bar3 bullish
-    # 2) bar3 closes above midpoint of bar1
-    mid1 = (prev1_o + prev1_c) / 2
-    cond = c1 & c2 & c3 & (closep > mid1)
-    flag      = cond.astype(float)
-    flag.name = "morning_star"
-    return flag
-
-
-def feature_evening_star(df: DataFrame) -> Series:
-    """
-    Flag Evening Star: bullish → small body → bearish closing < midpoint of bar1.
-
-    Steps analogous to Morning Star, inverted.
-    """
-    openp  = df.get("open", df.get("Open")); closep = _get_close_series(df)
-    prev1_o, prev1_c = openp.shift(2), closep.shift(2)
-    prev2_o, prev2_c = openp.shift(1), closep.shift(1)
-    c1 = prev1_c > prev1_o
-    highp = _get_high_series(df)
-    lowp = _get_low_series(df)
-    c2 = (prev2_c - prev2_o).abs() <= 0.3*(highp.shift(1) - lowp.shift(1))
-    c3 = closep < openp
-    mid1 = (prev1_o + prev1_c) / 2
-    cond = c1 & c2 & c3 & (closep < mid1)
-    flag      = cond.astype(float)
-    flag.name = "evening_star"
-    return flag
-
-
-# ============================================================================
-# PHASE 1 FEATURES: Support & Resistance Levels
-# ============================================================================
-
-def feature_resistance_level_20d(df: DataFrame) -> Series:
-    """Nearest resistance level (20-day rolling high)."""
-    high = _get_high_series(df)
-    resistance = high.rolling(window=20, min_periods=1).max()
-    resistance.name = "resistance_level_20d"
-    return resistance
-
-
-def feature_resistance_level_50d(df: DataFrame) -> Series:
-    """Nearest resistance level (50-day rolling high)."""
-    high = _get_high_series(df)
-    resistance = high.rolling(window=50, min_periods=1).max()
-    resistance.name = "resistance_level_50d"
-    return resistance
-
-
-def feature_support_level_20d(df: DataFrame) -> Series:
-    """Nearest support level (20-day rolling low)."""
-    low = _get_low_series(df)
-    support = low.rolling(window=20, min_periods=1).min()
-    support.name = "support_level_20d"
-    return support
-
-
-def feature_support_level_50d(df: DataFrame) -> Series:
-    """Nearest support level (50-day rolling low)."""
-    low = _get_low_series(df)
-    support = low.rolling(window=50, min_periods=1).min()
-    support.name = "support_level_50d"
-    return support
-
-
-def feature_distance_to_resistance(df: DataFrame) -> Series:
-    """Percentage distance from current price to nearest resistance (20-day high)."""
     close = _get_close_series(df)
-    high = _get_high_series(df)
-    resistance = high.rolling(window=20, min_periods=1).max()
-    distance = ((resistance - close) / close) * 100
-    distance.name = "distance_to_resistance"
-    return distance
+    
+    # Step 1: Calculate prior 20-day highest close, shifted by 1 bar (non-lookahead)
+    # This uses only information available before the current bar
+    prior_20d_high_close = close.rolling(window=20, min_periods=20).max().shift(1)
+    
+    # Step 2: Check if current close is above prior 20-day high close
+    donchian_breakout = (close > prior_20d_high_close).astype(int)
+    
+    # Set NaN values (from shift or insufficient data) to 0 (no breakout)
+    donchian_breakout = donchian_breakout.fillna(0).astype(int)
+    
+    donchian_breakout.name = "donchian_breakout"
+    return donchian_breakout
 
 
-def feature_distance_to_support(df: DataFrame) -> Series:
-    """Percentage distance from current price to nearest support (20-day low)."""
-    close = _get_close_series(df)
-    low = _get_low_series(df)
-    support = low.rolling(window=20, min_periods=1).min()
-    distance = ((close - support) / close) * 100
-    distance.name = "distance_to_support"
-    return distance
-
-
-def feature_price_near_resistance(df: DataFrame) -> Series:
-    """Binary flag: price within 2% of resistance level."""
-    close = _get_close_series(df)
-    high = _get_high_series(df)
-    resistance = high.rolling(window=20, min_periods=1).max()
-    pct_diff = ((resistance - close) / close) * 100
-    near = (pct_diff <= 2.0).astype(float)
-    near.name = "price_near_resistance"
-    return near
-
-
-def feature_price_near_support(df: DataFrame) -> Series:
-    """Binary flag: price within 2% of support level."""
-    close = _get_close_series(df)
-    low = _get_low_series(df)
-    support = low.rolling(window=20, min_periods=1).min()
-    pct_diff = ((close - support) / close) * 100
-    near = (pct_diff <= 2.0).astype(float)
-    near.name = "price_near_support"
-    return near
-
-
-def feature_resistance_touches(df: DataFrame) -> Series:
-    """Count of times price has touched resistance level in last 20 days."""
-    close = _get_close_series(df)
-    high = _get_high_series(df)
-    resistance = high.rolling(window=20, min_periods=1).max()
-    # Count touches: price within 0.5% of resistance
-    touches = (abs(close - resistance) / close <= 0.005).rolling(window=20, min_periods=1).sum()
-    touches.name = "resistance_touches"
-    return touches
-
-
-def feature_support_touches(df: DataFrame) -> Series:
-    """Count of times price has touched support level in last 20 days."""
-    close = _get_close_series(df)
-    low = _get_low_series(df)
-    support = low.rolling(window=20, min_periods=1).min()
-    # Count touches: price within 0.5% of support
-    touches = (abs(close - support) / close <= 0.005).rolling(window=20, min_periods=1).sum()
-    touches.name = "support_touches"
-    return touches
-
-
-def feature_pivot_point(df: DataFrame) -> Series:
-    """Classic pivot point: (High + Low + Close) / 3."""
-    high = _get_high_series(df)
-    low = _get_low_series(df)
-    close = _get_close_series(df)
-    pivot = (high + low + close) / 3
-    pivot.name = "pivot_point"
-    return pivot
-
-
-def feature_fibonacci_levels(df: DataFrame) -> Series:
-    """Distance to Fibonacci retracement level (38.2% from swing high/low)."""
+def feature_ttm_squeeze_on(df: DataFrame) -> Series:
+    """
+    Compute TTM Squeeze condition: binary flag indicating volatility contraction (squeeze).
+    
+    TTM Squeeze is the industry's favorite breakout/tight-range indicator. It detects
+    volatility contraction ("squeeze") by comparing Bollinger Bands to Keltner Channels.
+    
+    Calculation:
+    1. Bollinger Bands:
+       - mid = SMA(close, 20)
+       - std = rolling_std(close, 20)
+       - upper_bb = mid + 2*std
+       - lower_bb = mid - 2*std
+    2. Keltner Channels:
+       - atr = ATR(20)
+       - upper_kc = mid + 1.5*atr
+       - lower_kc = mid - 1.5*atr
+    3. Squeeze condition:
+       - squeeze_on = (lower_bb > lower_kc) & (upper_bb < upper_kc)
+    
+    Binary flag (0 or 1):
+    - 0: No squeeze (Bollinger Bands wider than Keltner Channels)
+    - 1: Squeeze active (Bollinger Bands inside Keltner Channels - volatility contraction)
+    
+    Why it adds value:
+    - This is the #1 breakout indicator used by quant retail traders
+    - Catches explosive moves after volatility compression
+    - Identifies tight trading ranges that often precede breakouts
+    - Combines volatility analysis with momentum direction
+    
+    Args:
+        df: Input DataFrame with 'close', 'high', and 'low' columns.
+    
+    Returns:
+        Series named 'ttm_squeeze_on' containing binary values (0 or 1).
+    """
     close = _get_close_series(df)
     high = _get_high_series(df)
     low = _get_low_series(df)
-    # Calculate swing high and low over 20 days
-    swing_high = high.rolling(window=20, min_periods=1).max()
-    swing_low = low.rolling(window=20, min_periods=1).min()
-    range_size = swing_high - swing_low
-    # Fibonacci 38.2% level from swing low
-    fib_level = swing_low + (range_size * 0.382)
-    # Distance from current price to Fibonacci level
-    distance = ((close - fib_level) / close) * 100
-    distance.name = "fibonacci_levels"
-    return distance
+    
+    # Step 1: Calculate Bollinger Bands
+    mid = close.rolling(window=20, min_periods=1).mean()  # SMA20
+    std = close.rolling(window=20, min_periods=1).std()
+    upper_bb = mid + 2 * std
+    lower_bb = mid - 2 * std
+    
+    # Step 2: Calculate Keltner Channels
+    # Calculate True Range
+    tr1 = high - low
+    tr2 = (high - close.shift(1)).abs()
+    tr3 = (low - close.shift(1)).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    
+    # Calculate ATR(20)
+    atr = tr.rolling(window=20, min_periods=1).mean()
+    
+    # Keltner Channels
+    upper_kc = mid + 1.5 * atr
+    lower_kc = mid - 1.5 * atr
+    
+    # Step 3: Squeeze condition
+    # Squeeze is ON when Bollinger Bands are inside Keltner Channels
+    squeeze_on = ((lower_bb > lower_kc) & (upper_bb < upper_kc)).astype(int)
+    
+    squeeze_on.name = "ttm_squeeze_on"
+    return squeeze_on
 
 
-# ============================================================================
-# PHASE 1 FEATURES: Volatility Regime
-# ============================================================================
+def feature_ttm_squeeze_momentum(df: DataFrame) -> Series:
+    """
+    Compute TTM Squeeze momentum (normalized): (close - SMA20) / close.
+    
+    TTM Squeeze momentum provides direction during squeeze conditions. It's a simple
+    momentum proxy that measures how far price is from the 20-day moving average,
+    normalized by price.
+    
+    Calculation:
+    1. mid = SMA(close, 20)
+    2. squeeze_momentum = close - mid
+    3. squeeze_momentum_norm = squeeze_momentum / close
+    
+    Normalized by price:
+    - Positive: Price above SMA20 (bullish momentum)
+    - Negative: Price below SMA20 (bearish momentum)
+    - Near 0: Price at SMA20 (neutral)
+    
+    Why it adds value:
+    - Provides momentum direction during squeeze conditions
+    - Helps identify which direction the breakout is likely to occur
+    - Normalized by price makes it comparable across different price ranges
+    - Works in combination with squeeze_on to identify high-probability setups
+    
+    Args:
+        df: Input DataFrame with 'close' column.
+    
+    Returns:
+        Series named 'ttm_squeeze_momentum' containing normalized momentum values.
+    """
+    close = _get_close_series(df)
+    
+    # Step 1: Calculate SMA20 (mid)
+    mid = close.rolling(window=20, min_periods=1).mean()
+    
+    # Step 2: Calculate momentum
+    squeeze_momentum = close - mid
+    
+    # Step 3: Normalize by price
+    # Handle division by zero (when close is 0, which shouldn't happen but safety first)
+    close_safe = close.replace(0, np.nan)
+    squeeze_momentum_norm = squeeze_momentum / close_safe
+    
+    squeeze_momentum_norm.name = "ttm_squeeze_momentum"
+    return squeeze_momentum_norm
 
-def feature_volatility_regime(df: DataFrame) -> Series:
-    """Current ATR percentile (0-100) over 252 trading days."""
-    atr = feature_atr(df)
-    percentile = _rolling_percentile_rank(atr, window=252, min_periods=20)
-    percentile.name = "volatility_regime"
-    return percentile
+
+def feature_obv_momentum(df: DataFrame) -> Series:
+    """
+    Compute OBV Momentum (OBV Rate of Change): 10-day percentage change of On-Balance Volume.
+    
+    On-Balance Volume shows cumulative volume moving with price. Its rate of change (ROC)
+    captures whether volume is accelerating into the trend. Big funds often move volume
+    before price shifts — OBV ROC catches that.
+    
+    Calculation:
+    1. Build OBV (On-Balance Volume):
+       - Close up → add volume
+       - Close down → subtract volume
+       - Equal → no change
+    2. Calculate 10-day percentage change of OBV:
+       - obv_roc = OBV.pct_change(10)
+    3. Normalize by clipping to [-0.5, 0.5]
+    
+    Normalized by clipping to [-0.5, 0.5] to cap extreme values:
+    - Positive: Volume accelerating upward (bullish)
+    - Negative: Volume accelerating downward (bearish)
+    - Near 0: Volume momentum neutral
+    - Range: [-0.5, 0.5] (±50% change)
+    
+    Why it adds value:
+    - Gives volume acceleration, not just volume level
+    - Works extremely well with breakouts and volatility squeezes
+    - One of the highest-impact free indicators you can add
+    - Catches institutional volume movements before price shifts
+    
+    Args:
+        df: Input DataFrame with 'close' and 'volume' columns.
+    
+    Returns:
+        Series named 'obv_momentum' containing clipped OBV rate of change values.
+    """
+    close = _get_close_series(df)
+    volume = _get_volume_series(df)
+    
+    # Step 1: Calculate OBV (On-Balance Volume)
+    # OBV rules:
+    # - If close > prev_close: add volume
+    # - If close < prev_close: subtract volume
+    # - If close == prev_close: no change (add 0)
+    
+    # Calculate price change direction
+    price_change = close.diff()
+    
+    # Create signed volume: positive for up days, negative for down days, zero for equal
+    signed_volume = volume.copy()
+    signed_volume = signed_volume.where(price_change > 0, -signed_volume)  # Down days: negative
+    signed_volume = signed_volume.where(price_change != 0, 0)  # Equal days: zero
+    
+    # Calculate OBV as cumulative sum
+    obv = signed_volume.cumsum()
+    
+    # Step 2: Calculate 10-day percentage change of OBV
+    obv_roc = obv.pct_change(10)
+    
+    # Step 3: Normalize by clipping to [-0.5, 0.5]
+    obv_roc = obv_roc.clip(-0.5, 0.5)
+    
+    obv_roc.name = "obv_momentum"
+    return obv_roc
 
 
-def feature_volatility_trend(df: DataFrame) -> Series:
-    """ATR slope (increasing/decreasing volatility) over 20 days."""
-    atr = feature_atr(df)
-    # Linear regression slope over 20 days
-    def calc_slope(series):
-        if len(series) < 2:
+def feature_aroon_up(df: DataFrame) -> Series:
+    """
+    Compute Aroon Up (25-period): normalized measure of days since highest high.
+    
+    Aroon measures how many days since the last highest high (Aroon Up) or lowest low (Aroon Down).
+    It tells the model whether the uptrend is fresh, maturing, or exhausted.
+    
+    Calculation (25-period window):
+    1. Find days since highest high in rolling 25-period window
+    2. Aroon Up = 100 * (25 - days_since_highest_high) / 25
+    3. Normalize: aroon_up_norm = aroon_up / 100
+    
+    Normalized to [0, 1] range:
+    - 1.0: Highest high was today (fresh uptrend)
+    - 0.8: Highest high was 5 days ago
+    - 0.0: Highest high was 25+ days ago (exhausted uptrend)
+    - Range: [0.0, 1.0]
+    
+    Why it adds value:
+    - Model currently knows if trend exists and how strong it is (ADX)
+    - But Aroon tells it how long the trend has been going on
+    - Trend age is often where swings succeed or fail
+    - Identifies if uptrend is fresh, maturing, or exhausted
+    
+    Args:
+        df: Input DataFrame with 'high' column.
+    
+    Returns:
+        Series named 'aroon_up' containing normalized Aroon Up values in [0, 1] range.
+    """
+    high = _get_high_series(df)
+    
+    # Step 1: Find days since highest high in each rolling 25-period window
+    # In rolling().apply(), window_values[0] is oldest, window_values[-1] is newest
+    def days_since_max(window_values):
+        """Calculate days since highest high in the window (0 = today, 24 = 24 days ago)."""
+        if len(window_values) == 0 or np.isnan(window_values).all():
             return np.nan
-        x = np.arange(len(series))
-        coeffs = np.polyfit(x, series.values, 1)
-        return coeffs[0]
-    
-    slope = atr.rolling(window=20, min_periods=5).apply(calc_slope, raw=False)
-    slope.name = "volatility_trend"
-    return slope
-
-
-def feature_bb_squeeze(df: DataFrame) -> Series:
-    """Bollinger Band squeeze indicator (low volatility)."""
-    bb_width = feature_bb_width(df)
-    # Squeeze: BB width below 25th percentile over 20 days
-    percentile = _rolling_percentile_rank(bb_width, window=20, min_periods=5)
-    squeeze = (percentile < 25).astype(float)
-    squeeze.name = "bb_squeeze"
-    return squeeze
-
-
-def feature_bb_expansion(df: DataFrame) -> Series:
-    """Bollinger Band expansion indicator (high volatility)."""
-    bb_width = feature_bb_width(df)
-    # Expansion: BB width above 75th percentile over 20 days
-    percentile = _rolling_percentile_rank(bb_width, window=20, min_periods=5)
-    expansion = (percentile > 75).astype(float)
-    expansion.name = "bb_expansion"
-    return expansion
-
-
-def feature_atr_ratio_20d(df: DataFrame) -> Series:
-    """Current ATR / 20-day ATR average."""
-    atr = feature_atr(df)
-    atr_avg = atr.rolling(window=20, min_periods=1).mean()
-    ratio = atr / atr_avg
-    ratio.name = "atr_ratio_20d"
-    return ratio
-
-
-def feature_atr_ratio_252d(df: DataFrame) -> Series:
-    """Current ATR / 252-day ATR average."""
-    atr = feature_atr(df)
-    atr_avg = atr.rolling(window=252, min_periods=20).mean()
-    ratio = atr / atr_avg
-    ratio.name = "atr_ratio_252d"
-    return ratio
-
-
-def feature_volatility_percentile_20d(df: DataFrame) -> Series:
-    """ATR percentile over 20 days (0-100)."""
-    atr = feature_atr(df)
-    percentile = _rolling_percentile_rank(atr, window=20, min_periods=5)
-    percentile.name = "volatility_percentile_20d"
-    return percentile
-
-
-def feature_volatility_percentile_252d(df: DataFrame) -> Series:
-    """ATR percentile over 252 days (0-100)."""
-    atr = feature_atr(df)
-    percentile = _rolling_percentile_rank(atr, window=252, min_periods=20)
-    percentile.name = "volatility_percentile_252d"
-    return percentile
-
-
-def feature_high_volatility_flag(df: DataFrame) -> Series:
-    """Binary flag: ATR > 75th percentile over 252 days."""
-    atr = feature_atr(df)
-    percentile = _rolling_percentile_rank(atr, window=252, min_periods=20)
-    flag = (percentile > 75).astype(float)
-    flag.name = "high_volatility_flag"
-    return flag
-
-
-def feature_low_volatility_flag(df: DataFrame) -> Series:
-    """Binary flag: ATR < 25th percentile over 252 days."""
-    atr = feature_atr(df)
-    percentile = _rolling_percentile_rank(atr, window=252, min_periods=20)
-    flag = (percentile < 25).astype(float)
-    flag.name = "low_volatility_flag"
-    return flag
-
-
-# ============================================================================
-# PHASE 1 FEATURES: Trend Strength & Quality
-# ============================================================================
-
-def feature_trend_strength_20d(df: DataFrame) -> Series:
-    """ADX (Average Directional Index) over 20 days."""
-    high = _get_high_series(df)
-    low = _get_low_series(df)
-    close = _get_close_series(df)
-    adx = ta.adx(high=high, low=low, close=close, length=20)
-    if adx is not None and isinstance(adx, pd.DataFrame):
-        # ADX returns DataFrame with columns like 'ADX_20', extract the ADX column
-        adx_col = [c for c in adx.columns if 'ADX' in c.upper()]
-        if adx_col:
-            adx_series = adx[adx_col[0]]
-        else:
-            adx_series = adx.iloc[:, 0] if len(adx.columns) > 0 else pd.Series(index=close.index, dtype=float)
-    elif isinstance(adx, pd.Series):
-        adx_series = adx
-    else:
-        adx_series = pd.Series(index=close.index, dtype=float)
-    adx_series.name = "trend_strength_20d"
-    return adx_series
-
-
-def feature_trend_strength_50d(df: DataFrame) -> Series:
-    """ADX (Average Directional Index) over 50 days."""
-    high = _get_high_series(df)
-    low = _get_low_series(df)
-    close = _get_close_series(df)
-    adx = ta.adx(high=high, low=low, close=close, length=50)
-    if adx is not None and isinstance(adx, pd.DataFrame):
-        # ADX returns DataFrame with columns like 'ADX_50', extract the ADX column
-        adx_col = [c for c in adx.columns if 'ADX' in c.upper()]
-        if adx_col:
-            adx_series = adx[adx_col[0]]
-        else:
-            adx_series = adx.iloc[:, 0] if len(adx.columns) > 0 else pd.Series(index=close.index, dtype=float)
-    elif isinstance(adx, pd.Series):
-        adx_series = adx
-    else:
-        adx_series = pd.Series(index=close.index, dtype=float)
-    adx_series.name = "trend_strength_50d"
-    return adx_series
-
-
-def feature_trend_consistency(df: DataFrame) -> Series:
-    """Percentage of days price above/below MA over 20-day lookback."""
-    close = _get_close_series(df)
-    ma20 = close.rolling(window=20, min_periods=1).mean()
-    above_ma = (close > ma20).rolling(window=20, min_periods=1).sum()
-    consistency = (above_ma / 20) * 100
-    consistency.name = "trend_consistency"
-    return consistency
-
-
-def feature_ema_alignment(df: DataFrame) -> Series:
-    """EMA alignment: 1 if all EMAs aligned bullish, -1 if bearish, 0 if neutral."""
-    close = _get_close_series(df)
-    ema5 = ta.ema(close, length=5)
-    ema10 = ta.ema(close, length=10)
-    ema50 = ta.ema(close, length=50)
-    
-    if isinstance(ema5, pd.Series) and isinstance(ema10, pd.Series) and isinstance(ema50, pd.Series):
-        bullish = (ema5 > ema10) & (ema10 > ema50) & (close > ema5)
-        bearish = (ema5 < ema10) & (ema10 < ema50) & (close < ema5)
-        alignment = pd.Series(0.0, index=close.index)
-        alignment[bullish] = 1.0
-        alignment[bearish] = -1.0
-    else:
-        alignment = pd.Series(0.0, index=close.index)
-    
-    alignment.name = "ema_alignment"
-    return alignment
-
-
-def feature_sma_slope_20d(df: DataFrame) -> Series:
-    """Slope of 20-day SMA (linear regression)."""
-    close = _get_close_series(df)
-    sma20 = close.rolling(window=20, min_periods=1).mean()
-    
-    def calc_slope(series):
-        if len(series) < 2:
-            return np.nan
-        x = np.arange(len(series))
-        coeffs = np.polyfit(x, series.values, 1)
-        return coeffs[0]
-    
-    slope = sma20.rolling(window=20, min_periods=5).apply(calc_slope, raw=False)
-    slope.name = "sma_slope_20d"
-    return slope
-
-
-def feature_sma_slope_50d(df: DataFrame) -> Series:
-    """Slope of 50-day SMA (linear regression)."""
-    close = _get_close_series(df)
-    sma50 = close.rolling(window=50, min_periods=1).mean()
-    
-    def calc_slope(series):
-        if len(series) < 2:
-            return np.nan
-        x = np.arange(len(series))
-        coeffs = np.polyfit(x, series.values, 1)
-        return coeffs[0]
-    
-    slope = sma50.rolling(window=50, min_periods=10).apply(calc_slope, raw=False)
-    slope.name = "sma_slope_50d"
-    return slope
-
-
-def feature_ema_slope_20d(df: DataFrame) -> Series:
-    """Slope of 20-day EMA (linear regression)."""
-    close = _get_close_series(df)
-    ema20 = ta.ema(close, length=20)
-    
-    if not isinstance(ema20, pd.Series):
-        ema20 = pd.Series(index=close.index, dtype=float)
-    
-    def calc_slope(series):
-        if len(series) < 2:
-            return np.nan
-        x = np.arange(len(series))
-        coeffs = np.polyfit(x, series.values, 1)
-        return coeffs[0]
-    
-    slope = ema20.rolling(window=20, min_periods=5).apply(calc_slope, raw=False)
-    slope.name = "ema_slope_20d"
-    return slope
-
-
-def feature_trend_duration(df: DataFrame) -> Series:
-    """Days since last trend change (price crossing 20-day MA)."""
-    close = _get_close_series(df)
-    ma20 = close.rolling(window=20, min_periods=1).mean()
-    above_ma = close > ma20
-    # Detect trend changes (crossovers)
-    trend_changes = (above_ma != above_ma.shift(1))
-    # Calculate days since last change
-    duration = pd.Series(0, index=close.index, dtype=int)
-    last_change_idx = 0
-    for i in range(len(close)):
-        if trend_changes.iloc[i]:
-            last_change_idx = i
-        duration.iloc[i] = i - last_change_idx
-    duration = duration.astype(float)
-    duration.name = "trend_duration"
-    return duration
-
-
-def feature_trend_reversal_signal(df: DataFrame) -> Series:
-    """Potential trend reversal indicator (RSI divergence with price)."""
-    close = _get_close_series(df)
-    rsi = feature_rsi(df)
-    # Simple reversal: RSI overbought (>70) with price making new high, or RSI oversold (<30) with price making new low
-    rsi_overbought = rsi > 70
-    rsi_oversold = rsi < 30
-    price_new_high = close == close.rolling(window=20, min_periods=1).max()
-    price_new_low = close == close.rolling(window=20, min_periods=1).min()
-    
-    bearish_reversal = rsi_overbought & price_new_high
-    bullish_reversal = rsi_oversold & price_new_low
-    
-    signal = pd.Series(0.0, index=close.index)
-    signal[bearish_reversal] = -1.0
-    signal[bullish_reversal] = 1.0
-    signal.name = "trend_reversal_signal"
-    return signal
-
-
-def feature_price_vs_all_mas(df: DataFrame) -> Series:
-    """Count of moving averages price is above (out of 5, 10, 20, 50-day MAs)."""
-    close = _get_close_series(df)
-    sma5 = close.rolling(window=5, min_periods=1).mean()
-    sma10 = close.rolling(window=10, min_periods=1).mean()
-    sma20 = close.rolling(window=20, min_periods=1).mean()
-    sma50 = close.rolling(window=50, min_periods=1).mean()
-    
-    count = (close > sma5).astype(int) + (close > sma10).astype(int) + \
-            (close > sma20).astype(int) + (close > sma50).astype(int)
-    count = count.astype(float)
-    count.name = "price_vs_all_mas"
-    return count
-
-
-# ============================================================================
-# PHASE 1 FEATURES: Multi-Timeframe (Weekly Patterns)
-# Helper function for weekly resampling
-# ============================================================================
-
-def _resample_to_weekly(df: DataFrame) -> DataFrame:
-    """
-    Resample daily OHLCV data to weekly.
-    
-    Args:
-        df: Daily DataFrame with OHLCV columns and datetime index
         
-    Returns:
-        DataFrame with weekly aggregated data
+        # Find the index of the maximum value, preferring most recent if tie
+        # Reverse array to search from newest to oldest, then convert back to original index
+        reversed_idx = np.argmax(window_values[::-1])
+        max_idx_original = len(window_values) - 1 - reversed_idx
+        
+        # Days since = distance from newest value (index len-1) to max_idx
+        days_since = len(window_values) - 1 - max_idx_original
+        return days_since
+    
+    # Calculate days since highest high for each rolling window
+    days_since_high = high.rolling(window=25, min_periods=25).apply(
+        days_since_max, raw=True
+    )
+    
+    # Step 2: Calculate Aroon Up
+    # Aroon Up = 100 * (25 - days_since_highest_high) / 25
+    aroon_up = 100 * (25 - days_since_high) / 25
+    
+    # Step 3: Normalize by dividing by 100
+    aroon_up_norm = aroon_up / 100
+    
+    # Clip to [0, 1] to handle any edge cases
+    aroon_up_norm = aroon_up_norm.clip(0.0, 1.0)
+    
+    aroon_up_norm.name = "aroon_up"
+    return aroon_up_norm
+
+
+def feature_aroon_down(df: DataFrame) -> Series:
     """
-    close = _get_close_series(df)
-    high = _get_high_series(df)
-    low = _get_low_series(df)
-    volume = _get_volume_series(df)
+    Compute Aroon Down (25-period): normalized measure of days since lowest low.
     
-    # Create DataFrame with datetime index
-    if not isinstance(df.index, pd.DatetimeIndex):
-        raise ValueError("DataFrame must have DatetimeIndex for resampling")
+    Aroon measures how many days since the last highest high (Aroon Up) or lowest low (Aroon Down).
+    It tells the model whether the downtrend is starting or ending.
     
-    weekly_df = pd.DataFrame({
-        'close': close,
-        'high': high,
-        'low': low,
-        'volume': volume
-    }, index=df.index)
+    Calculation (25-period window):
+    1. Find days since lowest low in rolling 25-period window
+    2. Aroon Down = 100 * (25 - days_since_lowest_low) / 25
+    3. Normalize: aroon_down_norm = aroon_down / 100
     
-    # Resample to weekly (end of week, Sunday)
-    weekly = weekly_df.resample('W').agg({
-        'close': 'last',
-        'high': 'max',
-        'low': 'min',
-        'volume': 'sum'
-    })
+    Normalized to [0, 1] range:
+    - 1.0: Lowest low was today (fresh downtrend)
+    - 0.8: Lowest low was 5 days ago
+    - 0.0: Lowest low was 25+ days ago (exhausted downtrend)
+    - Range: [0.0, 1.0]
     
-    return weekly
-
-
-def feature_weekly_return_1w(df: DataFrame) -> Series:
-    """1-week log return (weekly resampled)."""
-    weekly = _resample_to_weekly(df)
-    weekly_return = np.log(weekly['close'] / weekly['close'].shift(1))
-    # Forward-fill to daily
-    daily_return = weekly_return.reindex(df.index, method='ffill')
-    daily_return.name = "weekly_return_1w"
-    return daily_return
-
-
-def feature_weekly_return_2w(df: DataFrame) -> Series:
-    """2-week log return (weekly resampled)."""
-    weekly = _resample_to_weekly(df)
-    weekly_return = np.log(weekly['close'] / weekly['close'].shift(2))
-    daily_return = weekly_return.reindex(df.index, method='ffill')
-    daily_return.name = "weekly_return_2w"
-    return daily_return
-
-
-def feature_weekly_return_4w(df: DataFrame) -> Series:
-    """4-week log return (weekly resampled)."""
-    weekly = _resample_to_weekly(df)
-    weekly_return = np.log(weekly['close'] / weekly['close'].shift(4))
-    daily_return = weekly_return.reindex(df.index, method='ffill')
-    daily_return.name = "weekly_return_4w"
-    return daily_return
-
-
-def feature_weekly_sma_5w(df: DataFrame) -> Series:
-    """5-week SMA (weekly resampled)."""
-    weekly = _resample_to_weekly(df)
-    sma = weekly['close'].rolling(window=5, min_periods=1).mean()
-    daily_sma = sma.reindex(df.index, method='ffill')
-    daily_sma.name = "weekly_sma_5w"
-    return daily_sma
-
-
-def feature_weekly_sma_10w(df: DataFrame) -> Series:
-    """10-week SMA (weekly resampled)."""
-    weekly = _resample_to_weekly(df)
-    sma = weekly['close'].rolling(window=10, min_periods=1).mean()
-    daily_sma = sma.reindex(df.index, method='ffill')
-    daily_sma.name = "weekly_sma_10w"
-    return daily_sma
-
-
-def feature_weekly_sma_20w(df: DataFrame) -> Series:
-    """20-week SMA (weekly resampled)."""
-    weekly = _resample_to_weekly(df)
-    sma = weekly['close'].rolling(window=20, min_periods=1).mean()
-    daily_sma = sma.reindex(df.index, method='ffill')
-    daily_sma.name = "weekly_sma_20w"
-    return daily_sma
-
-
-def feature_weekly_ema_5w(df: DataFrame) -> Series:
-    """5-week EMA (weekly resampled)."""
-    weekly = _resample_to_weekly(df)
-    ema = ta.ema(weekly['close'], length=5)
-    if isinstance(ema, pd.Series):
-        daily_ema = ema.reindex(df.index, method='ffill')
-    else:
-        daily_ema = pd.Series(index=df.index, dtype=float)
-    daily_ema.name = "weekly_ema_5w"
-    return daily_ema
-
-
-def feature_weekly_ema_10w(df: DataFrame) -> Series:
-    """10-week EMA (weekly resampled)."""
-    weekly = _resample_to_weekly(df)
-    ema = ta.ema(weekly['close'], length=10)
-    if isinstance(ema, pd.Series):
-        daily_ema = ema.reindex(df.index, method='ffill')
-    else:
-        daily_ema = pd.Series(index=df.index, dtype=float)
-    daily_ema.name = "weekly_ema_10w"
-    return daily_ema
-
-
-def feature_weekly_rsi_14w(df: DataFrame) -> Series:
-    """Weekly RSI (14-week period, weekly resampled)."""
-    weekly = _resample_to_weekly(df)
-    rsi = ta.rsi(weekly['close'], length=14)
-    if isinstance(rsi, pd.Series):
-        daily_rsi = rsi.reindex(df.index, method='ffill')
-    else:
-        daily_rsi = pd.Series(index=df.index, dtype=float)
-    daily_rsi.name = "weekly_rsi_14w"
-    return daily_rsi
-
-
-def feature_weekly_macd_histogram(df: DataFrame) -> Series:
-    """Weekly MACD histogram (weekly resampled)."""
-    weekly = _resample_to_weekly(df)
-    macd = ta.macd(weekly['close'])
-    if macd is not None and isinstance(macd, pd.DataFrame) and 'MACDh_12_26_9' in macd.columns:
-        hist = macd['MACDh_12_26_9']
-        daily_hist = hist.reindex(df.index, method='ffill')
-    else:
-        daily_hist = pd.Series(index=df.index, dtype=float)
-    daily_hist.name = "weekly_macd_histogram"
-    return daily_hist
-
-
-def feature_close_vs_weekly_sma20(df: DataFrame) -> Series:
-    """Price vs 20-week SMA (percentage difference)."""
-    close = _get_close_series(df)
-    weekly_sma20 = feature_weekly_sma_20w(df)
-    pct_diff = ((close - weekly_sma20) / weekly_sma20) * 100
-    pct_diff.name = "close_vs_weekly_sma20"
-    return pct_diff
-
-
-def feature_weekly_volume_ratio(df: DataFrame) -> Series:
-    """Weekly volume vs average weekly volume."""
-    weekly = _resample_to_weekly(df)
-    volume_avg = weekly['volume'].rolling(window=10, min_periods=1).mean()
-    ratio = weekly['volume'] / volume_avg
-    daily_ratio = ratio.reindex(df.index, method='ffill')
-    daily_ratio.name = "weekly_volume_ratio"
-    return daily_ratio
-
-
-def feature_weekly_atr_pct(df: DataFrame) -> Series:
-    """Weekly ATR as percentage of price."""
-    weekly = _resample_to_weekly(df)
-    # Calculate ATR on weekly data
-    high = weekly['high']
-    low = weekly['low']
-    close = weekly['close']
-    atr = ta.atr(high=high, low=low, close=close, length=14)
-    if isinstance(atr, pd.Series):
-        atr_pct = (atr / weekly['close']) * 100
-        daily_atr_pct = atr_pct.reindex(df.index, method='ffill')
-    else:
-        daily_atr_pct = pd.Series(index=df.index, dtype=float)
-    daily_atr_pct.name = "weekly_atr_pct"
-    return daily_atr_pct
-
-
-def feature_weekly_trend_strength(df: DataFrame) -> Series:
-    """Slope of weekly SMA (trend strength)."""
-    weekly_sma20 = feature_weekly_sma_20w(df)
-    weekly = _resample_to_weekly(df)
-    sma20_weekly = weekly['close'].rolling(window=20, min_periods=1).mean()
-    
-    def calc_slope(series):
-        if len(series) < 2:
-            return np.nan
-        x = np.arange(len(series))
-        coeffs = np.polyfit(x, series.values, 1)
-        return coeffs[0]
-    
-    slope = sma20_weekly.rolling(window=10, min_periods=3).apply(calc_slope, raw=False)
-    daily_slope = slope.reindex(df.index, method='ffill')
-    daily_slope.name = "weekly_trend_strength"
-    return daily_slope
-
-
-# ============================================================================
-# PHASE 1 FEATURES: Volume Profile & Distribution (Non-Intraday)
-# ============================================================================
-
-def feature_volume_weighted_price(df: DataFrame) -> Series:
-    """VWAP approximation using daily typical price: (High + Low + Close) / 3."""
-    high = _get_high_series(df)
-    low = _get_low_series(df)
-    close = _get_close_series(df)
-    volume = _get_volume_series(df)
-    
-    typical_price = (high + low + close) / 3
-    # VWAP: cumulative sum of (price * volume) / cumulative sum of volume
-    vwap = (typical_price * volume).cumsum() / volume.cumsum()
-    vwap.name = "volume_weighted_price"
-    return vwap
-
-
-def feature_price_vs_vwap(df: DataFrame) -> Series:
-    """Distance from price to VWAP (percentage)."""
-    close = _get_close_series(df)
-    vwap = feature_volume_weighted_price(df)
-    pct_diff = ((close - vwap) / vwap) * 100
-    pct_diff.name = "price_vs_vwap"
-    return pct_diff
-
-
-def feature_vwap_slope(df: DataFrame) -> Series:
-    """VWAP trend direction (slope over 20 days)."""
-    vwap = feature_volume_weighted_price(df)
-    
-    def calc_slope(series):
-        if len(series) < 2:
-            return np.nan
-        x = np.arange(len(series))
-        coeffs = np.polyfit(x, series.values, 1)
-        return coeffs[0]
-    
-    slope = vwap.rolling(window=20, min_periods=5).apply(calc_slope, raw=False)
-    slope.name = "vwap_slope"
-    return slope
-
-
-def feature_volume_climax(df: DataFrame) -> Series:
-    """Unusually high volume days (above 75th percentile over 20 days)."""
-    volume = _get_volume_series(df)
-    percentile = _rolling_percentile_rank(volume, window=20, min_periods=5)
-    climax = (percentile > 75).astype(float)
-    climax.name = "volume_climax"
-    return climax
-
-
-def feature_volume_dry_up(df: DataFrame) -> Series:
-    """Unusually low volume days (below 25th percentile over 20 days)."""
-    volume = _get_volume_series(df)
-    percentile = _rolling_percentile_rank(volume, window=20, min_periods=5)
-    dry_up = (percentile < 25).astype(float)
-    dry_up.name = "volume_dry_up"
-    return dry_up
-
-
-def feature_volume_trend(df: DataFrame) -> Series:
-    """Volume moving average slope (trend direction)."""
-    volume = _get_volume_series(df)
-    volume_ma = volume.rolling(window=20, min_periods=1).mean()
-    
-    def calc_slope(series):
-        if len(series) < 2:
-            return np.nan
-        x = np.arange(len(series))
-        coeffs = np.polyfit(x, series.values, 1)
-        return coeffs[0]
-    
-    slope = volume_ma.rolling(window=20, min_periods=5).apply(calc_slope, raw=False)
-    slope.name = "volume_trend"
-    return slope
-
-
-def feature_volume_breakout(df: DataFrame) -> Series:
-    """Volume spike on price breakout (volume > 150% of 20-day avg AND price breaks 20-day high)."""
-    volume = _get_volume_series(df)
-    close = _get_close_series(df)
-    high = _get_high_series(df)
-    
-    volume_avg = volume.rolling(window=20, min_periods=1).mean()
-    volume_spike = volume > (volume_avg * 1.5)
-    price_breakout = close > high.rolling(window=20, min_periods=1).max().shift(1)
-    
-    breakout = (volume_spike & price_breakout).astype(float)
-    breakout.name = "volume_breakout"
-    return breakout
-
-
-def feature_volume_distribution(df: DataFrame) -> Series:
-    """Volume concentration metric (coefficient of variation of volume over 20 days)."""
-    volume = _get_volume_series(df)
-    volume_std = volume.rolling(window=20, min_periods=5).std()
-    volume_mean = volume.rolling(window=20, min_periods=5).mean()
-    cv = volume_std / volume_mean  # Coefficient of variation
-    cv.name = "volume_distribution"
-    return cv
-
-
-# ============================================================================
-# PRIORITY 1: Market Context Features (Relative Strength vs SPY)
-# ============================================================================
-
-# Cache for SPY data to avoid reloading for each ticker
-_SPY_DATA_CACHE = None
-
-def _load_spy_data() -> Optional[DataFrame]:
-    """Load and cache SPY data once. Handles both cleaned (Parquet) and raw (CSV) formats."""
-    global _SPY_DATA_CACHE
-    if _SPY_DATA_CACHE is not None:
-        return _SPY_DATA_CACHE
-    
-    from pathlib import Path
-    
-    # First try cleaned data (Parquet) - same format as other tickers
-    spy_clean_file = Path("data/clean/SPY.parquet")
-    if spy_clean_file.exists():
-        try:
-            spy_df = pd.read_parquet(spy_clean_file)
-            # Cleaned data has date as index
-            if not isinstance(spy_df.index, pd.DatetimeIndex):
-                spy_df.index = pd.to_datetime(spy_df.index)
-            _SPY_DATA_CACHE = spy_df
-            return _SPY_DATA_CACHE
-        except Exception as e:
-            # If Parquet fails, fall back to CSV
-            pass
-    
-    # Fall back to raw CSV - process it the same way clean_data.py does
-    spy_file = Path("data/raw/SPY.csv")
-    if spy_file.exists():
-        try:
-            # Read CSV (date is first column, same as other raw tickers)
-            spy_df = pd.read_csv(spy_file)
-            if spy_df.empty:
-                return None
-            
-            # Rename first column to 'date' (same as clean_data.py)
-            first_col = spy_df.columns[0]
-            spy_df = spy_df.rename(columns={first_col: "date"})
-            
-            # Parse date column
-            spy_df["date"] = pd.to_datetime(spy_df["date"], format="%Y-%m-%d", errors="coerce")
-            
-            # Drop invalid dates
-            spy_df = spy_df.dropna(subset=["date"])
-            
-            if spy_df.empty:
-                return None
-            
-            # Set date as index and sort (same as clean_data.py)
-            spy_df = spy_df.set_index("date").sort_index()
-            
-            # Lowercase columns (same as clean_data.py)
-            spy_df.columns = [col.lower() for col in spy_df.columns]
-            
-            _SPY_DATA_CACHE = spy_df
-            return _SPY_DATA_CACHE
-        except Exception:
-            return None
-    return None
-
-def feature_relative_strength_spy_5d(df: DataFrame, spy_data: DataFrame = None) -> Series:
-    """
-    Stock return vs SPY return over 5 days (relative strength).
+    Why it adds value:
+    - Model currently knows if trend exists and how strong it is (ADX)
+    - But Aroon tells it how long the trend has been going on
+    - Trend age is often where swings succeed or fail
+    - Identifies if downtrend is starting or ending
     
     Args:
-        df: Stock DataFrame
-        spy_data: SPY DataFrame with 'Close' column (optional, will be loaded if not provided)
+        df: Input DataFrame with 'low' column.
     
     Returns:
-        Series: (stock_return - spy_return) * 100
+        Series named 'aroon_down' containing normalized Aroon Down values in [0, 1] range.
+    """
+    low = _get_low_series(df)
+    
+    # Step 1: Find days since lowest low in each rolling 25-period window
+    # In rolling().apply(), window_values[0] is oldest, window_values[-1] is newest
+    def days_since_min(window_values):
+        """Calculate days since lowest low in the window (0 = today, 24 = 24 days ago)."""
+        if len(window_values) == 0 or np.isnan(window_values).all():
+            return np.nan
+        
+        # Find the index of the minimum value, preferring most recent if tie
+        # Reverse array to search from newest to oldest, then convert back to original index
+        reversed_idx = np.argmin(window_values[::-1])
+        min_idx_original = len(window_values) - 1 - reversed_idx
+        
+        # Days since = distance from newest value (index len-1) to min_idx
+        days_since = len(window_values) - 1 - min_idx_original
+        return days_since
+    
+    # Calculate days since lowest low for each rolling window
+    days_since_low = low.rolling(window=25, min_periods=25).apply(
+        days_since_min, raw=True
+    )
+    
+    # Step 2: Calculate Aroon Down
+    # Aroon Down = 100 * (25 - days_since_lowest_low) / 25
+    aroon_down = 100 * (25 - days_since_low) / 25
+    
+    # Step 3: Normalize by dividing by 100
+    aroon_down_norm = aroon_down / 100
+    
+    # Clip to [0, 1] to handle any edge cases
+    aroon_down_norm = aroon_down_norm.clip(0.0, 1.0)
+    
+    aroon_down_norm.name = "aroon_down"
+    return aroon_down_norm
+
+
+def feature_aroon_oscillator(df: DataFrame) -> Series:
+    """
+    Compute Aroon Oscillator: trend dominance indicator combining Aroon Up and Aroon Down.
+    
+    Aroon Oscillator tells the model which side is in control:
+    - Positive → uptrend dominance
+    - Negative → downtrend dominance
+    - Near zero → trend transition
+    
+    It's the "net trend pressure" measure Aroon is famous for.
+    
+    Calculation:
+    1. Get normalized Aroon Up and Aroon Down (0-1 range)
+    2. Convert back to 0-100 range:
+       - aroon_up_raw = aroon_up * 100
+       - aroon_down_raw = aroon_down * 100
+    3. Calculate oscillator: aroon_osc = aroon_up_raw - aroon_down_raw
+    4. Normalize from [-100, 100] to [0, 1]:
+       - aroon_osc_norm = (aroon_osc + 100) / 200
+    
+    Normalized to [0, 1] range:
+    - 0.0: Strong downtrend dominance (aroon_osc = -100)
+    - 0.5: Neutral/transition (aroon_osc = 0)
+    - 1.0: Strong uptrend dominance (aroon_osc = +100)
+    - Range: [0.0, 1.0]
+    - Provides clean continuous signal for ML
+    
+    Why it adds value:
+    - Captures trend dominance better than Up and Down alone
+    - Provides a clean continuous signal for ML
+    - Helps identify early trend reversals
+    - Combines both Aroon lines into single "net trend pressure" measure
+    
+    Args:
+        df: Input DataFrame with 'high' and 'low' columns.
+    
+    Returns:
+        Series named 'aroon_oscillator' containing normalized Aroon Oscillator values in [0, 1] range.
+    """
+    # Get normalized Aroon Up and Aroon Down (0-1 range)
+    aroon_up = feature_aroon_up(df)
+    aroon_down = feature_aroon_down(df)
+    
+    # Step 1: Convert back to 0-100 range
+    aroon_up_raw = aroon_up * 100
+    aroon_down_raw = aroon_down * 100
+    
+    # Step 2: Calculate oscillator: aroon_osc = aroon_up_raw - aroon_down_raw
+    # Range: [-100, 100]
+    aroon_osc = aroon_up_raw - aroon_down_raw
+    
+    # Step 3: Normalize from [-100, 100] to [0, 1]
+    # aroon_osc_norm = (aroon_osc + 100) / 200
+    aroon_osc_norm = (aroon_osc + 100) / 200
+    
+    # Clip to [0, 1] to handle any edge cases
+    aroon_osc_norm = aroon_osc_norm.clip(0.0, 1.0)
+    
+    aroon_osc_norm.name = "aroon_oscillator"
+    return aroon_osc_norm
+
+
+def feature_cci20(df: DataFrame) -> Series:
+    """
+    Compute CCI (Commodity Channel Index, 20-period): standardized distance from trend oscillator.
+    
+    CCI measures how far price deviates from its typical mean relative to volatility.
+    It's a hybrid between RSI, momentum, and volatility.
+    
+    Calculation (20-period):
+    1. Typical Price = (high + low + close) / 3
+    2. SMA of Typical Price (20-period)
+    3. Mean Deviation (20-period): mean absolute deviation from SMA
+    4. CCI = (TP - SMA) / (0.015 * mean_deviation)
+    5. Normalize: cci_norm = tanh(cci / 100)
+    
+    Normalized using tanh compression to [0, 1] range:
+    - High CCI (>100): momentum burst, overbought
+    - Low CCI (<-100): selling pressure, oversold
+    - Near 0: price near typical mean
+    - Range: approximately [-1, 1] after tanh, but typically [-0.76, 0.76] for CCI in [-100, 100]
+    
+    Why it adds value:
+    - Model lacks a standardized "distance from trend" oscillator
+    - CCI captures trend exhaustion & reversion points
+    - Great for swing trading windows
+    - Adds information RSI & Stochastic do NOT cover
+    - Hybrid indicator combining momentum, volatility, and mean reversion
+    
+    Args:
+        df: Input DataFrame with 'high', 'low', and 'close' columns.
+    
+    Returns:
+        Series named 'cci20' containing normalized CCI values.
+    """
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    close = _get_close_series(df)
+    
+    # Step 1: Calculate Typical Price
+    typical_price = (high + low + close) / 3
+    
+    # Step 2: Calculate SMA of Typical Price (20-period)
+    sma_tp = typical_price.rolling(window=20, min_periods=20).mean()
+    
+    # Step 3: Calculate Mean Deviation (20-period)
+    # Mean deviation = mean absolute deviation from SMA
+    mean_deviation = typical_price.rolling(window=20, min_periods=20).apply(
+        lambda x: np.abs(x - x.mean()).mean(), raw=True
+    )
+    
+    # Step 4: Calculate CCI
+    # CCI = (TP - SMA) / (0.015 * mean_deviation)
+    # Avoid division by zero
+    cci = (typical_price - sma_tp) / (0.015 * mean_deviation + 1e-10)
+    
+    # Step 5: Normalize using tanh compression
+    # cci_norm = tanh(cci / 100)
+    cci_norm = np.tanh(cci / 100)
+    
+    cci_norm.name = "cci20"
+    return cci_norm
+
+
+def feature_williams_r14(df: DataFrame) -> Series:
+    """
+    Compute Williams %R (14-period): range momentum/reversion oscillator.
+    
+    Williams %R measures how close price is to the recent lowest lows.
+    Where Stochastic goes 0 → 1, %R goes -100 → 0.
+    
+    Calculation (14-period):
+    1. highest_high = high.rolling(14).max()
+    2. lowest_low = low.rolling(14).min()
+    3. williams_r = (highest_high - close) / (highest_high - lowest_low) * -100
+    4. Normalize: williams_r_norm = -(williams_r / 100)
+    
+    Normalized to [0, 1] range:
+    - 0.0: Close at highest high (extremely overbought)
+    - 0.5: Close in middle of range (neutral)
+    - 1.0: Close at lowest low (extremely oversold)
+    - Range: [0.0, 1.0]
+    - Very sensitive to reversal points
+    
+    Why it adds value:
+    - Very sensitive to reversal points
+    - Strong complement to RSI and Stochastic
+    - Helps catch swing entries inside trends
+    - Detects pullbacks within trends, oversold bounces, momentum shifts in range markets
+    - Provides "pressure" version of range position (complement to Stochastic %K)
+    
+    Args:
+        df: Input DataFrame with 'high', 'low', and 'close' columns.
+    
+    Returns:
+        Series named 'williams_r14' containing normalized Williams %R values in [0, 1] range.
+    """
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    close = _get_close_series(df)
+    
+    # Step 1: Calculate highest high and lowest low over 14-period window
+    highest_high = high.rolling(window=14, min_periods=14).max()
+    lowest_low = low.rolling(window=14, min_periods=14).min()
+    
+    # Step 2: Calculate Williams %R
+    # %R = (highest_high - close) / (highest_high - lowest_low) * -100
+    # Handle division by zero (when highest_high == lowest_low)
+    price_range = highest_high - lowest_low
+    williams_r = ((highest_high - close) / (price_range + 1e-10)) * -100
+    
+    # Step 3: Normalize from [-100, 0] to [0, 1]
+    # williams_r_norm = -(williams_r / 100)
+    williams_r_norm = -(williams_r / 100)
+    
+    # Clip to [0, 1] to handle any edge cases
+    williams_r_norm = williams_r_norm.clip(0.0, 1.0)
+    
+    williams_r_norm.name = "williams_r14"
+    return williams_r_norm
+
+
+def feature_kama_slope(df: DataFrame, period: int = 10, fast: int = 2, slow: int = 30) -> Series:
+    """
+    Compute KAMA (Kaufman Adaptive Moving Average) Slope: adaptive trend strength indicator.
+    
+    KAMA adapts to price smoothness:
+    - Flat & slow when market is noisy
+    - Fast & responsive when trend is efficient
+    
+    The slope measures the day-to-day change in KAMA, normalized by price.
+    
+    Calculation:
+    1. Efficiency Ratio (ER) = net price movement / total movement
+       - Change = abs(close - close[period periods ago])
+       - Volatility = sum(abs(close.diff()) for period periods)
+       - ER = Change / Volatility
+    2. Smoothing Constant (SC) = [ER * (fast_SC - slow_SC) + slow_SC]^2
+       - fast_SC = 2 / (fast + 1)
+       - slow_SC = 2 / (slow + 1)
+    3. KAMA = KAMA[prev] + SC * (close - KAMA[prev])
+       - Initial KAMA = close (or SMA for first period)
+    4. KAMA Slope = kama.diff() / close
+    
+    Normalized by dividing by price (scale-invariant):
+    - 0.0: KAMA is flat (no change)
+    - > 0.0: KAMA is rising (adaptive bullish momentum)
+    - < 0.0: KAMA is falling (adaptive bearish momentum)
+    - Range: unbounded, but typically small values
+    
+    Why it adds value:
+    - SMA slopes measure linear trend
+    - KAMA slope measures adaptive trend strength
+    - Works better in choppy tickers
+    - Adapts to market efficiency (fast in trends, slow in noise)
+    - More responsive than SMA in efficient markets, less whipsaw in choppy markets
+    
+    Args:
+        df: Input DataFrame with 'close' column.
+        period: Period for efficiency ratio calculation (default 10).
+        fast: Fast smoothing period (default 2).
+        slow: Slow smoothing period (default 30).
+    
+    Returns:
+        Series named 'kama_slope' containing normalized KAMA slope values.
     """
     close = _get_close_series(df)
-    stock_return = (close / close.shift(5) - 1) * 100
     
+    # Step 1: Calculate Efficiency Ratio (ER)
+    # Change = absolute price change over period
+    change = abs(close - close.shift(period))
+    
+    # Volatility = sum of absolute daily changes over period
+    volatility = close.diff().abs().rolling(window=period, min_periods=period).sum()
+    
+    # ER = Change / Volatility (handle division by zero)
+    er = change / (volatility + 1e-10)
+    er = er.clip(0.0, 1.0)  # ER should be in [0, 1]
+    
+    # Step 2: Calculate Smoothing Constant (SC)
+    fast_sc = 2.0 / (fast + 1.0)
+    slow_sc = 2.0 / (slow + 1.0)
+    
+    # SC = [ER * (fast_SC - slow_SC) + slow_SC]^2
+    sc = (er * (fast_sc - slow_sc) + slow_sc) ** 2
+    
+    # Step 3: Calculate KAMA
+    # Initialize KAMA with SMA for first period, then use recursive formula
+    kama = close.rolling(window=period, min_periods=period).mean()
+    
+    # Calculate KAMA iteratively using recursive formula
+    # KAMA[t] = KAMA[t-1] + SC[t] * (close[t] - KAMA[t-1])
+    # This is more efficient than full vectorization due to recursive nature
+    kama_values = kama.values
+    sc_values = sc.values
+    close_values = close.values
+    
+    for i in range(period, len(close)):
+        if pd.isna(kama_values[i-1]) or pd.isna(sc_values[i]) or pd.isna(close_values[i]):
+            continue
+        kama_values[i] = kama_values[i-1] + sc_values[i] * (close_values[i] - kama_values[i-1])
+    
+    kama = pd.Series(kama_values, index=close.index)
+    
+    # Step 4: Calculate KAMA Slope (day-to-day change normalized by price)
+    kama_slope = kama.diff() / close
+    
+    # Clip to reasonable range to handle extreme values
+    kama_slope = kama_slope.clip(-0.1, 0.1)
+    
+    kama_slope.name = "kama_slope"
+    return kama_slope
+
+
+def feature_beta_spy_252d(df: DataFrame, spy_data: DataFrame = None) -> Series:
+    """
+    Compute rolling beta vs SPY over 252 trading days.
+    
+    Beta measures the stock's sensitivity to market movements (SPY).
+    Calculation:
+    1. Calculate log returns for stock and SPY:
+       - stock_ret = np.log(close / close.shift(1))
+       - spy_ret = np.log(spy_close / spy_close.shift(1))
+    2. Calculate rolling covariance and variance over 252 days:
+       - cov = stock_ret.rolling(252).cov(spy_ret)
+       - var = spy_ret.rolling(252).var()
+    3. Calculate beta: beta = cov / var
+    
+    Normalized by: ((beta + 1) / 4).clip(0, 1)
+    This transforms beta to [0, 1] range:
+    - beta = -1 → normalized = 0
+    - beta = 0 → normalized = 0.25
+    - beta = 1 → normalized = 0.5
+    - beta = 3 → normalized = 1
+    
+    Args:
+        df: Input DataFrame with a 'close' price column.
+        spy_data: SPY DataFrame (optional, will be loaded if not provided)
+    
+    Returns:
+        Series named 'beta_spy_252d' containing normalized beta values in [0, 1] range.
+    """
+    close = _get_close_series(df)
+    
+    # Load SPY data if not provided
     if spy_data is None:
         spy_data = _load_spy_data()
         if spy_data is None:
             # Return NaN if SPY data not available
             result = pd.Series(np.nan, index=df.index)
-            result.name = "relative_strength_spy_5d"
+            result.name = "beta_spy_252d"
             return result
     
-    # Get SPY close (handle case-insensitive)
-    spy_close = _get_column(spy_data, 'close') if 'close' in spy_data.columns else spy_data['Close']
-    
-    # Ensure SPY index is DatetimeIndex and sorted
-    if not isinstance(spy_close.index, pd.DatetimeIndex):
-        spy_close.index = pd.to_datetime(spy_close.index)
-    spy_close = spy_close.sort_index()
-    
-    # Get stock date index - cleaned data has date as index
-    # Ensure index is DatetimeIndex (parquet might not preserve type)
-    if isinstance(df.index, pd.DatetimeIndex):
-        stock_dates = df.index
-    elif df.index.name == 'date' or (hasattr(df.index, 'dtype') and pd.api.types.is_datetime64_any_dtype(df.index)):
-        # Index is date-like but not DatetimeIndex - convert it
-        stock_dates = pd.to_datetime(df.index)
-    elif 'date' in df.columns:
-        stock_dates = pd.to_datetime(df['date'])
+    # Get SPY close price - try different column name variations
+    if 'Close' in spy_data.columns:
+        spy_close = spy_data['Close']
+    elif 'close' in spy_data.columns:
+        spy_close = spy_data['close']
+    elif 'Adj Close' in spy_data.columns:
+        spy_close = spy_data['Adj Close']
     else:
-        # Can't align without dates
+        # Try to get first numeric column
+        numeric_cols = spy_data.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) > 0:
+            spy_close = spy_data[numeric_cols[0]]
+        else:
+            result = pd.Series(np.nan, index=df.index)
+            result.name = "beta_spy_252d"
+            return result
+    
+    if spy_close is None or len(spy_close) == 0:
         result = pd.Series(np.nan, index=df.index)
-        result.name = "relative_strength_spy_5d"
+        result.name = "beta_spy_252d"
         return result
     
-    # Normalize dates to date-only (remove time component) for matching
-    stock_dates_normalized = pd.to_datetime(stock_dates).normalize()
-    spy_dates_normalized = pd.to_datetime(spy_close.index).normalize()
-    
-    # Create temporary DataFrames for alignment
-    stock_temp = pd.DataFrame({
-        'date': stock_dates_normalized,
-        'idx': range(len(stock_dates_normalized))
-    })
-    spy_temp = pd.DataFrame({
-        'date': spy_dates_normalized,
-        'close': spy_close.values
-    }).sort_values('date')
-    
-    # Merge on date (left join to preserve stock dates)
-    merged = stock_temp.merge(spy_temp, on='date', how='left', sort=False)
-    merged = merged.sort_values('idx').reset_index(drop=True)
-    
-    # Forward fill missing SPY values
-    merged['close'] = merged['close'].ffill()
-    
-    # Convert back to Series with original index
-    spy_close_series = pd.Series(merged['close'].values, index=df.index)
-    
-    spy_return = (spy_close_series / spy_close_series.shift(5) - 1) * 100
-    
-    rs = stock_return - spy_return
-    rs.name = "relative_strength_spy_5d"
-    return rs
-
-
-def feature_relative_strength_spy_20d(df: DataFrame, spy_data: DataFrame = None) -> Series:
-    """Stock return vs SPY return over 20 days (relative strength)."""
-    close = _get_close_series(df)
-    stock_return = (close / close.shift(20) - 1) * 100
-    
-    if spy_data is None:
-        spy_data = _load_spy_data()
-        if spy_data is None:
-            result = pd.Series(np.nan, index=df.index)
-            result.name = "relative_strength_spy_20d"
-            return result
-    
-    spy_close = _get_column(spy_data, 'close') if 'close' in spy_data.columns else spy_data['Close']
-    
     # Ensure SPY index is DatetimeIndex and sorted
     if not isinstance(spy_close.index, pd.DatetimeIndex):
         spy_close.index = pd.to_datetime(spy_close.index)
     spy_close = spy_close.sort_index()
     
-    # Get stock date index - ensure it's DatetimeIndex
+    # Get stock date index
     if isinstance(df.index, pd.DatetimeIndex):
         stock_dates = df.index
     elif df.index.name == 'date' or (hasattr(df.index, 'dtype') and pd.api.types.is_datetime64_any_dtype(df.index)):
@@ -2286,7 +2726,7 @@ def feature_relative_strength_spy_20d(df: DataFrame, spy_data: DataFrame = None)
         stock_dates = pd.to_datetime(df['date'])
     else:
         result = pd.Series(np.nan, index=df.index)
-        result.name = "relative_strength_spy_20d"
+        result.name = "beta_spy_252d"
         return result
     
     # Normalize dates to date-only for matching
@@ -2296,7 +2736,8 @@ def feature_relative_strength_spy_20d(df: DataFrame, spy_data: DataFrame = None)
     # Create temporary DataFrames for alignment
     stock_temp = pd.DataFrame({
         'date': stock_dates_normalized,
-        'idx': range(len(stock_dates_normalized))
+        'idx': range(len(stock_dates_normalized)),
+        'close': close.values
     })
     spy_temp = pd.DataFrame({
         'date': spy_dates_normalized,
@@ -2304,269 +2745,51 @@ def feature_relative_strength_spy_20d(df: DataFrame, spy_data: DataFrame = None)
     }).sort_values('date')
     
     # Merge on date (left join to preserve stock dates)
-    merged = stock_temp.merge(spy_temp, on='date', how='left', sort=False)
+    merged = stock_temp.merge(spy_temp, on='date', how='left', suffixes=('_stock', '_spy'), sort=False)
     merged = merged.sort_values('idx').reset_index(drop=True)
     
     # Forward fill missing SPY values
-    merged['close'] = merged['close'].ffill()
+    merged['close_spy'] = merged['close_spy'].ffill().infer_objects(copy=False)
     
-    # Convert back to Series with original index
-    spy_close_series = pd.Series(merged['close'].values, index=df.index)
-    spy_return = (spy_close_series / spy_close_series.shift(20) - 1) * 100
+    # Calculate log returns
+    stock_ret = np.log(merged['close_stock'] / merged['close_stock'].shift(1))
+    spy_ret = np.log(merged['close_spy'] / merged['close_spy'].shift(1))
     
-    rs = stock_return - spy_return
-    rs.name = "relative_strength_spy_20d"
-    return rs
-
-
-def feature_rs_rank_20d(df: DataFrame, spy_data: DataFrame = None) -> Series:
-    """
-    Relative strength rank (0-100) vs market over 20 days.
+    # Create aligned Series with same index for rolling operations
+    stock_ret_series = pd.Series(stock_ret.values, index=df.index)
+    spy_ret_series = pd.Series(spy_ret.values, index=df.index)
     
-    Compares stock's relative strength to its own history.
-    """
-    rs = feature_relative_strength_spy_20d(df, spy_data)
-    rank = _rolling_percentile_rank(rs, window=252, min_periods=20)  # 1 year lookback
-    rank.name = "rs_rank_20d"
-    return rank
-
-
-def feature_outperformance_flag(df: DataFrame, spy_data: DataFrame = None) -> Series:
-    """Binary flag: 1 if stock is outperforming SPY over 20 days, else 0."""
-    rs = feature_relative_strength_spy_20d(df, spy_data)
-    flag = (rs > 0).astype(float)
-    flag.name = "outperformance_flag"
-    return flag
-
-
-def feature_market_correlation_20d(df: DataFrame, spy_data: DataFrame = None) -> Series:
-    """
-    Rolling correlation to SPY over 20 days.
-    
-    Measures how closely stock moves with the market.
-    """
-    close = _get_close_series(df)
-    stock_returns = close.pct_change()
-    
-    if spy_data is None:
-        spy_data = _load_spy_data()
-        if spy_data is None:
-            result = pd.Series(np.nan, index=df.index)
-            result.name = "market_correlation_20d"
-            return result
-    
-    spy_close = _get_column(spy_data, 'close') if 'close' in spy_data.columns else spy_data['Close']
-    
-    # Ensure SPY index is DatetimeIndex and sorted
-    if not isinstance(spy_close.index, pd.DatetimeIndex):
-        spy_close.index = pd.to_datetime(spy_close.index)
-    spy_close = spy_close.sort_index()
-    
-    # Get stock date index - ensure it's DatetimeIndex
-    if isinstance(df.index, pd.DatetimeIndex):
-        stock_dates = df.index
-    elif df.index.name == 'date' or (hasattr(df.index, 'dtype') and pd.api.types.is_datetime64_any_dtype(df.index)):
-        stock_dates = pd.to_datetime(df.index)
-    elif 'date' in df.columns:
-        stock_dates = pd.to_datetime(df['date'])
-    else:
-        result = pd.Series(np.nan, index=df.index)
-        result.name = "market_correlation_20d"
-        return result
-    
-    # Normalize dates to date-only for matching
-    stock_dates_normalized = pd.to_datetime(stock_dates).normalize()
-    spy_dates_normalized = pd.to_datetime(spy_close.index).normalize()
-    
-    # Create temporary DataFrames for alignment
-    stock_temp = pd.DataFrame({
-        'date': stock_dates_normalized,
-        'idx': range(len(stock_dates_normalized))
+    # Calculate rolling covariance and variance over 252 days
+    # Use pandas rolling covariance (requires both series in a DataFrame)
+    returns_df = pd.DataFrame({
+        'stock_ret': stock_ret_series,
+        'spy_ret': spy_ret_series
     })
-    spy_temp = pd.DataFrame({
-        'date': spy_dates_normalized,
-        'close': spy_close.values
-    }).sort_values('date')
     
-    # Merge on date (left join to preserve stock dates)
-    merged = stock_temp.merge(spy_temp, on='date', how='left', sort=False)
-    merged = merged.sort_values('idx').reset_index(drop=True)
+    # Calculate rolling covariance: rolling(252).cov() between the two series
+    # Note: rolling().cov() returns a DataFrame, we need the off-diagonal element
+    # For efficiency, calculate manually using rolling mean and variance
+    stock_mean = returns_df['stock_ret'].rolling(window=252, min_periods=1).mean()
+    spy_mean = returns_df['spy_ret'].rolling(window=252, min_periods=1).mean()
     
-    # Forward fill missing SPY values
-    merged['close'] = merged['close'].ffill()
+    # Calculate rolling covariance: E[(X - E[X])(Y - E[Y])]
+    # Using the formula: E[XY] - E[X]E[Y]
+    stock_spy_product = (returns_df['stock_ret'] * returns_df['spy_ret']).rolling(window=252, min_periods=1).mean()
+    cov = stock_spy_product - (stock_mean * spy_mean)
     
-    # Convert back to Series with original index
-    spy_close_series = pd.Series(merged['close'].values, index=df.index)
-    spy_returns = spy_close_series.pct_change()
+    # Calculate rolling variance of SPY returns
+    var = returns_df['spy_ret'].rolling(window=252, min_periods=1).var()
     
-    # Calculate rolling correlation
-    correlation = stock_returns.rolling(window=20, min_periods=10).corr(spy_returns)
-    correlation.name = "market_correlation_20d"
-    return correlation
-
-
-# ============================================================================
-# PRIORITY 1: Time-Based Features
-# ============================================================================
-
-def feature_day_of_week_sin(df: DataFrame) -> Series:
-    """
-    Day of week (cyclical encoding - sine component).
+    # Calculate beta: cov / var
+    # Avoid division by zero
+    var = var.replace(0, np.nan)
+    beta = cov / var
     
-    Monday=0, Friday=4. Encoded as sin(2π * day / 7).
-    """
-    if not isinstance(df.index, pd.DatetimeIndex):
-        # Try to find a date column
-        if 'date' in df.columns:
-            dates = pd.to_datetime(df['date'])
-        else:
-            result = pd.Series(np.nan, index=df.index)
-            result.name = "day_of_week_sin"
-            return result
-    else:
-        dates = df.index
-    
-    day_of_week = dates.dayofweek  # 0=Monday, 6=Sunday
-    sin_component = np.sin(2 * np.pi * day_of_week / 7)
-    result = pd.Series(sin_component, index=df.index)
-    result.name = "day_of_week_sin"
-    return result
+    # Normalize: ((beta + 1) / 4).clip(0, 1)
+    # This maps beta from [-1, 3] to [0, 1]
+    feat = ((beta + 1) / 4).clip(0, 1)
+    feat.name = "beta_spy_252d"
+    return feat
 
 
-def feature_day_of_week_cos(df: DataFrame) -> Series:
-    """Day of week (cyclical encoding - cosine component)."""
-    if not isinstance(df.index, pd.DatetimeIndex):
-        if 'date' in df.columns:
-            dates = pd.to_datetime(df['date'])
-        else:
-            result = pd.Series(np.nan, index=df.index)
-            result.name = "day_of_week_cos"
-            return result
-    else:
-        dates = df.index
-    
-    day_of_week = dates.dayofweek
-    cos_component = np.cos(2 * np.pi * day_of_week / 7)
-    result = pd.Series(cos_component, index=df.index)
-    result.name = "day_of_week_cos"
-    return result
-
-
-def feature_day_of_month_sin(df: DataFrame) -> Series:
-    """Day of month (cyclical encoding - sine component, 1-31)."""
-    if not isinstance(df.index, pd.DatetimeIndex):
-        if 'date' in df.columns:
-            dates = pd.to_datetime(df['date'])
-        else:
-            result = pd.Series(np.nan, index=df.index)
-            result.name = "day_of_month_sin"
-            return result
-    else:
-        dates = df.index
-    
-    day_of_month = dates.day
-    sin_component = np.sin(2 * np.pi * day_of_month / 31)
-    result = pd.Series(sin_component, index=df.index)
-    result.name = "day_of_month_sin"
-    return result
-
-
-def feature_day_of_month_cos(df: DataFrame) -> Series:
-    """Day of month (cyclical encoding - cosine component)."""
-    if not isinstance(df.index, pd.DatetimeIndex):
-        if 'date' in df.columns:
-            dates = pd.to_datetime(df['date'])
-        else:
-            result = pd.Series(np.nan, index=df.index)
-            result.name = "day_of_month_cos"
-            return result
-    else:
-        dates = df.index
-    
-    day_of_month = dates.day
-    cos_component = np.cos(2 * np.pi * day_of_month / 31)
-    result = pd.Series(cos_component, index=df.index)
-    result.name = "day_of_month_cos"
-    return result
-
-
-def feature_month_of_year_sin(df: DataFrame) -> Series:
-    """Month of year (cyclical encoding - sine component, 1-12)."""
-    if not isinstance(df.index, pd.DatetimeIndex):
-        if 'date' in df.columns:
-            dates = pd.to_datetime(df['date'])
-        else:
-            result = pd.Series(np.nan, index=df.index)
-            result.name = "month_of_year_sin"
-            return result
-    else:
-        dates = df.index
-    
-    month = dates.month
-    sin_component = np.sin(2 * np.pi * month / 12)
-    result = pd.Series(sin_component, index=df.index)
-    result.name = "month_of_year_sin"
-    return result
-
-
-def feature_month_of_year_cos(df: DataFrame) -> Series:
-    """Month of year (cyclical encoding - cosine component)."""
-    if not isinstance(df.index, pd.DatetimeIndex):
-        if 'date' in df.columns:
-            dates = pd.to_datetime(df['date'])
-        else:
-            result = pd.Series(np.nan, index=df.index)
-            result.name = "month_of_year_cos"
-            return result
-    else:
-        dates = df.index
-    
-    month = dates.month
-    cos_component = np.cos(2 * np.pi * month / 12)
-    result = pd.Series(cos_component, index=df.index)
-    result.name = "month_of_year_cos"
-    return result
-
-
-def feature_is_month_end(df: DataFrame) -> Series:
-    """Binary flag: 1 if within last 3 days of month, else 0."""
-    if not isinstance(df.index, pd.DatetimeIndex):
-        if 'date' in df.columns:
-            dates = pd.to_datetime(df['date'])
-        else:
-            result = pd.Series(np.nan, index=df.index)
-            result.name = "is_month_end"
-            return result
-    else:
-        dates = df.index
-    
-    # Get last day of month for each date
-    last_day = dates + pd.offsets.MonthEnd(0)
-    days_until_end = (last_day - dates).days
-    is_end = (days_until_end <= 2).astype(float)  # Last 3 days (0, 1, 2)
-    
-    result = pd.Series(is_end, index=df.index)
-    result.name = "is_month_end"
-    return result
-
-
-def feature_is_quarter_end(df: DataFrame) -> Series:
-    """Binary flag: 1 if within last week of quarter, else 0."""
-    if not isinstance(df.index, pd.DatetimeIndex):
-        if 'date' in df.columns:
-            dates = pd.to_datetime(df['date'])
-        else:
-            result = pd.Series(np.nan, index=df.index)
-            result.name = "is_quarter_end"
-            return result
-    else:
-        dates = df.index
-    
-    # Get last day of quarter for each date
-    last_day = dates + pd.offsets.QuarterEnd(0)
-    days_until_end = (last_day - dates).days
-    is_end = (days_until_end <= 5).astype(float)  # Last week (0-5 days)
-    
-    result = pd.Series(is_end, index=df.index)
-    result.name = "is_quarter_end"
-    return result
+# Ownership features removed - not consistent and cannot be trusted

@@ -10,132 +10,61 @@ a loader to read a feature-toggle YAML and return only those features enabled.
 
 import yaml
 from features.technical import (
-    # Original features
-    feature_atr,
-    feature_bb_width,
-    feature_ema_cross,
-    feature_obv,
-    feature_obv_pct,
-    feature_obv_zscore,
-    feature_rsi,
-    feature_sma_5,
-    feature_ema_5,
-    feature_sma_10,
-    feature_ema_10,
-    feature_sma_50,
-    feature_ema_50,
-    feature_adx_14,
-    feature_log_return_1d,
-    feature_log_return_5d,
-    feature_close_vs_ma10,
-    feature_close_vs_ma20,
-    feature_close_zscore_20,
-    feature_price_percentile_20d,
-    feature_gap_up_pct,
+    # V2 Features (32 features)
+    feature_price,
+    feature_price_log,
+    feature_price_vs_ma200,
+    feature_daily_return,
+    feature_gap_pct,
+    feature_weekly_return_5d,
+    feature_monthly_return_21d,
+    feature_quarterly_return_63d,
+    feature_ytd_return,
+    feature_dist_52w_high,
+    feature_dist_52w_low,
+    feature_pos_52w,
+    feature_sma20_ratio,
+    feature_sma50_ratio,
+    feature_sma200_ratio,
+    feature_sma20_sma50_ratio,
+    feature_sma50_sma200_ratio,
+    feature_sma50_slope,
+    feature_sma200_slope,
+    feature_volatility_5d,
+    feature_volatility_21d,
+    feature_volatility_ratio,
+    feature_atr14_normalized,
+    feature_log_volume,
+    feature_log_avg_volume_20d,
+    feature_relative_volume,
+    feature_rsi14,
+    feature_beta_spy_252d,
     feature_candle_body_pct,
-    feature_daily_range_pct,
-    feature_close_position_in_range,
-    feature_rolling_max_5d_breakout,
-    feature_rolling_min_5d_breakdown,
-    feature_high_vs_close,
-    feature_atr_pct_of_price,
-    feature_volume_avg_ratio_5d,
-    feature_rsi_slope,
-    feature_macd_line,
-    feature_macd_histogram,
-    feature_macd_cross_signal,
-    feature_stoch_k,
-    feature_stoch_d,
-    feature_stoch_cross,
-    feature_bullish_engulfing,
-    feature_bearish_engulfing,
-    feature_hammer_signal,
-    feature_shooting_star_signal,
-    feature_marubozu_white,
-    feature_marubozu_black,
-    feature_doji_signal,
-    feature_long_legged_doji,
-    feature_morning_star,
-    feature_evening_star,
-    feature_ichimoku_conversion,
-    feature_ichimoku_base,
-    feature_ichimoku_lead_span_a,
-    feature_ichimoku_lead_span_b,
-    feature_ichimoku_lagging_span,
-    # Phase 1: Support & Resistance
-    feature_resistance_level_20d,
-    feature_resistance_level_50d,
-    feature_support_level_20d,
-    feature_support_level_50d,
-    feature_distance_to_resistance,
-    feature_distance_to_support,
-    feature_price_near_resistance,
-    feature_price_near_support,
-    feature_resistance_touches,
-    feature_support_touches,
-    feature_pivot_point,
-    feature_fibonacci_levels,
-    # Phase 1: Volatility Regime
-    feature_volatility_regime,
-    feature_volatility_trend,
-    feature_bb_squeeze,
-    feature_bb_expansion,
-    feature_atr_ratio_20d,
-    feature_atr_ratio_252d,
-    feature_volatility_percentile_20d,
-    feature_volatility_percentile_252d,
-    feature_high_volatility_flag,
-    feature_low_volatility_flag,
-    # Phase 1: Trend Strength
-    feature_trend_strength_20d,
-    feature_trend_strength_50d,
-    feature_trend_consistency,
-    feature_ema_alignment,
-    feature_sma_slope_20d,
-    feature_sma_slope_50d,
-    feature_ema_slope_20d,
-    feature_trend_duration,
-    feature_trend_reversal_signal,
-    feature_price_vs_all_mas,
-    # Phase 1: Multi-Timeframe (Weekly)
-    feature_weekly_return_1w,
-    feature_weekly_return_2w,
-    feature_weekly_return_4w,
-    feature_weekly_sma_5w,
-    feature_weekly_sma_10w,
-    feature_weekly_sma_20w,
-    feature_weekly_ema_5w,
-    feature_weekly_ema_10w,
-    feature_weekly_rsi_14w,
-    feature_weekly_macd_histogram,
-    feature_close_vs_weekly_sma20,
-    feature_weekly_volume_ratio,
-    feature_weekly_atr_pct,
-    feature_weekly_trend_strength,
-    # Phase 1: Volume Profile (Non-Intraday)
-    feature_volume_weighted_price,
-    feature_price_vs_vwap,
-    feature_vwap_slope,
-    feature_volume_climax,
-    feature_volume_dry_up,
-    feature_volume_trend,
-    feature_volume_breakout,
-    feature_volume_distribution,
-    # Priority 1: Market Context Features
-    feature_relative_strength_spy_5d,
-    feature_relative_strength_spy_20d,
-    feature_rs_rank_20d,
-    feature_outperformance_flag,
-    feature_market_correlation_20d,
-    # Priority 1: Time-Based Features
-    feature_day_of_week_sin,
-    feature_day_of_week_cos,
-    feature_day_of_month_sin,
-    feature_day_of_month_cos,
-    feature_month_of_year_sin,
-    feature_month_of_year_cos,
-    feature_is_month_end,
-    feature_is_quarter_end,
+    feature_candle_upper_wick_pct,
+    feature_candle_lower_wick_pct,
+    feature_higher_high_10d,
+    feature_higher_low_10d,
+    feature_trend_residual,
+    feature_macd_histogram_normalized,
+    feature_ppo_histogram,
+    feature_dpo,
+    feature_roc10,
+    feature_roc20,
+    feature_stochastic_k14,
+    feature_bollinger_band_width,
+    feature_adx14,
+    feature_chaikin_money_flow,
+    feature_donchian_position,
+    feature_donchian_breakout,
+    feature_ttm_squeeze_on,
+    feature_ttm_squeeze_momentum,
+    feature_obv_momentum,
+    feature_aroon_up,
+    feature_aroon_down,
+    feature_aroon_oscillator,
+    feature_cci20,
+    feature_williams_r14,
+    feature_kama_slope,
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -145,133 +74,112 @@ from features.technical import (
 # Values: Python functions that accept a DataFrame and return a Series
 # ──────────────────────────────────────────────────────────────────────────────
 FEATURES = {
-    # NOTE: 5d_return and 10d_return are forward-looking labels, not features.
-    # They should NOT be used as features to avoid data leakage.
-    "atr":                      feature_atr,                        # Average True Range
-    "bb_width":                 feature_bb_width,                   # Bollinger Band width
-    "ema_cross":                feature_ema_cross,                  # EMA(short) − EMA(long)
-    "obv":                      feature_obv,                        # On-Balance Volume
-    "obv_pct":                  feature_obv_pct,                    # Daily % change of OBV
-    "obv_z20":                  feature_obv_zscore,                 # Z-score of OBV over 20 days
-    "rsi":                      feature_rsi,                        # Relative Strength Index
-    "sma_5":                    feature_sma_5,                      # 5-day Simple Moving Average
-    "ema_5":                    feature_ema_5,                      # 5-day Exponential Moving Average
-    "sma_10":                   feature_sma_10,                     # 10-day SMA
-    "ema_10":                   feature_ema_10,                     # 10-day EMA
-    "sma_50":                   feature_sma_50,                     # 50-day SMA
-    "ema_50":                   feature_ema_50,                     # 50-day EMA
-    "adx_14":                   feature_adx_14,                    # 14-day Average Directional Index
-    "log_return_1d":            feature_log_return_1d,              # 1 Day Log Return
-    "log_return_5d":            feature_log_return_5d,              # 5 Day Log Return
-    "close_vs_ma10":            feature_close_vs_ma10,              # Close vs 10-Day MA
-    "close_vs_ma20":            feature_close_vs_ma20,              # Close vs 20-Day MA
-    "close_zscore_20":          feature_close_zscore_20,            # 20 day Close Z Score
-    "price_percentile_20d":     feature_price_percentile_20d,       # Price Percentile 20-Day
-    "gap_up_pct":               feature_gap_up_pct,                 # Gap Up Percentage
-    "candle_body_pct":          feature_candle_body_pct,            # Candle Body Percentage Ratio
-    "daily_range_pct":          feature_daily_range_pct,            # Daily Range Percentage
-    "close_position_in_range":  feature_close_position_in_range,    # Close Position Compared to Daily Range
-    "rolling_max_5d_breakout":  feature_rolling_max_5d_breakout,    # Percent Todays Close Exceeds Previous 5 days Highs
-    "rolling_min_5d_breakdown": feature_rolling_min_5d_breakdown,   # Percent Todays Close Falls Below Previous Days Lows
-    "high_vs_close":            feature_high_vs_close,              # Todays High Compared to Todays Close
-    "atr_pct_of_price":         feature_atr_pct_of_price,           # Average True Range As A Precentage Of Todays Close
-    "volume_avg_ratio_5d":      feature_volume_avg_ratio_5d,        # Ratio of Todays Volume Vs 5-Day Average
-    "rsi_slope":                feature_rsi_slope,                  # Compute the average daily change (“slope”) of the period‐RSI over a lookback window
-    "macd_line":                feature_macd_line,                  # Compute the MACD line: the difference between fast and slow EMAs of close
-    "macd_histogram":           feature_macd_histogram,             # Compute the MACD histogram: the difference between the MACD line and its signal line
-    "macd_cross_signal":        feature_macd_cross_signal,          # Compute a -1/0/+1 signal for MACD line crossing its signal line
-    "stoch_k":                  feature_stoch_k,                    # Compute the %K line of the Stochastic Oscillator
-    "stoch_d":                  feature_stoch_d,                    # Compute the %D (signal) line of the Stochastic Oscillator
-    "stoch_cross":              feature_stoch_cross,                # Compute a -1/0/+1 signal when %K crosses its %D line
-    "bullish_engulfing":        feature_bullish_engulfing,          # Today’s bullish candle fully engulfs yesterday’s bearish candle
-    "bearish_engulfing":        feature_bearish_engulfing,          # Today’s bearish candle fully engulfs yesterday’s bullish candle
-    "hammer_signal":            feature_hammer_signal,              # Flag hammer candles: small real body near top with long lower shadow
-    "shooting_star_signal":     feature_shooting_star_signal,       # Flag shooting-star candles: small real body near bottom with long upper shadow
-    "marubozu_white":           feature_marubozu_white,             # Flag white marubozu: open≈low, close≈high, close>open
-    "marubozu_black":           feature_marubozu_black,             # Flag black marubozu: open≈high, close≈low, close<open
-    "doji_signal":              feature_doji_signal,                # Flag Doji: tiny real body relative to range
-    "long_legged_doji":         feature_long_legged_doji,           # Flag long-legged Doji: tiny body + long shadows
-    "morning_star":             feature_morning_star,               # Flag Morning Star: bearish bar → small body → bullish bar closing > midpoint of bar1
-    "evening_star":             feature_evening_star,               # Flag Evening Star: bullish → small body → bearish closing < midpoint of bar1
-    "ichimoku_conversion":      feature_ichimoku_conversion,        # Conversion Line (Tenkan-sen): midpoint of highest high and lowest low over `period` bars
-    "ichimoku_base":            feature_ichimoku_base,              # Base Line (Kijun-sen): midpoint of highest high and lowest low over `period` bars
-    "ichimoku_lead_span_a":     feature_ichimoku_lead_span_a,       # Leading Span A (Senkou Span A): midpoint of Conversion and Base lines, shifted forward
-    "ichimoku_lead_span_b":     feature_ichimoku_lead_span_b,       # Leading Span B (Senkou Span B): midpoint of highest high & lowest low over `period` bars, shifted forward
-    "ichimoku_lagging_span":    feature_ichimoku_lagging_span,      # Lagging Span (Chikou Span): today's close shifted backward by `shift` bars
-    # Phase 1: Support & Resistance (12 features)
-    "resistance_level_20d":     feature_resistance_level_20d,       # Nearest resistance (20-day high)
-    "resistance_level_50d":     feature_resistance_level_50d,       # Nearest resistance (50-day high)
-    "support_level_20d":        feature_support_level_20d,          # Nearest support (20-day low)
-    "support_level_50d":        feature_support_level_50d,          # Nearest support (50-day low)
-    "distance_to_resistance":   feature_distance_to_resistance,     # % distance to resistance
-    "distance_to_support":      feature_distance_to_support,        # % distance to support
-    "price_near_resistance":    feature_price_near_resistance,      # Binary: within 2% of resistance
-    "price_near_support":       feature_price_near_support,         # Binary: within 2% of support
-    "resistance_touches":       feature_resistance_touches,         # Count of resistance touches
-    "support_touches":          feature_support_touches,            # Count of support touches
-    "pivot_point":              feature_pivot_point,                # Classic pivot point
-    "fibonacci_levels":         feature_fibonacci_levels,           # Distance to Fibonacci level
-    # Phase 1: Volatility Regime (10 features)
-    "volatility_regime":        feature_volatility_regime,          # ATR percentile over 252 days
-    "volatility_trend":         feature_volatility_trend,           # ATR slope (trend)
-    "bb_squeeze":               feature_bb_squeeze,                 # BB squeeze indicator
-    "bb_expansion":             feature_bb_expansion,                # BB expansion indicator
-    "atr_ratio_20d":            feature_atr_ratio_20d,              # ATR / 20-day ATR avg
-    "atr_ratio_252d":           feature_atr_ratio_252d,             # ATR / 252-day ATR avg
-    "volatility_percentile_20d": feature_volatility_percentile_20d, # ATR percentile (20d)
-    "volatility_percentile_252d": feature_volatility_percentile_252d, # ATR percentile (252d)
-    "high_volatility_flag":     feature_high_volatility_flag,       # Binary: ATR > 75th percentile
-    "low_volatility_flag":      feature_low_volatility_flag,        # Binary: ATR < 25th percentile
-    # Phase 1: Trend Strength (11 features)
-    "trend_strength_20d":       feature_trend_strength_20d,         # ADX over 20 days
-    "trend_strength_50d":       feature_trend_strength_50d,         # ADX over 50 days
-    "trend_consistency":        feature_trend_consistency,          # % days above/below MA
-    "ema_alignment":            feature_ema_alignment,              # EMA alignment (-1/0/1)
-    "sma_slope_20d":            feature_sma_slope_20d,              # 20-day SMA slope
-    "sma_slope_50d":            feature_sma_slope_50d,              # 50-day SMA slope
-    "ema_slope_20d":            feature_ema_slope_20d,             # 20-day EMA slope
-    "trend_duration":           feature_trend_duration,             # Days since trend change
-    "trend_reversal_signal":    feature_trend_reversal_signal,      # Reversal indicator
-    "price_vs_all_mas":         feature_price_vs_all_mas,           # Count of MAs price is above
-    # Phase 1: Multi-Timeframe Weekly (14 features)
-    "weekly_return_1w":         feature_weekly_return_1w,           # 1-week log return
-    "weekly_return_2w":         feature_weekly_return_2w,           # 2-week log return
-    "weekly_return_4w":         feature_weekly_return_4w,           # 4-week log return
-    "weekly_sma_5w":            feature_weekly_sma_5w,              # 5-week SMA
-    "weekly_sma_10w":           feature_weekly_sma_10w,              # 10-week SMA
-    "weekly_sma_20w":           feature_weekly_sma_20w,             # 20-week SMA
-    "weekly_ema_5w":            feature_weekly_ema_5w,              # 5-week EMA
-    "weekly_ema_10w":           feature_weekly_ema_10w,             # 10-week EMA
-    "weekly_rsi_14w":           feature_weekly_rsi_14w,             # Weekly RSI
-    "weekly_macd_histogram":    feature_weekly_macd_histogram,      # Weekly MACD histogram
-    "close_vs_weekly_sma20":    feature_close_vs_weekly_sma20,      # Price vs 20-week SMA
-    "weekly_volume_ratio":      feature_weekly_volume_ratio,        # Weekly volume ratio
-    "weekly_atr_pct":           feature_weekly_atr_pct,              # Weekly ATR %
-    "weekly_trend_strength":    feature_weekly_trend_strength,      # Weekly trend strength
-    # Phase 1: Volume Profile (8 features, non-intraday)
-    "volume_weighted_price":    feature_volume_weighted_price,      # VWAP approximation
-    "price_vs_vwap":            feature_price_vs_vwap,              # Distance to VWAP
-    "vwap_slope":               feature_vwap_slope,                 # VWAP slope
-    "volume_climax":            feature_volume_climax,              # High volume days
-    "volume_dry_up":            feature_volume_dry_up,              # Low volume days
-    "volume_trend":             feature_volume_trend,               # Volume trend
-    "volume_breakout":          feature_volume_breakout,            # Volume spike on breakout
-    "volume_distribution":      feature_volume_distribution,        # Volume concentration
-    # Priority 1: Market Context Features (5 features)
-    "relative_strength_spy_5d":  feature_relative_strength_spy_5d,  # Stock return vs SPY (5d)
-    "relative_strength_spy_20d": feature_relative_strength_spy_20d, # Stock return vs SPY (20d)
-    "rs_rank_20d":              feature_rs_rank_20d,               # Relative strength rank (0-100)
-    "outperformance_flag":      feature_outperformance_flag,        # Binary: outperforming SPY
-    "market_correlation_20d":    feature_market_correlation_20d,    # Rolling correlation to SPY
-    # Priority 1: Time-Based Features (8 features)
-    "day_of_week_sin":          feature_day_of_week_sin,            # Day of week (sin)
-    "day_of_week_cos":          feature_day_of_week_cos,            # Day of week (cos)
-    "day_of_month_sin":         feature_day_of_month_sin,           # Day of month (sin)
-    "day_of_month_cos":         feature_day_of_month_cos,           # Day of month (cos)
-    "month_of_year_sin":        feature_month_of_year_sin,          # Month of year (sin)
-    "month_of_year_cos":        feature_month_of_year_cos,          # Month of year (cos)
-    "is_month_end":             feature_is_month_end,               # Binary: last 3 days of month
-    "is_quarter_end":           feature_is_quarter_end,             # Binary: last week of quarter
+    # 1.1 Current Price Features
+    "price":                    feature_price,                      # Raw closing price
+    "price_log":                feature_price_log,                  # Log of closing price (ln(close))
+    "price_vs_ma200":           feature_price_vs_ma200,             # Price normalized to 200-day MA (close / SMA200)
+    # 2. Daily Return (%)
+    "daily_return":             feature_daily_return,                # Daily return % clipped to ±20%
+    # 3. Gap % (Open - Previous Close)
+    "gap_pct":                  feature_gap_pct,                    # Gap % (open - prev_close) / prev_close, clipped to ±20%
+    # 4. Weekly Return (5-day)
+    "weekly_return_5d":         feature_weekly_return_5d,          # 5-day (weekly) return % clipped to ±30%
+    # 5. Monthly Return (21-day)
+    "monthly_return_21d":       feature_monthly_return_21d,        # 21-day (monthly) return % clipped to ±50%
+    # 6. Quarterly Return (63-day)
+    "quarterly_return_63d":     feature_quarterly_return_63d,      # 63-day (quarterly) return % clipped to ±100%
+    # 8. YTD Return
+    "ytd_return":               feature_ytd_return,                # Year-to-Date return % clipped to (-1, +2)
+    # 9. 52-Week High Distance
+    "dist_52w_high":            feature_dist_52w_high,             # 52-week high distance clipped to (-1, 0.5)
+    # 10. 52-Week Low Distance
+    "dist_52w_low":             feature_dist_52w_low,               # 52-week low distance clipped to (-0.5, 2)
+    # 11. 52-Week Position (0=Low, 1=High)
+    "pos_52w":                  feature_pos_52w,                    # 52-week position (0=low, 1=high) clipped to [0, 1]
+    # 12. SMA20 Ratio
+    "sma20_ratio":              feature_sma20_ratio,                # SMA20 ratio (close/SMA20) clipped to [0.5, 1.5]
+    # 13. SMA50 Ratio
+    "sma50_ratio":              feature_sma50_ratio,                # SMA50 ratio (close/SMA50) clipped to [0.5, 1.5]
+    # 14. SMA200 Ratio
+    "sma200_ratio":             feature_sma200_ratio,                # SMA200 ratio (close/SMA200) clipped to [0.5, 2.0]
+    # 15. SMA20 / SMA50
+    "sma20_sma50_ratio":        feature_sma20_sma50_ratio,          # SMA20/SMA50 ratio clipped to [0.8, 1.2]
+    # 16. SMA50 / SMA200
+    "sma50_sma200_ratio":       feature_sma50_sma200_ratio,         # SMA50/SMA200 ratio clipped to [0.6, 1.4]
+    # 17. SMA50 Slope
+    "sma50_slope":              feature_sma50_slope,                # SMA50 slope (5-day change/close) clipped to [-0.1, 0.1]
+    # 18. SMA200 Slope
+    "sma200_slope":             feature_sma200_slope,                # SMA200 slope (10-day change/close) clipped to [-0.1, 0.1]
+    # 19. 5-Day Volatility
+    "volatility_5d":            feature_volatility_5d,              # 5-day volatility (std of returns) clipped to [0, 0.15]
+    # 20. 21-Day Volatility
+    "volatility_21d":          feature_volatility_21d,              # 21-day volatility (std of returns) clipped to [0, 0.15]
+    # 21. Volatility Ratio (5d/21d)
+    "volatility_ratio":        feature_volatility_ratio,            # Volatility ratio: vol5/vol21 clipped to [0, 2] - identifies volatility expansion/compression regimes
+    # 22. ATR14 (Normalized)
+    "atr14_normalized":        feature_atr14_normalized,            # Normalized ATR14 (ATR14/close) clipped to [0, 0.2]
+    # 22. Log Volume
+    "log_volume":              feature_log_volume,                  # Log volume (log1p(volume))
+    # 23. Log Average Volume (20-day)
+    "log_avg_volume_20d":      feature_log_avg_volume_20d,          # Log average volume 20-day (log1p(vol_avg20))
+    # 24. Relative Volume
+    "relative_volume":         feature_relative_volume,             # Relative volume (log1p of volume/vol_avg20, clipped to [0,10])
+    # 25. RSI14
+    "rsi14":                   feature_rsi14,                       # RSI14 centered ((rsi-50)/50) in [-1, +1] range
+    # 26. Rolling Beta vs SPY
+    "beta_spy_252d":           feature_beta_spy_252d,               # Rolling beta vs SPY (252-day) normalized to [0, 1]
+    # 27. Body % of Candle
+    "candle_body_pct":         feature_candle_body_pct,             # Candle body % (body/range) in [0, 1]
+    # 28. Upper Wick %
+    "candle_upper_wick_pct":   feature_candle_upper_wick_pct,       # Upper wick % (upper/range) in [0, 1]
+    # 29. Lower Wick %
+    "candle_lower_wick_pct":   feature_candle_lower_wick_pct,       # Lower wick % (lower/range) in [0, 1]
+    # 30. Higher High (10-day)
+    "higher_high_10d":         feature_higher_high_10d,             # Higher high (10-day) binary flag
+    # 31. Higher Low (10-day)
+    "higher_low_10d":          feature_higher_low_10d,              # Higher low (10-day) binary flag
+    # 32. Trend Residual (Noise vs Trend)
+    "trend_residual":          feature_trend_residual,               # Trend residual (noise vs trend) clipped to [-0.2, 0.2]
+    # 33. MACD Histogram (Normalized)
+    "macd_histogram_normalized": feature_macd_histogram_normalized,  # MACD histogram normalized by price: (macd_line - signal_line) / close
+    # 34. PPO Histogram (12/26/9)
+    "ppo_histogram":            feature_ppo_histogram,                 # PPO histogram: percentage-based momentum acceleration/deceleration, clipped to [-0.2, 0.2] - scale-invariant and cross-ticker comparable
+    # 35. DPO (Detrended Price Oscillator, 20-period)
+    "dpo":                     feature_dpo,                            # DPO: detrended price oscillator normalized by price, clipped to [-0.2, 0.2] - cyclical indicator that removes long-term trend, highlights short-term cycles
+    # 36. ROC (Rate of Change) 10-period
+    "roc10":                   feature_roc10,                         # ROC10: short-term momentum velocity, (close - close.shift(10)) / close.shift(10), clipped to [-0.5, 0.5]
+    # 37. ROC (Rate of Change) 20-period
+    "roc20":                   feature_roc20,                         # ROC20: medium-term momentum velocity, (close - close.shift(20)) / close.shift(20), clipped to [-0.7, 0.7]
+    # 38. Stochastic Oscillator %K (14-period)
+    "stochastic_k14":          feature_stochastic_k14,               # Stochastic %K: (close - low_14) / (high_14 - low_14) in [0, 1] range
+    # 37. Bollinger Band Width (Log Normalized)
+    "bollinger_band_width":   feature_bollinger_band_width,          # Bollinger Band Width (log normalized): log1p((upper - lower) / mid)
+    # 38. ADX (Average Directional Index) 14-period
+    "adx14":                  feature_adx14,                        # ADX (trend strength): normalized to [0, 1] range (adx / 100)
+    # 39. Chaikin Money Flow (20-period)
+    "chaikin_money_flow":      feature_chaikin_money_flow,           # Chaikin Money Flow: sum(mfv over 20d) / sum(volume over 20d) in [-1, 1] range
+    # 40. Donchian Channel Position (20-period)
+    "donchian_position":       feature_donchian_position,            # Donchian position: (close - low_20) / (high_20 - low_20) in [0, 1] range
+    # 41. Donchian Channel Breakout (20-period)
+    "donchian_breakout":       feature_donchian_breakout,           # Donchian breakout: binary flag (1 if close > prior_20d_high_close, else 0)
+    # 42. TTM Squeeze On (20-period)
+    "ttm_squeeze_on":          feature_ttm_squeeze_on,              # TTM Squeeze: binary flag (1 if BB inside KC, else 0) - volatility contraction
+    # 43. TTM Squeeze Momentum (20-period)
+    "ttm_squeeze_momentum":    feature_ttm_squeeze_momentum,        # TTM Squeeze momentum: (close - SMA20) / close - momentum direction during squeeze
+    # 44. OBV Momentum (10-day ROC)
+    "obv_momentum":            feature_obv_momentum,                 # OBV rate of change: 10-day pct change of On-Balance Volume, clipped to [-0.5, 0.5]
+    # 45. Aroon Up (25-period)
+    "aroon_up":                feature_aroon_up,                    # Aroon Up: normalized measure of days since highest high in [0, 1] range - uptrend maturity
+    # 46. Aroon Down (25-period)
+    "aroon_down":              feature_aroon_down,                    # Aroon Down: normalized measure of days since lowest low in [0, 1] range - downtrend maturity
+    # 47. Aroon Oscillator (25-period)
+    "aroon_oscillator":        feature_aroon_oscillator,              # Aroon Oscillator: trend dominance indicator (aroon_up - aroon_down) normalized to [0, 1] - net trend pressure
+    # 48. CCI (20-period)
+    "cci20":                   feature_cci20,                       # CCI: Commodity Channel Index normalized with tanh(cci/100) - distance from trend oscillator
+    # 49. Williams %R (14-period)
+    "williams_r14":            feature_williams_r14,                 # Williams %R: range momentum/reversion oscillator normalized to [0, 1] - very sensitive to reversal points
+    # 50. KAMA Slope (10-period)
+    "kama_slope":              feature_kama_slope,                  # KAMA Slope: adaptive moving average slope normalized by price - adaptive trend strength, works better in choppy tickers
 }
 
 def load_enabled_features(config_path: str) -> dict:
@@ -280,8 +188,8 @@ def load_enabled_features(config_path: str) -> dict:
 
     The YAML at `config_path` should look like:
         features:
-          atr: 1
-          rsi: 0
+          price: 1
+          rsi14: 0
           ...
 
     Args:

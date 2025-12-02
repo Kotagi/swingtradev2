@@ -1,121 +1,107 @@
 features:
-  atr: 1
-  bb_width: 1
-  ema_cross: 0
-  obv: 1
-  obv_pct: 1
-  obv_z20: 1
-  rsi: 1
-  sma_5: 0
-  ema_5: 1
-  sma_10: 0
-  ema_10: 0
-  sma_50: 0
-  ema_50: 0
-  adx_14: 1
-  log_return_1d: 1
-  log_return_5d: 1
-  close_vs_ma10: 1
-  close_vs_ma20: 1
-  close_zscore_20: 0
-  price_percentile_20d: 1
-  gap_up_pct: 1
+  # 1.1 Current Price Features
+  price: 1
+  price_log: 1
+  price_vs_ma200: 1
+  # 2. Daily Return (%)
+  daily_return: 1
+  # 3. Gap % (Open - Previous Close)
+  gap_pct: 1
+  # 4. Weekly Return (5-day)
+  weekly_return_5d: 1
+  # 5. Monthly Return (21-day)
+  monthly_return_21d: 1
+  # 6. Quarterly Return (63-day)
+  quarterly_return_63d: 1
+  # 8. YTD Return
+  ytd_return: 1
+  # 9. 52-Week High Distance
+  dist_52w_high: 1
+  # 10. 52-Week Low Distance
+  dist_52w_low: 1
+  # 11. 52-Week Position (0=Low, 1=High)
+  pos_52w: 1
+  # 12. SMA20 Ratio
+  sma20_ratio: 1
+  # 13. SMA50 Ratio
+  sma50_ratio: 1
+  # 14. SMA200 Ratio
+  sma200_ratio: 1
+  # 15. SMA20 / SMA50
+  sma20_sma50_ratio: 1
+  # 16. SMA50 / SMA200
+  sma50_sma200_ratio: 1
+  # 17. SMA50 Slope
+  sma50_slope: 1
+  # 18. SMA200 Slope
+  sma200_slope: 1
+  # 19. 5-Day Volatility
+  volatility_5d: 1
+  # 20. 21-Day Volatility
+  volatility_21d: 1
+  # 21. Volatility Ratio (5d/21d)
+  volatility_ratio: 1
+  # 22. ATR14 (Normalized)
+  atr14_normalized: 1
+  # 22. Log Volume
+  log_volume: 1
+  # 23. Log Average Volume (20-day)
+  log_avg_volume_20d: 1
+  # 24. Relative Volume
+  relative_volume: 1
+  # 25. RSI14
+  rsi14: 1
+  # 26. Rolling Beta vs SPY
+  beta_spy_252d: 1
+  # 27. Body % of Candle
   candle_body_pct: 1
-  daily_range_pct: 1
-  close_position_in_range: 1
-  rolling_max_5d_breakout: 1
-  rolling_min_5d_breakdown: 1
-  high_vs_close: 1
-  atr_pct_of_price: 1
-  volume_avg_ratio_5d: 1
-  rsi_slope: 1
-  macd_line: 1
-  macd_histogram: 1
-  macd_cross_signal: 1
-  stoch_k: 1
-  stoch_d: 0
-  stoch_cross: 1
-  bullish_engulfing: 1
-  bearish_engulfing: 1
-  hammer_signal: 1
-  shooting_star_signal: 0
-  marubozu_white: 0
-  marubozu_black: 0
-  doji_signal: 0
-  long_legged_doji: 1
-  morning_star: 1
-  evening_star: 0
-  ichimoku_conversion: 0
-  ichimoku_base: 0
-  ichimoku_lead_span_a: 0
-  ichimoku_lead_span_b: 0
-  ichimoku_lagging_span: 0
-  resistance_level_20d: 0
-  resistance_level_50d: 0
-  support_level_20d: 0
-  support_level_50d: 0
-  distance_to_resistance: 1
-  distance_to_support: 1
-  price_near_resistance: 1
-  price_near_support: 1
-  resistance_touches: 1
-  support_touches: 1
-  pivot_point: 0
-  fibonacci_levels: 1
-  volatility_regime: 1
-  volatility_trend: 1
-  bb_squeeze: 1
-  bb_expansion: 1
-  atr_ratio_20d: 1
-  atr_ratio_252d: 1
-  volatility_percentile_20d: 1
-  volatility_percentile_252d: 0
-  high_volatility_flag: 1
-  low_volatility_flag: 1
-  trend_strength_20d: 1
-  trend_strength_50d: 1
-  trend_consistency: 1
-  ema_alignment: 1
-  sma_slope_20d: 1
-  sma_slope_50d: 1
-  ema_slope_20d: 1
-  trend_duration: 1
-  trend_reversal_signal: 1
-  price_vs_all_mas: 1
-  weekly_return_1w: 1
-  weekly_return_2w: 1
-  weekly_return_4w: 1
-  weekly_sma_5w: 0
-  weekly_sma_10w: 0
-  weekly_sma_20w: 0
-  weekly_ema_5w: 0
-  weekly_ema_10w: 0
-  weekly_rsi_14w: 1
-  weekly_macd_histogram: 1
-  close_vs_weekly_sma20: 1
-  weekly_volume_ratio: 1
-  weekly_atr_pct: 1
-  weekly_trend_strength: 1
-  volume_weighted_price: 1
-  price_vs_vwap: 1
-  vwap_slope: 1
-  volume_climax: 1
-  volume_dry_up: 1
-  volume_trend: 1
-  volume_breakout: 0
-  volume_distribution: 1
-  # Priority 1: Market Context Features (5 features)
-  relative_strength_spy_5d: 1
-  relative_strength_spy_20d: 1
-  rs_rank_20d: 1
-  outperformance_flag: 1
-  market_correlation_20d: 1
-  # Priority 1: Time-Based Features (8 features)
-  day_of_week_sin: 1
-  day_of_week_cos: 1
-  day_of_month_sin: 1
-  day_of_month_cos: 1
-  month_of_year_sin: 1
-  month_of_year_cos: 1
-  is_month_end: 1
-  is_quarter_end: 1
+  # 28. Upper Wick %
+  candle_upper_wick_pct: 1
+  # 29. Lower Wick %
+  candle_lower_wick_pct: 1
+  # 30. Higher High (10-day)
+  higher_high_10d: 1
+  # 31. Higher Low (10-day)
+  higher_low_10d: 1
+  # 32. Trend Residual (Noise vs Trend)
+  trend_residual: 1
+  # 33. MACD Histogram (Normalized)
+  macd_histogram_normalized: 1
+  # 34. PPO Histogram (12/26/9)
+  ppo_histogram: 1
+  # 35. DPO (Detrended Price Oscillator, 20-period)
+  dpo: 1
+  # 36. ROC (Rate of Change) 10-period
+  roc10: 1
+  # 37. ROC (Rate of Change) 20-period
+  roc20: 1
+  # 38. Stochastic Oscillator %K (14-period)
+  stochastic_k14: 1
+  # 35. Bollinger Band Width (Log Normalized)
+  bollinger_band_width: 1
+  # 36. ADX (Average Directional Index) 14-period
+  adx14: 1
+  # 37. Chaikin Money Flow (20-period)
+  chaikin_money_flow: 1
+  # 38. Donchian Channel Position (20-period)
+  donchian_position: 1
+  # 39. Donchian Channel Breakout (20-period)
+  donchian_breakout: 1
+  # 40. TTM Squeeze On (20-period)
+  ttm_squeeze_on: 1
+  # 41. TTM Squeeze Momentum (20-period)
+  ttm_squeeze_momentum: 1
+  # 42. OBV Momentum (10-day ROC)
+  obv_momentum: 1
+  # 43. Aroon Up (25-period)
+  aroon_up: 1
+  # 44. Aroon Down (25-period)
+  aroon_down: 1
+  # 45. Aroon Oscillator (25-period)
+  aroon_oscillator: 1
+  # 46. CCI (20-period)
+  cci20: 1
+  # 47. Williams %R (14-period)
+  williams_r14: 1
+  # 48. KAMA Slope (10-period)
+  kama_slope: 1
