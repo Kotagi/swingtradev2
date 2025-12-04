@@ -65,7 +65,9 @@ features:
   higher_high_10d: 1
   # 31. Higher Low (10-day)
   higher_low_10d: 1
-  # 32. Trend Residual (Noise vs Trend)
+  # 32. Swing Low (10-day)
+  swing_low_10d: 1
+  # 33. Trend Residual (Noise vs Trend)
   trend_residual: 1
   # 33. MACD Histogram (Normalized)
   macd_histogram_normalized: 1
@@ -107,3 +109,11 @@ features:
   williams_r14: 1
   # 48. KAMA Slope (10-period)
   kama_slope: 1
+  # 49. Fractal Dimension Index (100-period)
+  fractal_dimension_index: 1
+  # 50. Hurst Exponent (100-period)
+  hurst_exponent: 1
+  # 51. Price Curvature (SMA20-based)
+  price_curvature: 1
+  # 52. Volatility-of-Volatility (VoV)
+  volatility_of_volatility: 1

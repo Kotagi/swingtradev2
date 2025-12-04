@@ -1312,6 +1312,38 @@ def feature_higher_low_10d(df: DataFrame) -> Series:
     return hl
 
 
+def feature_swing_low_10d(df: DataFrame) -> Series:
+    """
+    Compute recent swing low (10-day): the lowest low price over the last 10 days.
+    
+    This feature identifies the most recent structural support level (swing low)
+    which can be used for stop-loss placement. The swing low represents the
+    lowest price point in the recent price action, indicating a support level.
+    
+    Calculated as: low.rolling(10, min_periods=1).min()
+    
+    This uses the 'low' price (not close) to capture the actual swing low point.
+    
+    Values:
+    - Returns the actual swing low price (not normalized)
+    - Used in conjunction with entry price to calculate stop distance
+    - Lower values indicate stronger support levels
+    
+    Args:
+        df: Input DataFrame with 'low' price column.
+    
+    Returns:
+        Series named 'swing_low_10d' containing the swing low price values.
+    """
+    low = _get_low_series(df)
+    
+    # Calculate the minimum low over the last 10 days (including current day)
+    swing_low = low.rolling(window=10, min_periods=1).min()
+    
+    swing_low.name = "swing_low_10d"
+    return swing_low
+
+
 def _trend_residual_window(prices: np.ndarray) -> float:
     """
     Helper function to calculate trend residual for a single window.
@@ -2790,6 +2822,307 @@ def feature_beta_spy_252d(df: DataFrame, spy_data: DataFrame = None) -> Series:
     feat = ((beta + 1) / 4).clip(0, 1)
     feat.name = "beta_spy_252d"
     return feat
+
+
+def feature_fractal_dimension_index(df: DataFrame) -> Series:
+    """
+    Compute Fractal Dimension Index (FDI) - measures how "rough" the price path is.
+    
+    Fractal Dimension measures the complexity/roughness of the price path:
+    - FDI ≈ 1.0-1.3 → smooth, trending (trend-friendly environment)
+    - FDI ≈ 1.5 → borderline
+    - FDI ≈ 1.6-1.8 → choppy, mean-reverting, noisy (whipsaw environment)
+    
+    This tells the model whether it's in a trend-friendly vs whipsaw environment,
+    helping it downweight momentum signals in very noisy regimes.
+    
+    Calculation (sliding window approach, 100-bar window):
+    1. For each window of N=100 prices:
+       - Compute net displacement: L_net = |P_N-1 - P_0|
+       - Compute path length: L_path = sum(|P_i - P_i-1|) for i=1 to N-1
+       - Roughness ratio: R = L_path / (L_net + ε)
+       - Fractal dimension: FDI = 1 + log(R+1) / log(N)
+    
+    Normalization:
+    - FDI for financial time series typically lives in [1.0, 1.8]
+    - Normalize to [0, 1]: FDI_norm = clip((FDI - 1.0) / (1.8 - 1.0), 0, 1)
+    
+    Why it adds value:
+    - Directly encodes "is this tradable with trend-following or not"
+    - Helps model downweight momentum signals in very noisy regimes
+    - Pairs beautifully with ADX, Aroon, Donchian, TTM squeeze
+    - Very few retail systems use it – it's a genuine edge-type feature
+    
+    Args:
+        df: Input DataFrame with 'close' column.
+    
+    Returns:
+        Series named 'fractal_dimension_index' containing normalized FDI values in [0, 1].
+    """
+    close = _get_close_series(df)
+    
+    # Window size for fractal dimension calculation
+    window = 100
+    
+    # Initialize result series
+    fdi = pd.Series(index=close.index, dtype=float)
+    
+    # Small epsilon to avoid division by zero
+    epsilon = 1e-10
+    
+    # Calculate FDI for each rolling window
+    for i in range(len(close)):
+        if i < window - 1:
+            # Not enough data for full window
+            fdi.iloc[i] = np.nan
+            continue
+        
+        # Get window of prices
+        window_prices = close.iloc[i - window + 1:i + 1].values
+        
+        # Skip if any NaN values in window
+        if np.any(np.isnan(window_prices)):
+            fdi.iloc[i] = np.nan
+            continue
+        
+        # Step 1: Compute net displacement
+        L_net = abs(window_prices[-1] - window_prices[0])
+        
+        # Step 2: Compute path length (sum of step distances)
+        L_path = np.sum(np.abs(np.diff(window_prices)))
+        
+        # Step 3: Roughness ratio
+        R = L_path / (L_net + epsilon)
+        
+        # Step 4: Fractal dimension proxy
+        # FDI = 1 + log(R+1) / log(N)
+        N = len(window_prices)
+        FDI_value = 1.0 + np.log(R + 1.0) / np.log(N)
+        
+        fdi.iloc[i] = FDI_value
+    
+    # Normalize: Map from [1.0, 1.8] to [0, 1]
+    # FDI_norm = clip((FDI - 1.0) / (1.8 - 1.0), 0, 1)
+    fdi_normalized = ((fdi - 1.0) / (1.8 - 1.0)).clip(0.0, 1.0)
+    
+    fdi_normalized.name = "fractal_dimension_index"
+    return fdi_normalized
+
+
+def feature_hurst_exponent(df: DataFrame) -> Series:
+    """
+    Compute Hurst Exponent (H) using R/S (Rescaled Range) method.
+    
+    Hurst quantifies whether returns persist, mean-revert, or act like noise:
+    - H > 0.5 → persistent/trending (moves tend to continue)
+    - H < 0.5 → mean-reverting (moves tend to snap back)
+    - H ≈ 0.5 → near-random walk
+    
+    This tells the model: should I expect continuation or snap-back after a move.
+    
+    Calculation (R/S method, simplified rolling window approach):
+    1. Compute log returns: r_t = ln(P_t / P_{t-1})
+    2. For each rolling window of N=100 returns:
+       - Mean of returns: μ
+       - Cumulative deviation series: X_k = sum(r_i - μ) for i=1 to k
+       - Range: R = max(X_k) - min(X_k)
+       - Standard deviation: S = std(r_i)
+       - Rescaled range: R/S
+       - Hurst estimate: H ≈ log(R/S) / log(N)
+    
+    Normalization:
+    - H naturally lives in [0, 1]
+    - Clip to [0, 1] for ML use
+    
+    Why it adds value:
+    - Tells the model if momentum features should be trusted
+    - Great for swing trading where persistence matters
+    - Helps separate "fake breakouts" (H < 0.5, mean-reverting) from real trends
+    - Works great with existing ROC, RSI, Stoch, MACD/PPO, Donchian features
+    
+    Args:
+        df: Input DataFrame with 'close' column.
+    
+    Returns:
+        Series named 'hurst_exponent' containing Hurst exponent values in [0, 1].
+    """
+    close = _get_close_series(df)
+    
+    # Window size for Hurst calculation
+    window = 100
+    
+    # Step 1: Compute log returns
+    log_returns = np.log(close / close.shift(1))
+    
+    # Initialize result series
+    hurst = pd.Series(index=close.index, dtype=float)
+    
+    # Small epsilon to avoid division by zero
+    epsilon = 1e-10
+    
+    # Calculate Hurst for each rolling window
+    for i in range(len(close)):
+        if i < window:
+            # Not enough data for full window
+            hurst.iloc[i] = np.nan
+            continue
+        
+        # Get window of returns (exclude first NaN return)
+        window_returns = log_returns.iloc[i - window + 1:i + 1].values
+        
+        # Skip if any NaN values in window
+        if np.any(np.isnan(window_returns)):
+            hurst.iloc[i] = np.nan
+            continue
+        
+        # Step 2: Mean of returns
+        mu = np.mean(window_returns)
+        
+        # Step 3: Cumulative deviation series
+        # X_k = sum(r_i - μ) for i=1 to k
+        deviations = window_returns - mu
+        cumulative_deviations = np.cumsum(deviations)
+        
+        # Step 4: Range = max(X_k) - min(X_k)
+        R = np.max(cumulative_deviations) - np.min(cumulative_deviations)
+        
+        # Step 5: Standard deviation of returns
+        S = np.std(window_returns, ddof=1)  # Use sample std (ddof=1)
+        
+        # Step 6: Rescaled range
+        if S < epsilon:
+            # If std is too small, set H to 0.5 (random walk)
+            hurst.iloc[i] = 0.5
+            continue
+        
+        RS = R / S
+        
+        # Step 7: Hurst estimate using simplified single-window approximation
+        # H ≈ log(R/S) / log(N)
+        # This is a simplified estimator; full R/S method uses multiple window sizes
+        if RS < epsilon:
+            hurst.iloc[i] = 0.5  # Default to random walk if R/S too small
+        else:
+            H_estimate = np.log(RS) / np.log(window)
+            hurst.iloc[i] = H_estimate
+    
+    # Normalize: Clip to [0, 1]
+    # H naturally lives in [0, 1], but can occasionally go outside due to approximation
+    hurst_normalized = hurst.clip(0.0, 1.0)
+    
+    hurst_normalized.name = "hurst_exponent"
+    return hurst_normalized
+
+
+def feature_price_curvature(df: DataFrame) -> Series:
+    """
+    Compute Price Curvature (second derivative of trend) using SMA20 as reference.
+    
+    Curvature measures the acceleration of a trend:
+    - Positive curvature → trend is bending up (acceleration)
+    - Negative curvature → trend is bending down (deceleration/topping)
+    - Near 0 → linear-ish trend, not bending much
+    
+    This helps catch early reversals and blow-off moves.
+    
+    Calculation:
+    1. Use SMA20 as smooth reference line: T_t = SMA20(close)_t
+    2. First derivative (slope): S_t = T_t - T_{t-1}
+    3. Second derivative (curvature): C_t = S_t - S_{t-1}
+    4. Normalize: C_norm = clip(C_t / (close_t + ε), -0.05, 0.05)
+    
+    Normalization:
+    - Division by price makes it scale-invariant (comparable across tickers)
+    - Clipping to [-0.05, 0.05] limits insane spikes from gappy days
+    
+    Why it adds value:
+    - Distinguishes steady trends from accelerating/rolling-over ones
+    - Helps the model time entries inside an already-known trend
+    - Complements trend_residual, which measures deviation from a line, not curvature
+    - Very relevant for swing trading horizons
+    
+    Args:
+        df: Input DataFrame with 'close' column.
+    
+    Returns:
+        Series named 'price_curvature' containing normalized curvature values in [-0.05, 0.05].
+    """
+    close = _get_close_series(df)
+    
+    # Step 1: Calculate SMA20 as smooth reference line
+    sma20 = close.rolling(window=20, min_periods=1).mean()
+    
+    # Step 2: First derivative (slope) - 1-day change in SMA20
+    slope = sma20.diff(1)
+    
+    # Step 3: Second derivative (curvature) - 1-day change in slope
+    curvature = slope.diff(1)
+    
+    # Step 4: Normalize by price to make it scale-invariant
+    epsilon = 1e-10
+    curvature_normalized = curvature / (close + epsilon)
+    
+    # Clip to [-0.05, 0.05] to limit extreme spikes
+    curvature_normalized = curvature_normalized.clip(-0.05, 0.05)
+    
+    curvature_normalized.name = "price_curvature"
+    return curvature_normalized
+
+
+def feature_volatility_of_volatility(df: DataFrame) -> Series:
+    """
+    Compute Volatility-of-Volatility (VoV) - measures how unstable volatility itself is.
+    
+    VoV measures the variability of volatility, providing "meta volatility" information:
+    - Low VoV → calm, stable regime (signals behave more cleanly)
+    - High VoV → chaotic regime, risk of whipsaws/gaps/wild moves
+    
+    This tells the model whether volatility indicators are reliable or chaotic.
+    
+    Calculation:
+    1. Compute 21-day volatility: σ_21,t = std(r_{t-20}, ..., r_t)
+    2. Compute rolling std of volatility over 21 bars: VoV_t = std(σ_21,{t-20}, ..., σ_21,t)
+    3. Normalize by dividing by long-term average volatility: VoV_rel = VoV_t / mean(σ_21)
+    4. Clip to [0, 3]
+    
+    Normalization:
+    - Division by long-term average volatility makes it relative and comparable
+    - Clipping to [0, 3] limits extreme values
+    
+    Why it adds value:
+    - Tells the model whether volatility indicators are reliable or chaotic
+    - Helps risk-aware decision making (e.g., avoid super unstable regimes)
+    - Strong context feature when paired with ATR, BB width, TTM squeeze, volatility_ratio
+    
+    Args:
+        df: Input DataFrame with 'close' column.
+    
+    Returns:
+        Series named 'volatility_of_volatility' containing normalized VoV values in [0, 3].
+    """
+    close = _get_close_series(df)
+    
+    # Step 1: Compute 21-day volatility (same as feature_volatility_21d)
+    # Calculate 21-day rolling standard deviation of daily returns
+    vol_21 = close.pct_change().rolling(window=21, min_periods=1).std()
+    
+    # Step 2: Compute rolling std of volatility itself over 21 bars
+    # This measures how much volatility is changing
+    vov = vol_21.rolling(window=21, min_periods=1).std()
+    
+    # Step 3: Normalize by dividing by long-term average volatility
+    # Use a longer window (e.g., 252 days) for the long-term average
+    long_term_avg_vol = vol_21.rolling(window=252, min_periods=1).mean()
+    
+    # Avoid division by zero
+    epsilon = 1e-10
+    vov_relative = vov / (long_term_avg_vol + epsilon)
+    
+    # Step 4: Clip to [0, 3]
+    vov_normalized = vov_relative.clip(0.0, 3.0)
+    
+    vov_normalized.name = "volatility_of_volatility"
+    return vov_normalized
 
 
 # Ownership features removed - not consistent and cannot be trusted

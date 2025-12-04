@@ -40,10 +40,21 @@ from sklearn.metrics import (
 )
 from sklearn.dummy import DummyClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import make_pipeline
 from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
 from typing import Tuple, List, Dict, Optional
+
+# Import feature set manager
+try:
+    from feature_set_manager import (
+        get_feature_set_data_path,
+        get_train_features_config_path,
+        feature_set_exists,
+        DEFAULT_FEATURE_SET
+    )
+    HAS_FEATURE_SET_MANAGER = True
+except ImportError:
+    HAS_FEATURE_SET_MANAGER = False
+    DEFAULT_FEATURE_SET = "v1"
 
 # Try to import matplotlib for plotting (optional)
 try:
@@ -56,12 +67,14 @@ except ImportError:
 
 # ——— CONFIGURATION ————————————————————————————————————————————————
 PROJECT_ROOT = Path.cwd()
+# Default paths (will be overridden if feature_set is specified)
 DATA_DIR     = PROJECT_ROOT / "data" / "features_labeled"  # expects .parquet files
 MODEL_DIR    = PROJECT_ROOT / "models"
 MODEL_DIR.mkdir(exist_ok=True)
 MODEL_OUT    = MODEL_DIR / "xgb_classifier_selected_features.pkl"
 # Data split configuration
 # Option 1: More recent training (recommended for current market conditions)
+TRAIN_START  = None              # Start date for training (None = use all available data)
 TRAIN_END    = "2022-12-31"      # cut-off date (inclusive) for training
 VAL_END      = "2023-12-31"      # cut-off date (inclusive) for validation
 # Option 2: More recent training (uncomment to use)
@@ -70,7 +83,9 @@ VAL_END      = "2023-12-31"      # cut-off date (inclusive) for validation
 # Option 3: Even more recent (uncomment to use)
 # TRAIN_END    = "2021-12-31"      # Train on 2018-2021
 # VAL_END      = "2023-12-31"      # Validate on 2022-2023
-LABEL_COL    = "label_5d"        # target column name
+# Label column configuration
+# Default: auto-detect from data, or use --horizon/--label-col CLI args
+LABEL_COL    = None              # Will be auto-detected or set via CLI
 TRAIN_CFG    = PROJECT_ROOT / "config" / "train_features.yaml"
 # —————————————————————————————————————————————————————————————————————————
 
@@ -126,7 +141,7 @@ def load_data() -> pd.DataFrame:
     return pd.concat(parts, axis=0)
 
 
-def prepare(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, List[str]]:
+def prepare(df: pd.DataFrame, label_col: str) -> Tuple[pd.DataFrame, pd.Series, List[str]]:
     """
     Clean and split the raw DataFrame into X (features) and y (target).
 
@@ -136,7 +151,8 @@ def prepare(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, List[str]]:
     - Leaves only label and feature columns.
 
     Args:
-        df: DataFrame with LABEL_COL, raw prices, and feature columns.
+        df: DataFrame with label column, raw prices, and feature columns.
+        label_col: Name of the label column to use.
 
     Returns:
         X: DataFrame of selected feature columns.
@@ -147,7 +163,7 @@ def prepare(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, List[str]]:
     df_clean = df.replace([np.inf, -np.inf], np.nan).dropna().copy()
 
     # 2) Candidate feature names (exclude label & ticker)
-    feats = [c for c in df_clean.columns if c not in [LABEL_COL, "ticker"]]
+    feats = [c for c in df_clean.columns if c not in [label_col, "ticker"]]
 
     # 3) Exclude any forward-return columns (labels)
     forward_return_cols = {"5d_return", "10d_return"}
@@ -159,7 +175,7 @@ def prepare(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, List[str]]:
 
     # 5) Slice out X and y
     X = df_clean[feats].copy()
-    y = df_clean[LABEL_COL]
+    y = df_clean[label_col]
     
     # 6) Clip extreme values to prevent overflow (clip to reasonable range)
     # Clip to ±1e6 to prevent overflow issues while preserving signal
@@ -447,6 +463,12 @@ def main() -> None:
         help="Multiplier for class imbalance handling (default: 1.0). Increase to 2.0-3.0 to favor positive class more. Higher = more trades predicted."
     )
     parser.add_argument(
+        "--train-start",
+        type=str,
+        default=None,
+        help="Training data start date (YYYY-MM-DD). Default: None (use all available data from the beginning). Use to exclude older data (e.g., '2020-01-01' to start from 2020)."
+    )
+    parser.add_argument(
         "--train-end",
         type=str,
         default=None,
@@ -458,14 +480,102 @@ def main() -> None:
         default=None,
         help="Validation data end date (YYYY-MM-DD). Default: 2023-12-31."
     )
+    parser.add_argument(
+        "--horizon",
+        type=int,
+        default=None,
+        help="Trade horizon in days (e.g., 5, 30). Used to auto-detect label column (label_{horizon}d). If not specified, will auto-detect from data."
+    )
+    parser.add_argument(
+        "--label-col",
+        type=str,
+        default=None,
+        help="Label column name (e.g., 'label_5d', 'label_30d'). If not specified, will auto-detect from data."
+    )
+    parser.add_argument(
+        "--feature-set",
+        type=str,
+        default=None,
+        help=f"Feature set name (e.g., 'v1', 'v2'). If specified, automatically sets data directory and train config. Default: '{DEFAULT_FEATURE_SET}'"
+    )
+    parser.add_argument(
+        "--model-output",
+        type=str,
+        default=None,
+        help="Custom model output file path (e.g., 'models/my_custom_model.pkl'). If not specified, uses default naming based on feature set or 'xgb_classifier_selected_features.pkl'"
+    )
     args = parser.parse_args()
 
     start_time = time.time()
 
+    # Step 1.5: Handle feature set configuration
+    global DATA_DIR, TRAIN_CFG, MODEL_OUT
+    if args.feature_set:
+        if not HAS_FEATURE_SET_MANAGER:
+            raise ImportError("Feature set manager not available. Cannot use --feature-set argument.")
+        if not feature_set_exists(args.feature_set):
+            raise ValueError(f"Feature set '{args.feature_set}' does not exist. Use 'python src/manage_feature_sets.py list' to see available sets.")
+        
+        # Update paths based on feature set
+        DATA_DIR = get_feature_set_data_path(args.feature_set)
+        TRAIN_CFG = get_train_features_config_path(args.feature_set)
+        
+        # Update model output path to include feature set name (unless custom path specified)
+        if args.model_output is None:
+            MODEL_OUT = MODEL_DIR / f"xgb_classifier_selected_features_{args.feature_set}.pkl"
+        
+        print(f"\n=== USING FEATURE SET: {args.feature_set} ===")
+        print(f"Data directory: {DATA_DIR}")
+        print(f"Train config: {TRAIN_CFG}")
+        print(f"Model output: {MODEL_OUT}")
+        print("=" * 70)
+    elif HAS_FEATURE_SET_MANAGER:
+        # Use default feature set
+        DATA_DIR = get_feature_set_data_path(DEFAULT_FEATURE_SET)
+        TRAIN_CFG = get_train_features_config_path(DEFAULT_FEATURE_SET)
+    
+    # Handle custom model output path (overrides feature set naming)
+    if args.model_output:
+        # If relative path, assume it's in models/ directory
+        if not Path(args.model_output).is_absolute():
+            MODEL_OUT = MODEL_DIR / args.model_output
+        else:
+            MODEL_OUT = Path(args.model_output)
+        # Ensure .pkl extension
+        if not MODEL_OUT.suffix:
+            MODEL_OUT = MODEL_OUT.with_suffix('.pkl')
+        print(f"\n=== USING CUSTOM MODEL OUTPUT ===")
+        print(f"Model output: {MODEL_OUT}")
+        print("=" * 70)
+
     # Step 2: Load & prepare data
     print("Loading data...")
     df_all = load_data()
-    X_all, y_all, all_feats = prepare(df_all)
+    
+    # Step 2.5: Determine label column name
+    if args.label_col:
+        label_col = args.label_col
+        print(f"Using specified label column: {label_col}")
+    elif args.horizon:
+        label_col = f"label_{args.horizon}d"
+        print(f"Using label column from horizon: {label_col}")
+    else:
+        # Auto-detect label column (look for pattern label_*d)
+        label_cols = [col for col in df_all.columns if col.startswith("label_") and col.endswith("d")]
+        if not label_cols:
+            raise ValueError("No label column found. Expected pattern: 'label_{horizon}d' (e.g., 'label_5d', 'label_30d'). "
+                           "Use --horizon or --label-col to specify.")
+        if len(label_cols) > 1:
+            print(f"Warning: Multiple label columns found: {label_cols}")
+            print(f"Using first one: {label_cols[0]}")
+        label_col = label_cols[0]
+        print(f"Auto-detected label column: {label_col}")
+    
+    # Verify label column exists
+    if label_col not in df_all.columns:
+        raise ValueError(f"Label column '{label_col}' not found in data. Available columns: {list(df_all.columns)[:10]}...")
+    
+    X_all, y_all, all_feats = prepare(df_all, label_col)
 
     # Step 3: Load training feature flags
     if not TRAIN_CFG.exists():
@@ -497,12 +607,19 @@ def main() -> None:
     # Step 6: Train/Validation/Test split by date
     dates = pd.to_datetime(X.index)
     # Allow override of split dates via CLI
+    train_start_date = args.train_start if args.train_start else TRAIN_START
     train_end_date = args.train_end if args.train_end else TRAIN_END
     val_end_date = args.val_end if args.val_end else VAL_END
+    
     train_cutoff = pd.to_datetime(train_end_date)
     val_cutoff = pd.to_datetime(val_end_date)
     
+    # Build train mask: from train_start (or beginning) to train_end
     train_mask = dates <= train_cutoff
+    if train_start_date:
+        train_start = pd.to_datetime(train_start_date)
+        train_mask = train_mask & (dates >= train_start)
+    
     val_mask = (dates > train_cutoff) & (dates <= val_cutoff)
     test_mask = dates > val_cutoff
     
@@ -526,14 +643,11 @@ def main() -> None:
     dummy_auc = roc_auc_score(y_test, dummy_proba)
     print(f"DummyClassifier Test AUC: {dummy_auc:.4f}")
 
-    # Step 8: Baseline LogisticRegression (with scaling)
-    lr = make_pipeline(
-        StandardScaler(),
-        LogisticRegression(
-            class_weight="balanced",
-            max_iter=1000,
-            random_state=42
-        )
+    # Step 8: Baseline LogisticRegression (features already normalized)
+    lr = LogisticRegression(
+        class_weight="balanced",
+        max_iter=1000,
+        random_state=42
     )
     lr.fit(X_train, y_train)
     lr_proba = lr.predict_proba(X_test)[:, 1]
@@ -753,6 +867,17 @@ def main() -> None:
     # Step 12: Feature importance
     feature_importances = display_feature_importance(model, feats, top_n=20)
     
+    # Step 12.5: Export all feature importances to CSV
+    fi_csv_file = MODEL_DIR / "feature_importances_all.csv"
+    fi_df = pd.DataFrame([
+        {'feature': feat, 'importance': imp, 'rank': rank + 1}
+        for rank, (feat, imp) in enumerate(sorted(feature_importances.items(), key=lambda x: x[1], reverse=True))
+    ])
+    fi_df['importance_pct'] = (fi_df['importance'] / fi_df['importance'].sum() * 100).round(4)
+    fi_df['cumulative_pct'] = fi_df['importance_pct'].cumsum().round(2)
+    fi_df.to_csv(fi_csv_file, index=False)
+    print(f"\nAll {len(fi_df)} feature importances exported to: {fi_csv_file}")
+    
     # Step 12.5: Generate plots if requested
     plot_files = {}
     if args.plots:
@@ -791,7 +916,7 @@ def main() -> None:
             'best_score': float(model.best_score) if hasattr(model, 'best_score') else None
         }
     
-    # Save model with metadata
+    # Save model with metadata (features already normalized in pipeline)
     model_data = {
         "model": model,
         "features": feats,
@@ -799,7 +924,7 @@ def main() -> None:
     }
     joblib.dump(model_data, MODEL_OUT)
     
-    # Also save metadata as JSON for easy inspection
+    # Also save metadata as JSON for easy inspection (update if SHAP was computed)
     metadata_file = MODEL_DIR / "training_metadata.json"
     with open(metadata_file, 'w') as f:
         json.dump(training_metadata, f, indent=2)
@@ -829,6 +954,31 @@ def main() -> None:
             print("-" * 54)
             for rank, (f, imp) in enumerate(shap_fi[:20], 1):
                 print(f"{rank:<6} {f:<30} {imp:<18.6f}")
+            
+            # Export all SHAP importances to CSV
+            shap_csv_file = MODEL_DIR / "shap_importances_all.csv"
+            shap_df = pd.DataFrame([
+                {'feature': feat, 'shap_importance': imp, 'rank': rank + 1}
+                for rank, (feat, imp) in enumerate(shap_fi)
+            ])
+            shap_df['shap_importance_pct'] = (shap_df['shap_importance'] / shap_df['shap_importance'].sum() * 100).round(4)
+            shap_df['cumulative_pct'] = shap_df['shap_importance_pct'].cumsum().round(2)
+            shap_df.to_csv(shap_csv_file, index=False)
+            print(f"\nAll {len(shap_df)} SHAP importances exported to: {shap_csv_file}")
+            
+            # Also save SHAP values to metadata and update metadata file
+            shap_importances_dict = {feat: float(imp) for feat, imp in shap_fi}
+            training_metadata['shap_importances'] = shap_importances_dict
+            
+            # Update the model data with SHAP importances
+            model_data['metadata'] = training_metadata
+            joblib.dump(model_data, MODEL_OUT)
+            
+            # Update metadata JSON file
+            with open(metadata_file, 'w') as f:
+                json.dump(training_metadata, f, indent=2)
+            print(f"Metadata updated with SHAP importances: {metadata_file}")
+            
         except ImportError:
             print("SHAP library not installed. Install with: pip install shap")
 

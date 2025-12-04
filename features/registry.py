@@ -44,6 +44,7 @@ from features.technical import (
     feature_candle_lower_wick_pct,
     feature_higher_high_10d,
     feature_higher_low_10d,
+    feature_swing_low_10d,
     feature_trend_residual,
     feature_macd_histogram_normalized,
     feature_ppo_histogram,
@@ -65,6 +66,10 @@ from features.technical import (
     feature_cci20,
     feature_williams_r14,
     feature_kama_slope,
+    feature_fractal_dimension_index,
+    feature_hurst_exponent,
+    feature_price_curvature,
+    feature_volatility_of_volatility,
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -138,7 +143,9 @@ FEATURES = {
     "higher_high_10d":         feature_higher_high_10d,             # Higher high (10-day) binary flag
     # 31. Higher Low (10-day)
     "higher_low_10d":          feature_higher_low_10d,              # Higher low (10-day) binary flag
-    # 32. Trend Residual (Noise vs Trend)
+    # 32. Swing Low (10-day)
+    "swing_low_10d":           feature_swing_low_10d,               # Recent swing low (10-day) - lowest low over last 10 days
+    # 33. Trend Residual (Noise vs Trend)
     "trend_residual":          feature_trend_residual,               # Trend residual (noise vs trend) clipped to [-0.2, 0.2]
     # 33. MACD Histogram (Normalized)
     "macd_histogram_normalized": feature_macd_histogram_normalized,  # MACD histogram normalized by price: (macd_line - signal_line) / close
@@ -180,6 +187,14 @@ FEATURES = {
     "williams_r14":            feature_williams_r14,                 # Williams %R: range momentum/reversion oscillator normalized to [0, 1] - very sensitive to reversal points
     # 50. KAMA Slope (10-period)
     "kama_slope":              feature_kama_slope,                  # KAMA Slope: adaptive moving average slope normalized by price - adaptive trend strength, works better in choppy tickers
+    # 51. Fractal Dimension Index (100-period)
+    "fractal_dimension_index": feature_fractal_dimension_index,    # Fractal Dimension Index: measures price path roughness (1.0-1.3=smooth/trending, 1.6-1.8=choppy/noisy), normalized to [0, 1] - helps identify trend-friendly vs whipsaw environments
+    # 52. Hurst Exponent (100-period)
+    "hurst_exponent":            feature_hurst_exponent,            # Hurst Exponent: quantifies return persistence (H>0.5=trending/persistent, H<0.5=mean-reverting, H≈0.5=random walk), in [0, 1] - tells model if momentum should be trusted
+    # 53. Price Curvature (SMA20-based)
+    "price_curvature":          feature_price_curvature,            # Price Curvature: second derivative of trend (acceleration), positive=trend bending up, negative=trend bending down, normalized to [-0.05, 0.05] - helps catch early reversals and blow-off moves
+    # 54. Volatility-of-Volatility (VoV)
+    "volatility_of_volatility": feature_volatility_of_volatility,  # Volatility-of-Volatility: measures instability of volatility itself (low=stable regime, high=chaotic regime), normalized to [0, 3] - tells model if volatility indicators are reliable
 }
 
 def load_enabled_features(config_path: str) -> dict:
