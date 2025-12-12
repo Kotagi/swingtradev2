@@ -16,6 +16,7 @@ This script:
 """
 
 import argparse
+import sys
 import joblib
 import pandas as pd
 import numpy as np
@@ -23,8 +24,21 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 
+# Add project root and src to Python path
+PROJECT_ROOT = Path(__file__).parent.parent
+SRC_DIR = Path(__file__).parent
+sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(SRC_DIR))
+
+from utils.stop_loss_policy import (
+    StopLossConfig,
+    calculate_stop_loss_pct,
+    create_stop_loss_config_from_args,
+    summarize_adaptive_stops
+)
+
 # —— CONFIGURATION —— #
-PROJECT_ROOT = Path.cwd()
+# Use the PROJECT_ROOT already defined above
 DATA_DIR = PROJECT_ROOT / "data" / "features_labeled"
 MODEL_DIR = PROJECT_ROOT / "models"
 TICKERS_CSV = PROJECT_ROOT / "data" / "tickers" / "sp500_tickers.csv"
@@ -56,6 +70,7 @@ def backtest_strategy(
     position_size: float,
     return_threshold: float = None,
     stop_loss: float = None,
+    stop_loss_config: StopLossConfig = None,
     open_col: str = None,
     close_col: str = None
 ) -> pd.DataFrame:
@@ -68,13 +83,16 @@ def backtest_strategy(
         horizon: Maximum holding period in days.
         position_size: Dollar amount per trade.
         return_threshold: Target return threshold (e.g., 0.15 for 15%). If None, only uses time horizon.
-        stop_loss: Stop-loss threshold (e.g., -0.075 for -7.5%). If None, no stop-loss is used.
+        stop_loss: Legacy stop-loss threshold (e.g., -0.075 for -7.5%). If None, no stop-loss is used.
+                   DEPRECATED: Use stop_loss_config instead for adaptive stops.
+        stop_loss_config: StopLossConfig object for adaptive stop-loss behavior. If None and stop_loss is None,
+                         no stop-loss is used. If stop_loss is provided, creates a constant config.
         open_col: Name of open price column (auto-detected if None).
         close_col: Name of close price column (auto-detected if None).
 
     Returns:
         DataFrame of trades with columns: entry_date, entry_price, exit_date, 
-        exit_price, return, pnl, holding_days, exit_reason.
+        exit_price, return, pnl, holding_days, exit_reason, stop_loss_pct (if adaptive).
     """
     # Auto-detect column names (case-insensitive)
     if open_col is None:
@@ -82,11 +100,23 @@ def backtest_strategy(
     if close_col is None:
         close_col = "Close" if "Close" in df.columns else "close"
     
-    # Verify columns exist
+    # Auto-detect low column for stop loss gap handling
+    low_col = "Low" if "Low" in df.columns else ("low" if "low" in df.columns else None)
+    
+    # Verify required columns exist
     if open_col not in df.columns:
         raise KeyError(f"Open column '{open_col}' not found. Available columns: {list(df.columns)}")
     if close_col not in df.columns:
         raise KeyError(f"Close column '{close_col}' not found. Available columns: {list(df.columns)}")
+    
+    # Determine stop-loss configuration
+    # Priority: stop_loss_config > stop_loss (legacy) > None
+    if stop_loss_config is None and stop_loss is not None:
+        # Create constant config from legacy stop_loss parameter
+        stop_loss_config = StopLossConfig(
+            mode="constant",
+            constant_stop_loss_pct=abs(stop_loss)
+        )
     
     df_sorted = df.sort_index().copy()
     dates = df_sorted.index
@@ -105,6 +135,22 @@ def backtest_strategy(
         
         entry_price = row[open_col]
         entry_idx = i
+        
+        # Calculate stop-loss for this trade (per-trade calculation)
+        trade_stop_loss = None
+        trade_stop_loss_pct = None
+        trade_stop_loss_price = None  # Absolute stop loss price
+        trade_stop_metadata = {}
+        if stop_loss_config is not None:
+            # Calculate stop percentage using centralized policy
+            # Pass entry_price for swing_atr mode
+            trade_stop_loss_pct, trade_stop_metadata = calculate_stop_loss_pct(
+                row, stop_loss_config, entry_price=entry_price
+            )
+            # Convert to negative value for comparison with returns
+            trade_stop_loss = -trade_stop_loss_pct
+            # Calculate absolute stop loss price
+            trade_stop_loss_price = entry_price * (1 + trade_stop_loss)
         
         # Find exit: check each day until either threshold is hit or horizon is reached
         exit_date = None
@@ -125,14 +171,47 @@ def backtest_strategy(
                 break
             
             exit_date = dates[exit_idx]
-            exit_price = df_sorted.iloc[exit_idx][close_col]
+            exit_row = df_sorted.iloc[exit_idx]
+            day_close = exit_row[close_col]
+            
+            # Check if stop-loss is hit (handle gap-downs correctly)
+            if trade_stop_loss_price is not None:
+                # Get the day's open and low prices
+                day_open = exit_row[open_col]
+                day_low = exit_row[low_col] if low_col and low_col in exit_row.index else day_open
+                
+                # Priority 1: Check open price first (gap-down scenario)
+                if day_open < trade_stop_loss_price:
+                    # Stock gapped down below stop loss
+                    # In reality, stop order triggers at market open and gets filled at open price (slippage)
+                    exit_price = day_open
+                    exit_reason = "stop_loss"
+                    break
+                
+                # Priority 2: Check low price (intraday stop loss)
+                elif day_low < trade_stop_loss_price:
+                    # Stock traded below stop loss during the day
+                    # Stop order gets filled at the stop loss price
+                    exit_price = trade_stop_loss_price
+                    exit_reason = "stop_loss"
+                    break
+                
+                # Priority 3: Sanity check on close price
+                elif day_close < trade_stop_loss_price:
+                    # Close is below stop loss (shouldn't happen if low wasn't, but handle edge cases)
+                    exit_price = trade_stop_loss_price
+                    exit_reason = "stop_loss"
+                    break
+            
+            # If no stop loss hit, use close price for other exit conditions
+            exit_price = day_close
             
             # Calculate return so far
             current_return = (exit_price / entry_price) - 1
             
-            # Check if stop-loss is hit (exit early on large losses)
-            if stop_loss is not None and current_return <= stop_loss:
-                exit_reason = "stop_loss"
+            # Check if return threshold is reached
+            if return_threshold is not None and current_return >= return_threshold:
+                exit_reason = "target_reached"
                 break
             
             # Check if return threshold is reached
@@ -156,7 +235,7 @@ def backtest_strategy(
         if last_exit_date is None or exit_date > last_exit_date:
             last_exit_date = exit_date
         
-        trades.append({
+        trade_dict = {
             "entry_date": date,
             "entry_price": entry_price,
             "exit_date": exit_date,
@@ -165,7 +244,21 @@ def backtest_strategy(
             "pnl": pnl,
             "holding_days": holding_days,
             "exit_reason": exit_reason
-        })
+        }
+        
+        # Add stop_loss_pct if using adaptive stops
+        if trade_stop_loss_pct is not None:
+            trade_dict["stop_loss_pct"] = trade_stop_loss_pct
+        
+        # Add swing_atr metadata if available
+        if trade_stop_metadata.get('used_swing_low') is not None:
+            trade_dict["used_swing_low"] = trade_stop_metadata.get('used_swing_low', False)
+        if 'swing_distance_pct' in trade_stop_metadata:
+            trade_dict["swing_distance_pct"] = trade_stop_metadata.get('swing_distance_pct')
+        if 'buffer_pct' in trade_stop_metadata:
+            trade_dict["buffer_pct"] = trade_stop_metadata.get('buffer_pct')
+        
+        trades.append(trade_dict)
     
     if not trades:
         return pd.DataFrame()
@@ -437,6 +530,7 @@ def run_backtest(
     model_threshold: float = 0.5,
     strategy: str = "model",
     stop_loss: float = None,
+    stop_loss_config: StopLossConfig = None,
     scaler=None,
     features_to_scale: List[str] = None,
     test_start_date: str = None,
@@ -523,12 +617,25 @@ def run_backtest(
                 # Only enter when both model signal AND filters pass
                 df["entry_signal"] = df["entry_signal"] & filter_mask
             
-            # Calculate 2:1 risk-reward stop-loss if return_threshold is provided
-            calculated_stop_loss = None
-            if return_threshold is not None and stop_loss is None:
-                calculated_stop_loss = -abs(return_threshold) / 2  # 2:1 risk-reward ratio
-            elif stop_loss is not None:
-                calculated_stop_loss = stop_loss
+            # Determine stop-loss configuration
+            # Priority: stop_loss_config > stop_loss (legacy) > 2:1 risk-reward default
+            ticker_stop_loss_config = stop_loss_config
+            ticker_stop_loss = stop_loss
+            
+            if ticker_stop_loss_config is None:
+                # Create config from legacy parameters or defaults
+                if ticker_stop_loss is None and return_threshold is not None:
+                    # Default 2:1 risk-reward ratio
+                    ticker_stop_loss_config = StopLossConfig(
+                        mode="constant",
+                        constant_stop_loss_pct=abs(return_threshold) / 2
+                    )
+                elif ticker_stop_loss is not None:
+                    # Use legacy stop_loss parameter
+                    ticker_stop_loss_config = StopLossConfig(
+                        mode="constant",
+                        constant_stop_loss_pct=abs(ticker_stop_loss)
+                    )
             
             # Run backtest for this ticker
             trades = backtest_strategy(
@@ -537,7 +644,8 @@ def run_backtest(
                 horizon=horizon,
                 position_size=position_size,
                 return_threshold=return_threshold,
-                stop_loss=calculated_stop_loss
+                stop_loss=ticker_stop_loss,  # Legacy parameter (may be None)
+                stop_loss_config=ticker_stop_loss_config  # New parameter
             )
             
             if not trades.empty:
@@ -626,7 +734,44 @@ def main():
         "--stop-loss",
         type=float,
         default=None,
-        help="Stop-loss threshold as decimal (e.g., -0.075 for -7.5%%). If not specified and return-threshold is provided, uses 2:1 risk-reward (return_threshold / 2)."
+        help="Stop-loss threshold as decimal (e.g., -0.075 for -7.5%%). If not specified and return-threshold is provided, uses 2:1 risk-reward (return_threshold / 2). DEPRECATED: Use --stop-loss-mode and related args for adaptive stops."
+    )
+    parser.add_argument(
+        "--stop-loss-mode",
+        type=str,
+        choices=["constant", "adaptive_atr", "swing_atr"],
+        default=None,
+        help="Stop-loss mode: 'constant' (fixed), 'adaptive_atr' (ATR-based), or 'swing_atr' (swing low + ATR buffer). Default: 'constant' if --stop-loss is provided, otherwise uses 2:1 risk-reward."
+    )
+    parser.add_argument(
+        "--atr-stop-k",
+        type=float,
+        default=1.8,
+        help="ATR multiplier for adaptive stops (default: 1.8). Only used when --stop-loss-mode=adaptive_atr."
+    )
+    parser.add_argument(
+        "--atr-stop-min-pct",
+        type=float,
+        default=0.04,
+        help="Minimum stop distance for adaptive stops (default: 0.04 = 4%%). Only used when --stop-loss-mode=adaptive_atr."
+    )
+    parser.add_argument(
+        "--atr-stop-max-pct",
+        type=float,
+        default=0.10,
+        help="Maximum stop distance for adaptive stops (default: 0.10 = 10%%). Only used when --stop-loss-mode=adaptive_atr or swing_atr."
+    )
+    parser.add_argument(
+        "--swing-lookback-days",
+        type=int,
+        default=10,
+        help="Days to look back for swing low (default: 10). Only used when --stop-loss-mode=swing_atr."
+    )
+    parser.add_argument(
+        "--swing-atr-buffer-k",
+        type=float,
+        default=0.75,
+        help="ATR multiplier for swing_atr buffer (default: 0.75). Only used when --stop-loss-mode=swing_atr."
     )
     parser.add_argument(
         "--test-start-date",
@@ -657,8 +802,20 @@ def main():
     tickers = tickers_df.iloc[:, 0].astype(str).tolist()
     print(f"Loaded {len(tickers)} tickers")
     
-    # Run backtest
-    # Calculate 2:1 risk-reward stop-loss if return_threshold is provided
+    # Create stop-loss configuration
+    stop_loss_config = create_stop_loss_config_from_args(
+        stop_loss_mode=getattr(args, 'stop_loss_mode', None),
+        constant_stop_loss_pct=None,  # Will be determined from stop_loss or return_threshold
+        atr_stop_k=getattr(args, 'atr_stop_k', 1.8),
+        atr_stop_min_pct=getattr(args, 'atr_stop_min_pct', 0.04),
+        atr_stop_max_pct=getattr(args, 'atr_stop_max_pct', 0.10),
+        swing_lookback_days=getattr(args, 'swing_lookback_days', 10),
+        swing_atr_buffer_k=getattr(args, 'swing_atr_buffer_k', 0.75),
+        return_threshold=args.return_threshold,
+        legacy_stop_loss=getattr(args, 'stop_loss', None)
+    )
+    
+    # Legacy stop_loss_value for backward compatibility
     stop_loss_value = getattr(args, 'stop_loss', None)
     if stop_loss_value is None and args.return_threshold is not None:
         stop_loss_value = -abs(args.return_threshold) / 2  # 2:1 risk-reward ratio
@@ -667,8 +824,16 @@ def main():
     print(f"  Strategy: {args.strategy}")
     print(f"  Horizon: {args.horizon} days")
     print(f"  Return threshold: {args.return_threshold:.2%}")
-    if stop_loss_value is not None:
-        print(f"  Stop-Loss: {stop_loss_value:.2%} (2:1 risk-reward)")
+    print(f"  Stop-Loss Mode: {stop_loss_config.mode}")
+    if stop_loss_config.mode == "constant":
+        print(f"  Stop-Loss: {stop_loss_config.constant_stop_loss_pct:.2%}")
+    elif stop_loss_config.mode == "adaptive_atr":
+        print(f"  ATR Stop K: {stop_loss_config.atr_stop_k}")
+        print(f"  ATR Stop Range: {stop_loss_config.atr_stop_min_pct:.2%} - {stop_loss_config.atr_stop_max_pct:.2%}")
+    elif stop_loss_config.mode == "swing_atr":
+        print(f"  Swing Lookback Days: {stop_loss_config.swing_lookback_days}")
+        print(f"  Swing ATR Buffer K: {stop_loss_config.swing_atr_buffer_k}")
+        print(f"  Stop Range: {stop_loss_config.atr_stop_min_pct:.2%} - {stop_loss_config.atr_stop_max_pct:.2%}")
     print(f"  Position size: ${args.position_size:,.2f}")
     if args.strategy == "model":
         print(f"  Model threshold: {args.model_threshold:.2f}")
@@ -684,7 +849,8 @@ def main():
         features=features,
         model_threshold=args.model_threshold,
         strategy=args.strategy,
-        stop_loss=stop_loss_value,
+        stop_loss=stop_loss_value,  # Legacy parameter
+        stop_loss_config=stop_loss_config,  # New parameter
         scaler=scaler,
         features_to_scale=features_to_scale,
         test_start_date=args.test_start_date
@@ -700,8 +866,16 @@ def main():
     print(f"\nStrategy: {args.strategy}")
     print(f"Trade Window: {args.horizon} days")
     print(f"Return Threshold: {args.return_threshold:.2%}")
-    if stop_loss_value is not None:
-        print(f"Stop-Loss: {stop_loss_value:.2%} (2:1 risk-reward)")
+    print(f"Stop-Loss Mode: {stop_loss_config.mode}")
+    if stop_loss_config.mode == "constant":
+        print(f"Stop-Loss: {stop_loss_config.constant_stop_loss_pct:.2%}")
+    elif stop_loss_config.mode == "adaptive_atr":
+        print(f"ATR Stop K: {stop_loss_config.atr_stop_k}")
+        print(f"ATR Stop Range: {stop_loss_config.atr_stop_min_pct:.2%} - {stop_loss_config.atr_stop_max_pct:.2%}")
+    elif stop_loss_config.mode == "swing_atr":
+        print(f"Swing Lookback Days: {stop_loss_config.swing_lookback_days}")
+        print(f"Swing ATR Buffer K: {stop_loss_config.swing_atr_buffer_k}")
+        print(f"Stop Range: {stop_loss_config.atr_stop_min_pct:.2%} - {stop_loss_config.atr_stop_max_pct:.2%}")
     print(f"Position Size: ${args.position_size:,.2f}")
     print(f"\nBacktest Period: {metrics.get('date_range', 'N/A')}")
     print("\nPerformance Metrics:")
@@ -717,6 +891,32 @@ def main():
     print(f"  Average Holding Days: {metrics['avg_holding_days']:.1f}")
     print(f"  Max Concurrent Positions: {metrics.get('max_concurrent_positions', 0)}")
     print(f"  Max Capital Invested: ${metrics.get('max_capital_invested', 0.0):,.2f}")
+    
+    # Show adaptive stop-loss statistics if applicable
+    if stop_loss_config.mode in ["adaptive_atr", "swing_atr"] and not trades.empty and "stop_loss_pct" in trades.columns:
+        stop_stats = summarize_adaptive_stops(trades, mode=stop_loss_config.mode)
+        mode_name = "Adaptive ATR" if stop_loss_config.mode == "adaptive_atr" else "Swing ATR"
+        print(f"\n  {mode_name} Stop-Loss Statistics:")
+        if stop_stats["avg_stop_pct"] is not None:
+            print(f"    Average Stop Distance: {stop_stats['avg_stop_pct']:.2%}")
+            print(f"    Minimum Stop Distance: {stop_stats['min_stop_pct']:.2%}")
+            print(f"    Maximum Stop Distance: {stop_stats['max_stop_pct']:.2%}")
+            if stop_stats["stop_distribution"]:
+                print(f"    Stop Distance Distribution:")
+                for label, stats in stop_stats["stop_distribution"].items():
+                    print(f"      {label}: {stats['count']:,} trades ({stats['pct']:.1f}%)")
+        
+        # Show swing_atr-specific statistics
+        if stop_loss_config.mode == "swing_atr" and "swing_atr_stats" in stop_stats:
+            swing_stats = stop_stats["swing_atr_stats"]
+            print(f"\n    Swing ATR Details:")
+            print(f"      Trades Using Swing Low: {swing_stats.get('trades_using_swing_low', 0):,} ({swing_stats.get('swing_low_usage_pct', 0):.1f}%)")
+            print(f"      Trades Using Fallback: {swing_stats.get('trades_using_fallback', 0):,}")
+            if 'avg_swing_distance_pct' in swing_stats:
+                print(f"      Average Swing Distance: {swing_stats['avg_swing_distance_pct']:.2%}")
+                print(f"      Swing Distance Range: {swing_stats.get('min_swing_distance_pct', 0):.2%} - {swing_stats.get('max_swing_distance_pct', 0):.2%}")
+            if 'avg_buffer_pct' in swing_stats:
+                print(f"      Average ATR Buffer: {swing_stats['avg_buffer_pct']:.2%}")
     
     # Show exit reason breakdown if available
     if not trades.empty and 'exit_reason' in trades.columns:
