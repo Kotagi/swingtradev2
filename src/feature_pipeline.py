@@ -6,8 +6,8 @@ Parallelized feature pipeline with optional full-refresh mode:
   - Reads cleaned Parquet files
   - By default, skips any ticker whose output is up-to-date (caching)
   - With --full, forces recomputation of all tickers
-  - Computes enabled features & labels future returns
-  - Writes the resulting feature/label Parquet files
+  - Computes enabled features (labels are now calculated during training)
+  - Writes the resulting feature Parquet files
 Uses Joblib to distribute work across all CPU cores on Windows.
 """
 
@@ -26,10 +26,16 @@ sys.path.insert(0, str(SRC_DIR))
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
+try:
+    from tqdm.auto import tqdm
+    from tqdm.contrib.concurrent import process_map
+except ImportError:
+    from tqdm import tqdm
+    process_map = None
 
 from utils.logger import setup_logger
 from features.registry import load_enabled_features
-from utils.labeling import label_future_return
+# Labels are now calculated during training, not during feature engineering
 from feature_set_manager import (
     get_feature_set_config_path,
     get_feature_set_data_path,
@@ -131,8 +137,6 @@ def process_file(
     file_path: Path,
     output_path: Path,
     enabled: dict,
-    label_horizon: int,
-    label_threshold: float,
     log_file: str,
     full_refresh: bool
 ) -> Tuple[str, Optional[str], Dict]:
@@ -141,10 +145,8 @@ def process_file(
 
     Args:
         file_path: Path to cleaned input Parquet.
-        output_path: Directory for feature/label Parquets.
+        output_path: Directory for feature Parquets.
         enabled: Mapping of feature names to functions.
-        label_horizon: Days ahead for label generation.
-        label_threshold: Threshold for positive label.
         log_file: Shared log file path.
         full_refresh: If True, ignore existing outputs and recompute everything.
 
@@ -189,29 +191,22 @@ def process_file(
         stats['features_failed'] = len([v for v in validation_issues.values() if 'Computation error' in str(v)])
         stats['validation_issues'] = sum(len(issues) for issues in validation_issues.values())
 
-        # 3) Generate binary labels
-        close_col = 'Close' if 'Close' in df_feat.columns else 'close'
-        high_col = 'High' if 'High' in df_feat.columns else 'high'
-        df_labeled = label_future_return(
-            df_feat,
-            close_col=close_col,
-            high_col=high_col,
-            horizon=label_horizon,
-            threshold=label_threshold,
-            label_name=f"label_{label_horizon}d"
-        )
-        stats['rows_after'] = len(df_labeled)
+        # 3) Labels are now calculated during training, not during feature engineering
+        # Features are ready - no label generation needed
+        stats['rows_after'] = len(df_feat)
 
         # 4) Final validation: check for excessive NaNs in final output
-        feature_cols = [col for col in df_labeled.columns if col not in ['open', 'high', 'low', 'close', 'volume', f'label_{label_horizon}d']]
+        # Exclude price columns but keep all feature columns
+        price_cols = ['open', 'high', 'low', 'close', 'volume', 'adj close', 'Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']
+        feature_cols = [col for col in df_feat.columns if col not in price_cols]
         if feature_cols:
-            nan_counts = df_labeled[feature_cols].isna().sum(axis=1)
+            nan_counts = df_feat[feature_cols].isna().sum(axis=1)
             high_nan_rows = (nan_counts > len(feature_cols) * 0.5).sum()
             if high_nan_rows > 0:
                 logger.warning(f"{ticker}: {high_nan_rows} rows with >50% missing features")
 
-        # 5) Write output Parquet
-        df_labeled.to_parquet(out_file, index=True)
+        # 5) Write output Parquet (features only, no labels)
+        df_feat.to_parquet(out_file, index=True)
         logger.debug(f"Finished {ticker} -> {out_file}")
         return (file_path.name, None, stats)
 
@@ -225,19 +220,17 @@ def main(
     input_dir: str,
     output_dir: str,
     config_path: str,
-    label_horizon: int,
-    label_threshold: float,
     full_refresh: bool
 ) -> None:
     """
     Entry point: parallelize processing with optional full-refresh.
+    
+    Note: Labels are now calculated during training, not during feature engineering.
 
     Args:
         input_dir: Directory of cleaned Parquet files.
-        output_dir: Directory for feature-labeled Parquets.
+        output_dir: Directory for feature Parquets.
         config_path: Path to features.yaml toggle file.
-        label_horizon: Days ahead for labels.
-        label_threshold: Threshold for positive labels.
         full_refresh: If True, recompute all tickers regardless of cache.
     """
     start_time = time.perf_counter()
@@ -264,21 +257,52 @@ def main(
     # Collect all file paths for progress tracking
     file_list = list(files)
     
-    # Parallel dispatch with full_refresh flag
-    # Note: tqdm doesn't work well with joblib Parallel, so we'll track progress differently
+    # Parallel dispatch with full_refresh flag and progress bar
     logger.info("Starting parallel feature computation...")
-    results = Parallel(
-        n_jobs=-1,
-        backend="multiprocessing",
-        verbose=0  # Reduce verbosity, we'll use our own progress tracking
-    )(
-        delayed(process_file)(
-            f, output_path, enabled,
-            label_horizon, label_threshold,
-            master_log, full_refresh
-        )
-        for f in file_list
-    )
+    
+    # Process in batches for more real-time progress updates
+    # Smaller batches = more frequent updates, but slightly more overhead
+    batch_size = max(1, min(10, len(file_list) // 20))  # Process 5% at a time, or at least 10 files
+    results = []
+    stats_tracker = {'success': 0, 'skipped': 0, 'failed': 0}
+    
+    # Create progress bar
+    with tqdm(total=len(file_list), desc="Building features", unit="ticker", ncols=100,
+              bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}') as pbar:
+        
+        # Process files in batches for real-time progress updates
+        for i in range(0, len(file_list), batch_size):
+            batch = file_list[i:i + batch_size]
+            
+            # Process this batch in parallel
+            batch_results = Parallel(
+                n_jobs=-1,
+                backend="multiprocessing",
+                verbose=0
+            )(
+                delayed(process_file)(
+                    f, output_path, enabled,
+                    master_log, full_refresh
+                )
+                for f in batch
+            )
+            
+            # Update progress bar as we process batch results
+            for result in batch_results:
+                fn, err, stats = result
+                status = stats.get('status', 'success')
+                
+                if status == 'skipped':
+                    stats_tracker['skipped'] += 1
+                elif err:
+                    stats_tracker['failed'] += 1
+                else:
+                    stats_tracker['success'] += 1
+                
+                # Update progress bar with current stats
+                pbar.set_postfix_str(f"S:{stats_tracker['success']} F:{stats_tracker['failed']} X:{stats_tracker['skipped']}")
+                pbar.update(1)
+                results.append(result)
 
     # Process results and collect statistics
     failures = []
@@ -345,8 +369,7 @@ if __name__ == "__main__":
         type=str,
         help=f"Feature set name (e.g., 'v1', 'v2'). If specified, automatically sets --config and --output-dir. Default: '{DEFAULT_FEATURE_SET}'"
     )
-    parser.add_argument("--horizon",    type=int,   default=5,   help="Label days")
-    parser.add_argument("--threshold",  type=float, default=0.0, help="Return thresh")
+    # Labels are now calculated during training, not during feature engineering
     parser.add_argument(
         "--full", "--force-full",
         action="store_true",
@@ -386,8 +409,6 @@ if __name__ == "__main__":
         input_dir=input_dir,
         output_dir=output_dir,
         config_path=config_path,
-        label_horizon=args.horizon,
-        label_threshold=args.threshold,
         full_refresh=args.full_refresh
     )
 

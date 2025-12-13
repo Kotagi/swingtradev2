@@ -120,19 +120,17 @@ python src/clean_data.py --raw-dir data/raw --clean-dir data/clean
 ---
 
 ### **Step 3: Build Features**
-**Purpose:** Compute technical indicators and create labels based on your trading parameters
+**Purpose:** Compute technical indicators (labels are now calculated during training)
 
 **Command:**
 ```bash
-python src/swing_trade_app.py features --horizon 5 --threshold 0.05
+python src/swing_trade_app.py features
 ```
 
 **All Available Arguments:**
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `--horizon` | `5` | Trade window in days (e.g., 5 = hold for 5 days) |
-| `--threshold` | `0.0` | Minimum return threshold (e.g., 0.05 = 5% return) |
 | `--config` | `config/features.yaml` | Feature configuration file path |
 | `--input-dir` | `data/clean` | Input directory containing cleaned Parquet files |
 | `--output-dir` | `data/features_labeled` | Output directory for feature Parquet files |
@@ -146,15 +144,15 @@ python src/swing_trade_app.py features --horizon 5 --threshold 0.05
 - **Caching:** Skips up-to-date files automatically (use `--full` to force recompute)
 - **Performance optimized:** Uses efficient DataFrame concatenation (no fragmentation warnings)
 - Loads cleaned data from `data/clean/`
-- Computes **53 technical indicators** across multiple categories
+- Computes **57 technical indicators** across multiple categories
 - **Data leakage prevention:** Forward-looking features removed from registry
-- Creates binary labels: 1 if future return > threshold, else 0
-- Saves feature + label data to `data/features_labeled/`
+- **Note:** Labels are no longer created during feature engineering. They are calculated on-the-fly during training based on the horizon and return threshold specified in the training step.
+- Saves feature data to `data/features_labeled/`
 - **Summary statistics:** Reports features computed, validation issues, processing time
 
 **Output:** Feature Parquet files in `data/features_labeled/` (one per ticker)
 
-**Key Features Computed (53 total):**
+**Key Features Computed (57 total):**
 
 **Price Features (3):**
 - **price**: Raw closing price (for filtering, not ML input)
@@ -184,7 +182,7 @@ python src/swing_trade_app.py features --horizon 5 --threshold 0.05
 - **sma200_slope**: 10-day change in SMA200 / close clipped to [-0.1, 0.1] - long-term momentum
 - **kama_slope**: KAMA (Kaufman Adaptive Moving Average) slope normalized by price, clipped to [-0.1, 0.1] - adaptive trend strength, works better in choppy tickers
 
-**Volatility Features (7):**
+**Volatility Features (8):**
 - **volatility_5d**: 5-day rolling std of returns clipped to [0, 0.15] - short-term volatility
 - **volatility_21d**: 21-day rolling std of returns clipped to [0, 0.15] - medium-term volatility
 - **volatility_ratio**: Volatility ratio (vol5/vol21) clipped to [0, 2] - identifies volatility expansion/compression regimes, helps differentiate choppy vs trending markets
@@ -192,6 +190,7 @@ python src/swing_trade_app.py features --horizon 5 --threshold 0.05
 - **bollinger_band_width**: Log-normalized BB width (log1p((upper-lower)/mid)) - volatility compression/expansion, predicts breakouts
 - **ttm_squeeze_on**: Binary flag (0/1) - TTM Squeeze condition (BB inside KC) - volatility contraction, #1 breakout indicator
 - **ttm_squeeze_momentum**: Normalized momentum (close - SMA20) / close - momentum direction during squeeze
+- **volatility_of_volatility**: Measures instability of volatility itself (low=stable regime, high=chaotic regime), normalized to [0, 3] - tells model if volatility indicators are reliable
 
 **Volume Features (5):**
 - **log_volume**: Log-transformed volume (log1p(volume)) - normalized volume
@@ -225,16 +224,19 @@ python src/swing_trade_app.py features --horizon 5 --threshold 0.05
 - **donchian_position**: Position within Donchian channel (20-period) in [0, 1] range - breakout structure
 - **donchian_breakout**: Binary flag (0/1) - close > donchian_high_20 - breakout detection
 
-**Trend Features (5):**
+**Trend Features (8):**
 - **trend_residual**: Deviation from linear trend (50-day regression) clipped to [-0.2, 0.2] - noise vs trend
 - **adx14**: ADX (14-period) normalized to [0, 1] range (adx/100) - trend strength independent of direction, fills gap in trend strength measurement
 - **aroon_up**: Aroon Up (25-period) normalized to [0, 1] range - days since highest high, uptrend maturity (fresh/maturing/exhausted)
 - **aroon_down**: Aroon Down (25-period) normalized to [0, 1] range - days since lowest low, downtrend maturity (starting/ending)
 - **aroon_oscillator**: Aroon Oscillator (25-period) normalized to [0, 1] range - trend dominance indicator (aroon_up - aroon_down), net trend pressure, helps identify early trend reversals
+- **fractal_dimension_index**: Measures price path roughness (1.0-1.3=smooth/trending, 1.6-1.8=choppy/noisy), normalized to [0, 1] - helps identify trend-friendly vs whipsaw environments
+- **hurst_exponent**: Quantifies return persistence (H>0.5=trending/persistent, H<0.5=mean-reverting, H≈0.5=random walk), in [0, 1] - tells model if momentum should be trusted
+- **price_curvature**: Second derivative of trend (acceleration), positive=trend bending up, negative=trend bending down, normalized to [-0.05, 0.05] - helps catch early reversals and blow-off moves
 
 **Feature Organization:**
 - Features are organized by category: price, returns, 52-week, moving averages, volatility, volume, momentum, market context, candlestick, price action, and trend
-- All 53 features are currently enabled in `config/features.yaml`
+- All 57 features are currently enabled in `config/features.yaml`
 - See `FEATURE_GUIDE.md` for complete feature documentation including:
   - Detailed calculation methods for each feature
   - Normalization techniques used
@@ -246,7 +248,7 @@ python src/swing_trade_app.py features --horizon 5 --threshold 0.05
 
 **Performance Notes:**
 - Feature computation is optimized with efficient DataFrame operations
-- Processing time scales with number of features and tickers (expect ~1-2 minutes for 493 tickers with 53 features)
+- Processing time scales with number of features and tickers (expect ~1-2 minutes for 493 tickers with 57 features)
 
 ---
 
@@ -299,8 +301,9 @@ python src/swing_trade_app.py train --train-start 2018-01-01 --train-end 2021-12
 | `--train-start` | `None` (use all available) | Training data start date (YYYY-MM-DD). Default: None (use all available data from the beginning). Use to exclude older data (e.g., '2020-01-01' to start from 2020) |
 | `--train-end` | `None` (defaults to `2022-12-31`) | Training data end date (YYYY-MM-DD). Use more recent dates (e.g., 2020-12-31) for recent market patterns |
 | `--val-end` | `None` (defaults to `2023-12-31`) | Validation data end date (YYYY-MM-DD) |
-| `--horizon` | `None` (auto-detected) | Trade horizon in days (e.g., 5, 30). Used to auto-detect label column (label_{horizon}d) |
-| `--label-col` | `None` (auto-detected) | Label column name (e.g., 'label_5d', 'label_30d'). Auto-detected if not specified |
+| `--horizon` | `None` (auto-detected) | Trade horizon in trading days (e.g., 5, 30). Used for on-the-fly label calculation during training |
+| `--return-threshold` | `None` | Return threshold for label calculation (as decimal, e.g., 0.05 for 5%). Used for on-the-fly label calculation during training |
+| `--label-col` | `None` (auto-detected) | Label column name (e.g., 'label_5d', 'label_30d'). Auto-detected if not specified. **Note:** Labels are now calculated during training, not during feature engineering |
 | `--feature-set` | `None` (defaults to 'v1') | Feature set name (e.g., 'v1', 'v2'). If specified, automatically sets data directory and train config |
 | `--model-output` | `None` (auto-named) | Custom model output file path (e.g., 'models/my_custom_model.pkl' or 'my_custom_model.pkl'). If not specified, uses default naming based on feature set or 'xgb_classifier_selected_features.pkl' |
 
@@ -310,6 +313,7 @@ python src/swing_trade_app.py train --train-start 2018-01-01 --train-end 2021-12
   - Validation: 2023-01-01 to 2023-12-31 (for early stopping)
   - Test: 2024-01-01 onwards
 - Loads all feature data from `data/features_labeled/`
+- **Calculates labels on-the-fly:** Creates binary labels based on `--horizon` (trading days) and `--return-threshold` before data preparation. Labels are computed using future returns, not pre-computed during feature engineering.
 - Filters features based on `config/train_features.yaml`
 - **Feature normalization/scaling:**
   - Automatically identifies which features need scaling vs those already normalized
@@ -364,12 +368,7 @@ python src/swing_trade_app.py train --train-start 2018-01-01 --train-end 2021-12
 
 **Command:**
 ```bash
-python src/swing_trade_app.py backtest \
-  --horizon 5 \
-  --return-threshold 0.05 \
-  --strategy model \
-  --model-threshold 0.5 \
-  --position-size 1000
+python src/swing_trade_app.py backtest --horizon 5 --return-threshold 0.05 --strategy model --model-threshold 0.5 --position-size 1000
 ```
 
 **All Available Arguments:**
@@ -382,7 +381,11 @@ python src/swing_trade_app.py backtest \
 | `--model` | `models/xgb_classifier_selected_features.pkl` | Path to trained model (required for model strategy) |
 | `--model-threshold` | `0.5` | Probability threshold for model signals (0.0-1.0) |
 | `--position-size` | `1000.0` | Position size per trade in dollars |
-| `--stop-loss` | `None` (auto: 2:1 risk-reward) | Stop-loss threshold as decimal (e.g., -0.075 for -7.5%). If not specified and return-threshold is provided, uses 2:1 risk-reward (return_threshold / 2) |
+| `--stop-loss` | `None` (auto: 2:1 risk-reward) | Stop-loss threshold as decimal (e.g., -0.075 for -7.5%). If not specified and return-threshold is provided, uses 2:1 risk-reward (return_threshold / 2). **DEPRECATED:** Use `--stop-loss-mode` and related args for adaptive stops. |
+| `--stop-loss-mode` | `None` (auto: constant) | Stop-loss mode: `constant` (fixed percentage) or `adaptive_atr` (ATR-based per-trade stops) |
+| `--atr-stop-k` | `1.8` | ATR multiplier for adaptive stops. Only used when `--stop-loss-mode=adaptive_atr`. Formula: `stop_pct = clamp(atr_stop_k * atr14_normalized, atr_stop_min_pct, atr_stop_max_pct)` |
+| `--atr-stop-min-pct` | `0.04` | Minimum stop distance for adaptive stops (e.g., 0.04 = 4%). Only used when `--stop-loss-mode=adaptive_atr` |
+| `--atr-stop-max-pct` | `0.10` | Maximum stop distance for adaptive stops (e.g., 0.10 = 10%). Only used when `--stop-loss-mode=adaptive_atr` |
 | `--output` | `None` | Optional CSV file to save trades |
 | `--data-dir` | `data/features_labeled` | Directory containing feature Parquet files |
 | `--tickers-file` | `data/tickers/sp500_tickers.csv` | Path to CSV file with ticker symbols |
@@ -396,10 +399,37 @@ python src/swing_trade_app.py backtest \
   - Exit at return threshold (if reached)
   - Exit at stop-loss (2:1 risk-reward by default, configurable)
   - Exit at time horizon (if neither threshold reached)
+- **Stop-loss modes:**
+  - **Constant mode** (default): Uses a fixed stop-loss percentage for all trades (e.g., -7.5%)
+  - **Adaptive ATR mode**: Calculates per-trade stop-loss based on ATR (Average True Range) at entry time
+    - Formula: `stop_pct = clamp(atr_stop_k * atr14_normalized, atr_stop_min_pct, atr_stop_max_pct)`
+    - Example: If ATR is 1.5% of price and `atr_stop_k=1.8`, stop = 2.7% → clamped to min 4% → final stop = 4%
+    - Adapts to volatility: tighter stops for low-volatility stocks, wider stops for high-volatility stocks
 - Prevents overlapping trades (only one position per ticker at a time)
 - Calculates returns and P&L for each trade
 - Tracks exit reasons (target_reached, stop_loss, time_limit, end_of_data)
 - Aggregates performance metrics
+
+**Stop-Loss Examples:**
+```bash
+# Constant stop-loss (traditional, 7.5% fixed)
+python src/swing_trade_app.py backtest --horizon 30 --return-threshold 0.15 --stop-loss -0.075
+
+# Adaptive ATR-based stops (default settings: k=1.8, min=4%, max=10%)
+python src/swing_trade_app.py backtest --horizon 30 --return-threshold 0.15 --stop-loss-mode adaptive_atr
+
+# Adaptive ATR with tighter stops (k=1.5, min=3%, max=8%) - Good for lower volatility environments or more conservative trading
+python src/swing_trade_app.py backtest --horizon 30 --return-threshold 0.15 --stop-loss-mode adaptive_atr --atr-stop-k 1.5 --atr-stop-min-pct 0.03 --atr-stop-max-pct 0.08
+
+# Adaptive ATR with wider stops (k=2.2, min=5%, max=12%) - Good for higher volatility stocks or more aggressive risk tolerance
+python src/swing_trade_app.py backtest --horizon 30 --return-threshold 0.15 --stop-loss-mode adaptive_atr --atr-stop-k 2.2 --atr-stop-min-pct 0.05 --atr-stop-max-pct 0.12
+
+# Adaptive ATR with very tight range (k=1.8, min=4%, max=6%) - Forces stops to be between 4-6% regardless of ATR
+python src/swing_trade_app.py backtest --horizon 30 --return-threshold 0.15 --stop-loss-mode adaptive_atr --atr-stop-k 1.8 --atr-stop-min-pct 0.04 --atr-stop-max-pct 0.06
+
+# Adaptive ATR with higher multiplier (k=2.5) - Gives more room for volatile stocks while still respecting min/max bounds
+python src/swing_trade_app.py backtest --horizon 30 --return-threshold 0.15 --stop-loss-mode adaptive_atr --atr-stop-k 2.5 --atr-stop-min-pct 0.04 --atr-stop-max-pct 0.10
+```
 
 **Output:** 
 - Console metrics: Win rate, P&L, Sharpe ratio, etc.
@@ -417,6 +447,26 @@ python src/swing_trade_app.py backtest \
 - Average Holding Days
 - Exit Reasons Breakdown (target_reached, stop_loss, time_limit, end_of_data)
 - Time Limit Trades Analysis (win/loss breakdown, return distribution)
+- **Adaptive Stop-Loss Statistics** (when using `--stop-loss-mode=adaptive_atr`):
+  - Average stop distance used
+  - Minimum and maximum stop distances
+  - Stop distance distribution (buckets: 0-4%, 4-5%, 5-7%, 7-10%, >10%)
+
+**Choosing Adaptive Stop-Loss Settings:**
+
+| Setting | ATR K | Min % | Max % | Use Case |
+|---------|-------|-------|-------|----------|
+| **Conservative** | 1.5 | 3% | 8% | Lower volatility stocks, tighter risk control, shorter horizons |
+| **Default** | 1.8 | 4% | 10% | Balanced approach, works well for most swing trades |
+| **Aggressive** | 2.2 | 5% | 12% | Higher volatility stocks, more room for price movement |
+| **Very Aggressive** | 2.5 | 5% | 15% | Very volatile stocks, longer horizons, higher risk tolerance |
+
+**Guidelines:**
+- **Lower ATR K (1.5-1.8)**: Tighter stops, better for low-volatility stocks or conservative traders
+- **Higher ATR K (2.0-2.5)**: Wider stops, better for high-volatility stocks or aggressive traders
+- **Tighter min/max range**: Forces stops into narrower band (e.g., 4-6%), less adaptation
+- **Wider min/max range**: Allows more adaptation (e.g., 3-12%), more responsive to volatility
+- **Start with defaults** (k=1.8, min=4%, max=10%) and adjust based on backtest results
 
 ---
 
@@ -425,11 +475,14 @@ python src/swing_trade_app.py backtest \
 
 **Command:**
 ```bash
-python src/analyze_stop_losses.py \
-  --horizon 30 \
-  --return-threshold 0.15 \
-  --model-threshold 0.80 \
-  --stop-loss -0.075
+# Constant stop-loss (traditional)
+python src/analyze_stop_losses.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss -0.075
+
+# Adaptive ATR-based stops (default settings)
+python src/analyze_stop_losses.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss-mode adaptive_atr
+
+# Adaptive ATR with custom settings
+python src/analyze_stop_losses.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss-mode adaptive_atr --atr-stop-k 2.0 --atr-stop-min-pct 0.05 --atr-stop-max-pct 0.12
 ```
 
 **All Available Arguments:**
@@ -439,7 +492,11 @@ python src/analyze_stop_losses.py \
 | `--horizon` | `30` | Trade window in days (for running backtest if trades-csv not provided, must match features) |
 | `--return-threshold` | `0.15` | Return threshold (for running backtest if trades-csv not provided, must match features) |
 | `--model-threshold` | `0.85` | Model probability threshold (for running backtest if trades-csv not provided) |
-| `--stop-loss` | `None` (auto: 2:1 risk-reward) | Stop-loss threshold (e.g., -0.075 for -7.5%, for running backtest if trades-csv not provided) |
+| `--stop-loss` | `None` (auto: 2:1 risk-reward) | Stop-loss threshold (e.g., -0.075 for -7.5%, for running backtest if trades-csv not provided). **DEPRECATED:** Use `--stop-loss-mode` and related args for adaptive stops. |
+| `--stop-loss-mode` | `None` (auto: constant) | Stop-loss mode: `constant` (fixed) or `adaptive_atr` (ATR-based per-trade stops) |
+| `--atr-stop-k` | `1.8` | ATR multiplier for adaptive stops. Only used when `--stop-loss-mode=adaptive_atr` |
+| `--atr-stop-min-pct` | `0.04` | Minimum stop distance for adaptive stops (e.g., 0.04 = 4%). Only used when `--stop-loss-mode=adaptive_atr` |
+| `--atr-stop-max-pct` | `0.10` | Maximum stop distance for adaptive stops (e.g., 0.10 = 10%). Only used when `--stop-loss-mode=adaptive_atr` |
 | `--trades-csv` | `None` | CSV file with existing backtest trades (if not provided, will run backtest) |
 | `--use-validation` | `True` | Use validation data (2023) for analysis instead of test data |
 | `--train-end` | `2022-12-31` | Training data end date (YYYY-MM-DD) |
@@ -487,25 +544,26 @@ python src/analyze_stop_losses.py \
 
 **Command:**
 ```bash
-# Use default filters (from stop-loss analysis)
-python src/apply_entry_filters.py \
-  --horizon 30 \
-  --return-threshold 0.15 \
-  --model-threshold 0.80 \
-  --stop-loss -0.075
+# Constant stop-loss with default filters (traditional)
+python src/apply_entry_filters.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss -0.075
 
-# Disable timing filters
-python src/apply_entry_filters.py \
-  --horizon 30 \
-  --return-threshold 0.15 \
-  --no-timing-filters
+# Adaptive ATR-based stops with default filters (recommended)
+python src/apply_entry_filters.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss-mode adaptive_atr
 
-# Add custom filters
-python src/apply_entry_filters.py \
-  --horizon 30 \
-  --return-threshold 0.15 \
-  --custom-filter rsi_slope ">" 0.5 \
-  --custom-filter market_correlation_20d ">" 0.6
+# Adaptive ATR with tighter stops (conservative: k=1.5, min=3%, max=8%)
+python src/apply_entry_filters.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss-mode adaptive_atr --atr-stop-k 1.5 --atr-stop-min-pct 0.03 --atr-stop-max-pct 0.08
+
+# Adaptive ATR with wider stops (aggressive: k=2.2, min=5%, max=12%)
+python src/apply_entry_filters.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss-mode adaptive_atr --atr-stop-k 2.2 --atr-stop-min-pct 0.05 --atr-stop-max-pct 0.12
+
+# Disable timing filters with adaptive stops
+python src/apply_entry_filters.py --horizon 30 --return-threshold 0.15 --stop-loss-mode adaptive_atr --no-timing-filters
+
+# Add custom filters with adaptive stops
+python src/apply_entry_filters.py --horizon 30 --return-threshold 0.15 --stop-loss-mode adaptive_atr --atr-stop-k 1.8 --custom-filter rsi_slope ">" 0.5 --custom-filter market_correlation_20d ">" 0.6
+
+# Conservative adaptive stops with custom filters
+python src/apply_entry_filters.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss-mode adaptive_atr --atr-stop-k 1.5 --atr-stop-min-pct 0.03 --atr-stop-max-pct 0.07 --custom-filter daily_return ">" -0.02 --custom-filter higher_low_10d ">" 0.43
 ```
 
 **All Available Arguments:**
@@ -569,26 +627,13 @@ python src/apply_entry_filters.py \
 **Command:**
 ```bash
 # Basic identification
-python src/swing_trade_app.py identify \
-  --min-probability 0.6 \
-  --top-n 20 \
-  --output current_opportunities.csv
+python src/swing_trade_app.py identify --min-probability 0.6 --top-n 20 --output current_opportunities.csv
 
 # With recommended filters (reduces false positives)
-python src/identify_trades.py \
-  --min-probability 0.6 \
-  --top-n 20 \
-  --use-recommended-filters \
-  --output current_opportunities.csv
+python src/identify_trades.py --min-probability 0.6 --top-n 20 --use-recommended-filters --output current_opportunities.csv
 
 # With custom filters
-python src/identify_trades.py \
-  --min-probability 0.6 \
-  --top-n 20 \
-  --custom-filter candle_body_pct ">" -10 \
-  --custom-filter close_position_in_range ">" 0.40 \
-  --custom-filter weekly_rsi_14w "<" 42 \
-  --output current_opportunities.csv
+python src/identify_trades.py --min-probability 0.6 --top-n 20 --custom-filter candle_body_pct ">" -10 --custom-filter close_position_in_range ">" 0.40 --custom-filter weekly_rsi_14w "<" 42 --output current_opportunities.csv
 ```
 
 **All Available Arguments:**
@@ -650,11 +695,17 @@ When using `--use-recommended-filters`, the following 5 filters are applied:
 
 **Command:**
 ```bash
-python src/compare_filters.py \
-  --horizon 30 \
-  --return-threshold 0.15 \
-  --model-threshold 0.80 \
-  --stop-loss -0.075
+# Constant stop-loss (baseline comparison)
+python src/compare_filters.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss -0.075
+
+# Adaptive ATR-based stops (default settings)
+python src/compare_filters.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss-mode adaptive_atr
+
+# Adaptive ATR with conservative settings (tighter stops)
+python src/compare_filters.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss-mode adaptive_atr --atr-stop-k 1.5 --atr-stop-min-pct 0.03 --atr-stop-max-pct 0.08
+
+# Adaptive ATR with aggressive settings (wider stops)
+python src/compare_filters.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss-mode adaptive_atr --atr-stop-k 2.2 --atr-stop-min-pct 0.05 --atr-stop-max-pct 0.12
 ```
 
 **All Available Arguments:**
@@ -664,7 +715,11 @@ python src/compare_filters.py \
 | `--horizon` | *Required* | Trade window in days (must match features) |
 | `--return-threshold` | *Required* | Return threshold (e.g., 0.15 for 15%, must match features) |
 | `--model-threshold` | `0.80` | Model probability threshold |
-| `--stop-loss` | `None` (auto: 2:1 risk-reward) | Stop-loss threshold (e.g., -0.075 for -7.5%) |
+| `--stop-loss` | `None` (auto: 2:1 risk-reward) | Stop-loss threshold (e.g., -0.075 for -7.5%). **DEPRECATED:** Use `--stop-loss-mode` and related args for adaptive stops. |
+| `--stop-loss-mode` | `None` (auto: constant) | Stop-loss mode: `constant` (fixed) or `adaptive_atr` (ATR-based per-trade stops) |
+| `--atr-stop-k` | `1.8` | ATR multiplier for adaptive stops. Only used when `--stop-loss-mode=adaptive_atr` |
+| `--atr-stop-min-pct` | `0.04` | Minimum stop distance for adaptive stops (e.g., 0.04 = 4%). Only used when `--stop-loss-mode=adaptive_atr` |
+| `--atr-stop-max-pct` | `0.10` | Maximum stop distance for adaptive stops (e.g., 0.10 = 10%). Only used when `--stop-loss-mode=adaptive_atr` |
 | `--position-size` | `1000.0` | Position size per trade in dollars |
 | `--test-start-date` | `2024-01-01` | Test data start date (YYYY-MM-DD) |
 | `--test-end-date` | `None` (all available) | Test data end date (YYYY-MM-DD) |
@@ -697,12 +752,7 @@ python src/compare_filters.py \
 
 **Command:**
 ```bash
-python src/swing_trade_app.py full-pipeline \
-  --horizon 5 \
-  --return-threshold 0.05 \
-  --position-size 1000 \
-  --min-probability 0.5 \
-  --top-n 20
+python src/swing_trade_app.py full-pipeline --horizon 5 --return-threshold 0.05 --position-size 1000 --min-probability 0.5 --top-n 20
 ```
 
 **All Available Arguments:**
@@ -775,8 +825,8 @@ Current Trading Opportunities
 5. Identify trades (Step 6) - find current opportunities (with filters if desired)
 
 ### Testing New Parameters:
-1. Build features (Step 3) - with new horizon/threshold
-2. Train model (Step 4)
+1. Build features (Step 3) - features are independent of horizon/threshold
+2. Train model (Step 4) - specify horizon and return-threshold here (labels calculated on-the-fly)
 3. Backtest (Step 5) - compare results
 4. Analyze stop-losses (Step 5.5) - identify risk factors
 5. Apply entry filters (Step 5.6) - improve performance
@@ -795,8 +845,8 @@ Current Trading Opportunities
 
 ## Key Configuration Files
 
-- **`config/features.yaml`**: Enable/disable technical indicators (all 53 features enabled by default)
-- **`config/train_features.yaml`**: Select features for model training (all 53 features enabled by default)
+- **`config/features.yaml`**: Enable/disable technical indicators (all 57 features enabled by default)
+- **`config/train_features.yaml`**: Select features for model training (all 57 features enabled by default)
 - **`config/trading_config.yaml`**: Default trading parameters
 - **`data/tickers/sp500_tickers.csv`**: List of tickers to analyze
 
@@ -827,14 +877,29 @@ python src/swing_trade_app.py full-pipeline --horizon 5 --return-threshold 0.05
 # Individual steps
 python src/swing_trade_app.py download --full
 python src/swing_trade_app.py clean --resume  # Optional, included in full pipeline
-python src/swing_trade_app.py features --horizon 5 --threshold 0.05
-python src/swing_trade_app.py train
+python src/swing_trade_app.py features
+python src/swing_trade_app.py train --horizon 30 --return-threshold 0.05
 python src/swing_trade_app.py backtest --horizon 5 --return-threshold 0.05
 
 # Optional: Improve performance with filters
+# Constant stop-loss (traditional)
+# Constant stop-loss examples (traditional)
 python src/analyze_stop_losses.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss -0.075
 python src/apply_entry_filters.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss -0.075
 python src/compare_filters.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss -0.075
+
+# Adaptive ATR-based stops (default: k=1.8, min=4%, max=10%)
+python src/analyze_stop_losses.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss-mode adaptive_atr
+python src/apply_entry_filters.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss-mode adaptive_atr
+python src/compare_filters.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss-mode adaptive_atr
+
+# Adaptive ATR with conservative settings (tighter stops: k=1.5, min=3%, max=8%)
+python src/analyze_stop_losses.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss-mode adaptive_atr --atr-stop-k 1.5 --atr-stop-min-pct 0.03 --atr-stop-max-pct 0.08
+python src/apply_entry_filters.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss-mode adaptive_atr --atr-stop-k 1.5 --atr-stop-min-pct 0.03 --atr-stop-max-pct 0.08
+
+# Adaptive ATR with aggressive settings (wider stops: k=2.2, min=5%, max=12%)
+python src/analyze_stop_losses.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss-mode adaptive_atr --atr-stop-k 2.2 --atr-stop-min-pct 0.05 --atr-stop-max-pct 0.12
+python src/apply_entry_filters.py --horizon 30 --return-threshold 0.15 --model-threshold 0.80 --stop-loss-mode adaptive_atr --atr-stop-k 2.2 --atr-stop-min-pct 0.05 --atr-stop-max-pct 0.12
 
 python src/swing_trade_app.py identify --min-probability 0.6 --top-n 20
 
@@ -859,7 +924,7 @@ python src/identify_trades.py --min-probability 0.6 --top-n 20 --use-recommended
 - ✅ Enhanced error handling for edge cases
 
 ### Feature Step
-- ✅ **53 features** across 11 categories (price, returns, 52-week, moving averages, volatility, volume, momentum, market context, candlestick, price action, trend)
+- ✅ **57 features** across 11 categories (price, returns, 52-week, moving averages, volatility, volume, momentum, market context, candlestick, price action, trend)
 - ✅ Performance optimized (efficient DataFrame operations, no fragmentation)
 - ✅ Feature validation (infinities, NaNs, constant values)
 - ✅ Data leakage prevention (forward-looking features removed)
@@ -893,6 +958,12 @@ python src/identify_trades.py --min-probability 0.6 --top-n 20 --use-recommended
 - ✅ **Data leakage prevention:** Uses only test data (2024-01-01 onwards) by default
 - ✅ Configurable exit logic (return threshold, stop-loss, time limit)
 - ✅ Stop-loss functionality (2:1 risk-reward by default)
+- ✅ **Adaptive ATR-based stops:** Per-trade stop-loss calculation based on volatility (Phase 1)
+  - Constant mode: Fixed stop-loss percentage for all trades
+  - Adaptive ATR mode: Stop-loss adapts to each stock's volatility at entry time
+  - Formula: `stop_pct = clamp(atr_stop_k * atr14_normalized, min_pct, max_pct)`
+  - Configurable parameters: ATR multiplier (k), min/max stop distances
+  - Reporting: Average, min, max stop distances and distribution buckets
 - ✅ Prevents overlapping trades (one position per ticker)
 - ✅ Comprehensive metrics (annual return, max capital invested, date range)
 - ✅ Exit reason tracking (target_reached, stop_loss, time_limit)

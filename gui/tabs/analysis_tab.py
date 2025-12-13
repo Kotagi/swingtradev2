@@ -421,20 +421,11 @@ class AnalysisTab(QWidget):
             # Read WITHOUT index_col since entry_date is a regular column
             df = pd.read_csv(file_path)
             
-            # DEBUG: Check what we're reading
-            if len(df) > 0 and 'entry_date' in df.columns:
-                first_entry = df['entry_date'].iloc[0]
-                print(f"DEBUG: First entry_date value: {repr(first_entry)}, type: {type(first_entry)}, dtype: {df['entry_date'].dtype}")
-            
             # Convert date columns from strings to datetime
             for date_col in ['entry_date', 'exit_date']:
                 if date_col in df.columns:
                     # Convert string dates to datetime
                     df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
-                    # DEBUG: Check after conversion
-                    if date_col == 'entry_date' and len(df) > 0:
-                        first_entry = df[date_col].iloc[0]
-                        print(f"DEBUG: After conversion - value: {repr(first_entry)}, type: {type(first_entry)}, dtype: {df[date_col].dtype}")
             
             # Populate table FIRST (before normalize, which might modify dates)
             self.populate_trades_table(df)
@@ -474,10 +465,6 @@ class AnalysisTab(QWidget):
             if 'entry_date' in df.columns:
                 entry_date_val = df.iloc[row_idx]['entry_date']
                 
-                # DEBUG: First row only
-                if row_idx == 0:
-                    print(f"DEBUG populate: entry_date_val = {repr(entry_date_val)}, type = {type(entry_date_val)}")
-                
                 # At this point, entry_date_val should be a Timestamp (we converted the column above)
                 if pd.notna(entry_date_val):
                     if isinstance(entry_date_val, pd.Timestamp):
@@ -489,17 +476,10 @@ class AnalysisTab(QWidget):
                         if isinstance(entry_date_ts, pd.Timestamp) and pd.notna(entry_date_ts):
                             entry_date_str = entry_date_ts.strftime('%m-%d-%Y')
                             entry_date_sort = entry_date_ts.timestamp()
-                
-                # DEBUG: First row only
-                if row_idx == 0:
-                    print(f"DEBUG populate: entry_date_str = {repr(entry_date_str)}")
             
             # Create item - ONLY set text, don't set EditRole with numeric value
             # Setting EditRole with a number can cause Qt to display the number instead of text
             entry_item = QTableWidgetItem(entry_date_str)
-            # DEBUG: First row only
-            if row_idx == 0:
-                print(f"DEBUG populate: QTableWidgetItem text = {entry_item.text()}")
             # Don't set EditRole with numeric value - it causes display issues
             # String dates will sort correctly as strings (YYYY-MM-DD format sorts chronologically)
             self.trades_table.setItem(row_idx, 0, entry_item)
