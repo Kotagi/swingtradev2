@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QDate
 from pathlib import Path
 import pandas as pd
+import numpy as np
 from datetime import datetime
 import json
 
@@ -187,8 +188,8 @@ class AnalysisTab(QWidget):
         rolling_label = QLabel("Rolling Metrics")
         rolling_label.setStyleSheet("font-size: 14px; font-weight: bold; margin-top: 10px;")
         viz_layout.addWidget(rolling_label)
-        self.rolling_chart = RollingMetricsWidget(self, width=10, height=5)
-        self.rolling_chart.setMinimumHeight(250)
+        self.rolling_chart = RollingMetricsWidget(self, width=10, height=8)
+        self.rolling_chart.setMinimumHeight(400)
         viz_layout.addWidget(self.rolling_chart)
         
         viz_group.setLayout(viz_layout)
@@ -209,6 +210,7 @@ class AnalysisTab(QWidget):
         self.trades_table.setAlternatingRowColors(True)
         self.trades_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.trades_table.setSortingEnabled(True)
+        self.trades_table.setMinimumHeight(500)  # Show more trades at once
         layout.addWidget(self.trades_table)
         
         # Export button
@@ -361,10 +363,14 @@ class AnalysisTab(QWidget):
     
     def browse_backtest_file(self):
         """Browse for backtest CSV file."""
+        # Default to data/backtest_results directory
+        backtest_dir = PROJECT_ROOT / "data" / "backtest_results"
+        backtest_dir.mkdir(parents=True, exist_ok=True)
+        
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Select Backtest Results CSV",
-            str(PROJECT_ROOT),
+            str(backtest_dir),
             "CSV Files (*.csv);;All Files (*)"
         )
         if file_path:
@@ -372,10 +378,14 @@ class AnalysisTab(QWidget):
     
     def browse_metrics_file(self):
         """Browse for metrics CSV file."""
+        # Default to data/backtest_results directory
+        backtest_dir = PROJECT_ROOT / "data" / "backtest_results"
+        backtest_dir.mkdir(parents=True, exist_ok=True)
+        
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Select Backtest Results CSV",
-            str(PROJECT_ROOT),
+            str(backtest_dir),
             "CSV Files (*.csv);;All Files (*)"
         )
         if file_path:
@@ -383,10 +393,14 @@ class AnalysisTab(QWidget):
     
     def browse_comparison_file(self, model_num: int):
         """Browse for comparison CSV file."""
+        # Default to data/backtest_results directory
+        backtest_dir = PROJECT_ROOT / "data" / "backtest_results"
+        backtest_dir.mkdir(parents=True, exist_ok=True)
+        
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             f"Select Backtest Results CSV for Model {model_num}",
-            str(PROJECT_ROOT),
+            str(backtest_dir),
             "CSV Files (*.csv);;All Files (*)"
         )
         if file_path:
@@ -403,21 +417,34 @@ class AnalysisTab(QWidget):
             return
         
         try:
+            # Read CSV - entry_date is already a column (string format like '2024-01-24')
+            # Read WITHOUT index_col since entry_date is a regular column
             df = pd.read_csv(file_path)
+            
+            # DEBUG: Check what we're reading
+            if len(df) > 0 and 'entry_date' in df.columns:
+                first_entry = df['entry_date'].iloc[0]
+                print(f"DEBUG: First entry_date value: {repr(first_entry)}, type: {type(first_entry)}, dtype: {df['entry_date'].dtype}")
+            
+            # Convert date columns from strings to datetime
+            for date_col in ['entry_date', 'exit_date']:
+                if date_col in df.columns:
+                    # Convert string dates to datetime
+                    df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+                    # DEBUG: Check after conversion
+                    if date_col == 'entry_date' and len(df) > 0:
+                        first_entry = df[date_col].iloc[0]
+                        print(f"DEBUG: After conversion - value: {repr(first_entry)}, type: {type(first_entry)}, dtype: {df[date_col].dtype}")
+            
+            # Populate table FIRST (before normalize, which might modify dates)
+            self.populate_trades_table(df)
+            
+            # Normalize for charts (after populating table)
             self.current_trades_df = self._normalize_trades_for_charts(df)
-            
-            # Convert date columns if they exist
-            if 'entry_date' in self.current_trades_df.columns:
-                self.current_trades_df['entry_date'] = pd.to_datetime(self.current_trades_df['entry_date'])
-            if 'exit_date' in self.current_trades_df.columns:
-                self.current_trades_df['exit_date'] = pd.to_datetime(self.current_trades_df['exit_date'])
-            
-            # Populate table
-            self.populate_trades_table(self.current_trades_df)
             
             # Update visualizations
             if not self.current_trades_df.empty:
-                self.drawdown_chart.plot_drawdown(self.current_trades_df, start_value=1.0)
+                self.drawdown_chart.plot_drawdown(self.current_trades_df, initial_capital=10000.0)
                 self.rolling_chart.plot_rolling_metrics(self.current_trades_df, window=20)
             
             QMessageBox.information(self, "Success", f"Loaded {len(self.current_trades_df)} trades.")
@@ -426,54 +453,127 @@ class AnalysisTab(QWidget):
     
     def populate_trades_table(self, df: pd.DataFrame):
         """Populate trades table with data."""
+        # Make a copy to avoid modifying the original
+        df = df.copy()
+        
+        # Disable sorting during population to ensure EditRole values are set correctly
+        self.trades_table.setSortingEnabled(False)
         self.trades_table.setRowCount(len(df))
         
-        for row_idx, (_, row) in enumerate(df.iterrows()):
-            # Entry Date
-            entry_date = row.get('entry_date', 'N/A')
-            if pd.notna(entry_date):
-                if isinstance(entry_date, pd.Timestamp):
-                    entry_date = entry_date.strftime('%Y-%m-%d')
-                entry_item = QTableWidgetItem(str(entry_date))
-            else:
-                entry_item = QTableWidgetItem("N/A")
+        # CRITICAL: Ensure date columns are datetime BEFORE accessing values
+        for date_col in ['entry_date', 'exit_date']:
+            if date_col in df.columns:
+                if not pd.api.types.is_datetime64_any_dtype(df[date_col]):
+                    df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+        
+        for row_idx in range(len(df)):
+            # Entry Date - get value and format
+            entry_date_str = "N/A"
+            entry_date_sort = 0
+            
+            if 'entry_date' in df.columns:
+                entry_date_val = df.iloc[row_idx]['entry_date']
+                
+                # DEBUG: First row only
+                if row_idx == 0:
+                    print(f"DEBUG populate: entry_date_val = {repr(entry_date_val)}, type = {type(entry_date_val)}")
+                
+                # At this point, entry_date_val should be a Timestamp (we converted the column above)
+                if pd.notna(entry_date_val):
+                    if isinstance(entry_date_val, pd.Timestamp):
+                        entry_date_str = entry_date_val.strftime('%m-%d-%Y')
+                        entry_date_sort = entry_date_val.timestamp()
+                    else:
+                        # Fallback: convert if somehow not a Timestamp
+                        entry_date_ts = pd.to_datetime(entry_date_val, errors='coerce')
+                        if isinstance(entry_date_ts, pd.Timestamp) and pd.notna(entry_date_ts):
+                            entry_date_str = entry_date_ts.strftime('%m-%d-%Y')
+                            entry_date_sort = entry_date_ts.timestamp()
+                
+                # DEBUG: First row only
+                if row_idx == 0:
+                    print(f"DEBUG populate: entry_date_str = {repr(entry_date_str)}")
+            
+            # Create item - ONLY set text, don't set EditRole with numeric value
+            # Setting EditRole with a number can cause Qt to display the number instead of text
+            entry_item = QTableWidgetItem(entry_date_str)
+            # DEBUG: First row only
+            if row_idx == 0:
+                print(f"DEBUG populate: QTableWidgetItem text = {entry_item.text()}")
+            # Don't set EditRole with numeric value - it causes display issues
+            # String dates will sort correctly as strings (YYYY-MM-DD format sorts chronologically)
             self.trades_table.setItem(row_idx, 0, entry_item)
             
-            # Exit Date
-            exit_date = row.get('exit_date', 'N/A')
-            if pd.notna(exit_date):
-                if isinstance(exit_date, pd.Timestamp):
-                    exit_date = exit_date.strftime('%Y-%m-%d')
-                exit_item = QTableWidgetItem(str(exit_date))
-            else:
-                exit_item = QTableWidgetItem("N/A")
+            # Exit Date - get value and format
+            exit_date_str = "N/A"
+            exit_date_sort = 0
+            
+            if 'exit_date' in df.columns:
+                exit_date_val = df.iloc[row_idx]['exit_date']
+                
+                # At this point, exit_date_val should be a Timestamp (we converted the column above)
+                if pd.notna(exit_date_val):
+                    if isinstance(exit_date_val, pd.Timestamp):
+                        exit_date_str = exit_date_val.strftime('%m-%d-%Y')
+                        exit_date_sort = exit_date_val.timestamp()
+                    else:
+                        # Fallback: convert if somehow not a Timestamp
+                        exit_date_ts = pd.to_datetime(exit_date_val, errors='coerce')
+                        if isinstance(exit_date_ts, pd.Timestamp) and pd.notna(exit_date_ts):
+                            exit_date_str = exit_date_ts.strftime('%m-%d-%Y')
+                            exit_date_sort = exit_date_ts.timestamp()
+            
+            # Create item - ONLY set text, don't set EditRole with numeric value
+            # This ensures Qt displays the string, not a number
+            exit_item = QTableWidgetItem(exit_date_str)
+            # For sorting, we'll use the string comparison or set a custom sort key
+            # But don't set EditRole with numeric value as it might cause display issues
+            if exit_date_sort > 0:
+                exit_item.setData(Qt.ItemDataRole.UserRole, exit_date_sort)
             self.trades_table.setItem(row_idx, 1, exit_item)
             
-            # Ticker
-            ticker = row.get('ticker', 'N/A')
+            # Ticker - string, no special handling needed
+            if 'ticker' in df.columns:
+                ticker = df.iloc[row_idx]['ticker']
+            else:
+                ticker = 'N/A'
             self.trades_table.setItem(row_idx, 2, QTableWidgetItem(str(ticker)))
             
-            # Entry Price
-            entry_price = row.get('entry_price', 0)
+            # Entry Price - store numeric value for sorting
+            if 'entry_price' in df.columns:
+                entry_price = df.iloc[row_idx]['entry_price']
+            else:
+                entry_price = 0
             if pd.notna(entry_price):
                 entry_price_item = QTableWidgetItem(f"${entry_price:.2f}")
+                entry_price_item.setData(Qt.ItemDataRole.EditRole, float(entry_price))  # Use EditRole for sorting
             else:
                 entry_price_item = QTableWidgetItem("N/A")
+                entry_price_item.setData(Qt.ItemDataRole.EditRole, 0.0)
             self.trades_table.setItem(row_idx, 3, entry_price_item)
             
-            # Exit Price
-            exit_price = row.get('exit_price', 0)
+            # Exit Price - store numeric value for sorting
+            if 'exit_price' in df.columns:
+                exit_price = df.iloc[row_idx]['exit_price']
+            else:
+                exit_price = 0
             if pd.notna(exit_price):
                 exit_price_item = QTableWidgetItem(f"${exit_price:.2f}")
+                exit_price_item.setData(Qt.ItemDataRole.EditRole, float(exit_price))  # Use EditRole for sorting
             else:
                 exit_price_item = QTableWidgetItem("N/A")
+                exit_price_item.setData(Qt.ItemDataRole.EditRole, 0.0)
             self.trades_table.setItem(row_idx, 4, exit_price_item)
             
-            # Return
-            ret = row.get('return', 0)
+            # Return - store numeric value for sorting
+            if 'return' in df.columns:
+                ret = df.iloc[row_idx]['return']
+            else:
+                ret = 0
             if pd.notna(ret):
                 ret_item = QTableWidgetItem(f"{ret:.2%}")
-                ret_item.setData(Qt.ItemDataRole.UserRole, ret)
+                ret_item.setData(Qt.ItemDataRole.EditRole, float(ret))  # Use EditRole for sorting
+                ret_item.setData(Qt.ItemDataRole.UserRole, ret)  # Keep UserRole for compatibility
                 # Color code: green for positive, red for negative
                 if ret > 0:
                     ret_item.setForeground(Qt.GlobalColor.green)
@@ -481,30 +581,52 @@ class AnalysisTab(QWidget):
                     ret_item.setForeground(Qt.GlobalColor.red)
             else:
                 ret_item = QTableWidgetItem("N/A")
+                ret_item.setData(Qt.ItemDataRole.EditRole, 0.0)
             self.trades_table.setItem(row_idx, 5, ret_item)
             
-            # P&L
-            pnl = row.get('pnl', 0)
+            # P&L - store numeric value for sorting
+            if 'pnl' in df.columns:
+                pnl = df.iloc[row_idx]['pnl']
+            else:
+                pnl = 0
             if pd.notna(pnl):
                 pnl_item = QTableWidgetItem(f"${pnl:.2f}")
-                pnl_item.setData(Qt.ItemDataRole.UserRole, pnl)
+                pnl_item.setData(Qt.ItemDataRole.EditRole, float(pnl))  # Use EditRole for sorting
+                pnl_item.setData(Qt.ItemDataRole.UserRole, pnl)  # Keep UserRole for compatibility
                 if pnl > 0:
                     pnl_item.setForeground(Qt.GlobalColor.green)
                 else:
                     pnl_item.setForeground(Qt.GlobalColor.red)
             else:
                 pnl_item = QTableWidgetItem("N/A")
+                pnl_item.setData(Qt.ItemDataRole.EditRole, 0.0)
             self.trades_table.setItem(row_idx, 6, pnl_item)
             
-            # Holding Days
-            holding = row.get('holding_days', 0)
+            # Holding Days - store numeric value for sorting
+            if 'holding_days' in df.columns:
+                holding = df.iloc[row_idx]['holding_days']
+            else:
+                holding = 0
             if pd.notna(holding):
-                holding_item = QTableWidgetItem(f"{holding:.1f}")
+                # Convert to numeric, handling any string or mixed types
+                holding_num = pd.to_numeric(holding, errors='coerce')
+                if pd.isna(holding_num):
+                    holding_num = 0
+                else:
+                    # Convert to int (holding days should be whole numbers)
+                    holding_num = int(round(float(holding_num)))
+                holding_item = QTableWidgetItem(f"{holding_num:.1f}")
+                # Store as int in EditRole for proper numeric sorting
+                # Use int to ensure consistent numeric sorting
+                holding_item.setData(Qt.ItemDataRole.EditRole, int(holding_num))
             else:
                 holding_item = QTableWidgetItem("N/A")
+                # Store -1 for N/A values so they sort to bottom consistently
+                holding_item.setData(Qt.ItemDataRole.EditRole, -1)
             self.trades_table.setItem(row_idx, 7, holding_item)
         
-        # Sort by entry date descending by default
+        # Re-enable sorting and sort by entry date descending by default
+        self.trades_table.setSortingEnabled(True)
         self.trades_table.sortItems(0, Qt.SortOrder.DescendingOrder)
     
     def apply_filters(self):
@@ -626,7 +748,7 @@ class AnalysisTab(QWidget):
             self.display_metrics(metrics)
             
             # Update visualizations
-            self.metrics_equity_chart.plot_equity_curve(trades_df, start_value=1.0)
+            self.metrics_equity_chart.plot_cumulative_pnl(trades_df)
             self.metrics_returns_chart.plot_returns_distribution(trades_df)
             self.metrics_chart.plot_metrics(metrics)
             
@@ -715,3 +837,42 @@ class AnalysisTab(QWidget):
             QMessageBox.information(self, "Success", "Models compared successfully.")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to compare models: {str(e)}")
+    
+    def _normalize_trades_for_charts(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Prepare trades DataFrame for charting: ensure return column and dates."""
+        if df is None or df.empty:
+            return pd.DataFrame()
+        trades = df.copy()
+        # Ensure return column
+        if 'return' not in trades.columns:
+            if 'ret' in trades.columns:
+                trades['return'] = trades['ret']
+            elif 'pnl' in trades.columns:
+                # approximate returns from pnl with a heuristic position size
+                pos_size = trades['pnl'].abs().median()
+                if pos_size <= 0:
+                    pos_size = max(1e-9, trades['pnl'].abs().mean())
+                if pos_size <= 0:
+                    pos_size = 1.0
+                trades['return'] = trades['pnl'] / pos_size
+            else:
+                return pd.DataFrame()
+        # Ensure numeric returns
+        trades['return'] = pd.to_numeric(trades['return'], errors='coerce').fillna(0.0)
+        # Ensure pnl is numeric if it exists
+        if 'pnl' in trades.columns:
+            trades['pnl'] = pd.to_numeric(trades['pnl'], errors='coerce').fillna(0.0)
+        # Ensure entry_date is a Timestamp (preserve if already converted)
+        if 'entry_date' in trades.columns:
+            if not pd.api.types.is_datetime64_any_dtype(trades['entry_date']):
+                trades['entry_date'] = pd.to_datetime(trades['entry_date'], errors='coerce')
+        # Ensure exit_date for timing; fall back to entry_date or index
+        if 'exit_date' in trades.columns:
+            if not pd.api.types.is_datetime64_any_dtype(trades['exit_date']):
+                trades['exit_date'] = pd.to_datetime(trades['exit_date'], errors='coerce')
+        elif 'entry_date' in trades.columns:
+            trades['exit_date'] = trades['entry_date'].copy()
+        else:
+            # create a synthetic date index if none provided
+            trades['exit_date'] = pd.to_datetime(pd.Series(range(len(trades))), errors='coerce')
+        return trades
