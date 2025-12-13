@@ -80,7 +80,7 @@ def backtest_strategy(
     Args:
         df: DataFrame indexed by date with OHLCV and signal column.
         signal_col: Name of boolean column indicating entry.
-        horizon: Maximum holding period in days.
+        horizon: Maximum holding period in trading days.
         position_size: Dollar amount per trade.
         return_threshold: Target return threshold (e.g., 0.15 for 15%). If None, only uses time horizon.
         stop_loss: Legacy stop-loss threshold (e.g., -0.075 for -7.5%). If None, no stop-loss is used.
@@ -152,13 +152,18 @@ def backtest_strategy(
             # Calculate absolute stop loss price
             trade_stop_loss_price = entry_price * (1 + trade_stop_loss)
         
-        # Find exit: check each day until either threshold is hit or horizon is reached
+        # Find exit: check each trading day until either threshold is hit or horizon (trading days) is reached
         exit_date = None
         exit_price = None
         exit_reason = None
         
-        # Check up to horizon days ahead
-        for days_ahead in range(1, horizon + 1):
+        # Count trading days instead of calendar days
+        # We'll exit after 'horizon' trading days have passed
+        trading_days_count = 0
+        
+        # Check each trading day until we reach the horizon (trading days)
+        days_ahead = 1
+        while True:
             exit_idx = entry_idx + days_ahead
             
             # Check if we've run out of data
@@ -172,12 +177,51 @@ def backtest_strategy(
             
             exit_date = dates[exit_idx]
             exit_row = df_sorted.iloc[exit_idx]
+            day_open = exit_row[open_col]
             day_close = exit_row[close_col]
             
+            # Increment trading day counter (each iteration is one trading day)
+            trading_days_count += 1
+            
+            # Check if we've reached the horizon (trading days)
+            # If so, exit at open price if stop loss and return threshold haven't been reached
+            if trading_days_count >= horizon:
+                # We've reached the horizon (trading days)
+                # Check stop loss at open first
+                if trade_stop_loss_price is not None:
+                    day_low = exit_row[low_col] if low_col and low_col in exit_row.index else day_open
+                    if day_open < trade_stop_loss_price:
+                        # Stop loss hit at open
+                        exit_price = day_open
+                        exit_reason = "stop_loss"
+                        break
+                    elif day_low < trade_stop_loss_price:
+                        # Stop loss hit during day
+                        exit_price = trade_stop_loss_price
+                        exit_reason = "stop_loss"
+                        break
+                    elif day_close < trade_stop_loss_price:
+                        # Stop loss hit at close
+                        exit_price = trade_stop_loss_price
+                        exit_reason = "stop_loss"
+                        break
+                
+                # Check return threshold at open
+                open_return = (day_open / entry_price) - 1
+                if return_threshold is not None and open_return >= return_threshold:
+                    exit_price = day_open
+                    exit_reason = "target_reached"
+                    break
+                
+                # If neither stop loss nor target reached, exit at open (time limit)
+                exit_price = day_open
+                exit_reason = "time_limit"
+                break
+            
+            # Before target exit date: check stop loss and return threshold normally
             # Check if stop-loss is hit (handle gap-downs correctly)
             if trade_stop_loss_price is not None:
                 # Get the day's open and low prices
-                day_open = exit_row[open_col]
                 day_low = exit_row[low_col] if low_col and low_col in exit_row.index else day_open
                 
                 # Priority 1: Check open price first (gap-down scenario)
@@ -203,7 +247,7 @@ def backtest_strategy(
                     exit_reason = "stop_loss"
                     break
             
-            # If no stop loss hit, use close price for other exit conditions
+            # If no stop loss hit, use close price for return threshold check
             exit_price = day_close
             
             # Calculate return so far
@@ -214,15 +258,8 @@ def backtest_strategy(
                 exit_reason = "target_reached"
                 break
             
-            # Check if return threshold is reached
-            if return_threshold is not None and current_return >= return_threshold:
-                exit_reason = "target_reached"
-                break
-            
-            # If we've reached the horizon, exit
-            if days_ahead == horizon:
-                exit_reason = "time_limit"
-                break
+            # Move to next trading day
+            days_ahead += 1
         
         if exit_price is None or pd.isna(exit_price):
             continue
@@ -393,10 +430,24 @@ def calculate_metrics(trades: pd.DataFrame, position_size: float = 1000.0) -> Di
     total_pnl = trades["pnl"].sum()
     avg_pnl = trades["pnl"].mean()
     
-    # Maximum drawdown
-    equity = trades["pnl"].cumsum()
+    # Maximum drawdown (peak-to-trough from cumulative P&L curve)
+    # Sort trades by exit_date to match the cumulative P&L chart
+    trades_sorted = trades.copy()
+    if "exit_date" in trades_sorted.columns:
+        trades_sorted["exit_date_dt"] = pd.to_datetime(trades_sorted["exit_date"], errors='coerce')
+        trades_sorted = trades_sorted.sort_values("exit_date_dt")
+    elif "entry_date" in trades_sorted.columns:
+        trades_sorted["entry_date_dt"] = pd.to_datetime(trades_sorted["entry_date"], errors='coerce')
+        trades_sorted = trades_sorted.sort_values("entry_date_dt")
+    # If no dates, use existing order (assume already chronological)
+    
+    # Calculate cumulative P&L in chronological order (matching the chart)
+    equity = trades_sorted["pnl"].cumsum()
+    # Calculate running peak (highest cumulative P&L reached so far)
     running_max = equity.cummax()
+    # Calculate drawdown at each point (peak - current value)
     drawdown = running_max - equity
+    # Maximum drawdown is the largest peak-to-trough decline
     max_drawdown = drawdown.max()
     
     # Sharpe ratio (annualized, assuming 252 trading days)
