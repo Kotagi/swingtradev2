@@ -204,7 +204,6 @@ class StopLossAnalysisTab(QWidget):
         settings_layout.addLayout(threshold_row)
         
         settings_group.setLayout(settings_layout)
-        settings_group.setVisible(False)  # Hide for now, will show in Phase 2
         layout.addWidget(settings_group)
         
         # Feature comparison table (placeholder - will be populated in Unit 1.5)
@@ -224,16 +223,38 @@ class StopLossAnalysisTab(QWidget):
         table_group.setLayout(table_layout)
         layout.addWidget(table_group)
         
-        # Recommendations panel (placeholder - will be implemented in Phase 2)
+        # Recommendations panel
         recommendations_group = QGroupBox("Recommendations")
         recommendations_layout = QVBoxLayout()
         
-        self.recommendations_label = QLabel("Run analysis to generate recommendations")
-        self.recommendations_label.setStyleSheet("color: #b0b0b0; font-style: italic;")
-        recommendations_layout.addWidget(self.recommendations_label)
+        # Summary label showing count
+        self.recommendations_summary_label = QLabel("Run analysis to generate recommendations")
+        self.recommendations_summary_label.setStyleSheet("color: #b0b0b0; font-style: italic;")
+        recommendations_layout.addWidget(self.recommendations_summary_label)
+        
+        # Scroll area for recommendations
+        recommendations_scroll = QScrollArea()
+        recommendations_scroll.setWidgetResizable(True)
+        recommendations_scroll.setMinimumHeight(300)
+        recommendations_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        
+        # Container widget for recommendations
+        self.recommendations_container = QWidget()
+        self.recommendations_layout = QVBoxLayout()
+        self.recommendations_layout.setSpacing(10)
+        self.recommendations_container.setLayout(self.recommendations_layout)
+        
+        recommendations_scroll.setWidget(self.recommendations_container)
+        recommendations_layout.addWidget(recommendations_scroll)
         
         recommendations_group.setLayout(recommendations_layout)
         layout.addWidget(recommendations_group)
+        
+        # Store references to recommendation sections
+        self.strong_section = None
+        self.moderate_section = None
+        self.weak_section = None
+        self.selected_filters = []  # List of selected filter dictionaries
         
         # Progress bar (hidden by default)
         self.progress_bar = QProgressBar()
@@ -413,6 +434,7 @@ class StopLossAnalysisTab(QWidget):
             self.analysis_results = results
             self.update_summary_cards()
             self.update_feature_comparison_table()
+            self.update_recommendations_display()
             self.status_label.setText(f"✓ {message}")
             self.status_label.setStyleSheet("color: #4caf50;")
         else:
@@ -480,4 +502,289 @@ class StopLossAnalysisTab(QWidget):
         
         # Enable sorting
         self.features_table.setSortingEnabled(True)
+    
+    def update_recommendations_display(self):
+        """Update recommendations display, grouped by effect size."""
+        # Clear existing recommendations
+        while self.recommendations_layout.count():
+            child = self.recommendations_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        
+        if not self.analysis_results or not self.analysis_results.get('recommendations'):
+            self.recommendations_summary_label.setText("No recommendations generated")
+            self.recommendations_summary_label.setStyleSheet("color: #b0b0b0; font-style: italic;")
+            return
+        
+        recommendations = self.analysis_results['recommendations']
+        
+        # Group by category
+        strong_recs = [r for r in recommendations if r.get('category') == 'strong']
+        moderate_recs = [r for r in recommendations if r.get('category') == 'moderate']
+        weak_recs = [r for r in recommendations if r.get('category') == 'weak']
+        
+        total_above_threshold = len(recommendations)
+        showing_count = len(strong_recs) + len(moderate_recs) + len(weak_recs)
+        
+        # Update summary label
+        if total_above_threshold > showing_count:
+            self.recommendations_summary_label.setText(
+                f"Showing: {showing_count} recommendations ({total_above_threshold} total above threshold)"
+            )
+        else:
+            self.recommendations_summary_label.setText(f"Showing: {showing_count} recommendations")
+        self.recommendations_summary_label.setStyleSheet("color: #ffffff; font-weight: bold;")
+        
+        # Strong recommendations (always visible)
+        if strong_recs:
+            self.strong_section = self.create_recommendation_section(
+                "Strong Recommendations", strong_recs, "strong", expanded=True
+            )
+            self.recommendations_layout.addWidget(self.strong_section)
+        
+        # Moderate recommendations (always visible)
+        if moderate_recs:
+            self.moderate_section = self.create_recommendation_section(
+                "Moderate Recommendations", moderate_recs, "moderate", expanded=True
+            )
+            self.recommendations_layout.addWidget(self.moderate_section)
+        
+        # Weak recommendations (collapsed by default)
+        if weak_recs:
+            self.weak_section = self.create_recommendation_section(
+                "Weak Recommendations", weak_recs, "weak", expanded=False
+            )
+            self.recommendations_layout.addWidget(self.weak_section)
+        
+        # Action buttons
+        action_row = QHBoxLayout()
+        
+        select_all_btn = QPushButton("Select All")
+        select_all_btn.clicked.connect(self.select_all_recommendations)
+        action_row.addWidget(select_all_btn)
+        
+        deselect_all_btn = QPushButton("Deselect All")
+        deselect_all_btn.clicked.connect(self.deselect_all_recommendations)
+        action_row.addWidget(deselect_all_btn)
+        
+        action_row.addStretch()
+        
+        apply_selected_btn = QPushButton("Apply Selected")
+        apply_selected_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #00d4aa;
+                color: #000000;
+                font-weight: bold;
+                padding: 8px 15px;
+            }
+            QPushButton:hover {
+                background-color: #00c896;
+            }
+        """)
+        apply_selected_btn.clicked.connect(self.apply_selected_filters)
+        action_row.addWidget(apply_selected_btn)
+        
+        save_preset_btn = QPushButton("Save Selected as Preset")
+        save_preset_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                border: 1px solid #555;
+                padding: 8px 15px;
+            }
+            QPushButton:hover {
+                background-color: #00d4aa;
+                color: #000000;
+            }
+        """)
+        save_preset_btn.clicked.connect(self.save_selected_as_preset)
+        action_row.addWidget(save_preset_btn)
+        
+        action_widget = QWidget()
+        action_widget.setLayout(action_row)
+        self.recommendations_layout.addWidget(action_widget)
+        
+        # Add spacer
+        self.recommendations_layout.addStretch()
+    
+    def create_recommendation_section(self, title: str, recommendations: list, category: str, expanded: bool = True) -> QGroupBox:
+        """Create a collapsible section for recommendations."""
+        section = QGroupBox(title)
+        section.setCheckable(True)
+        section.setChecked(expanded)
+        section.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #555;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+            }
+        """)
+        
+        # Set category-specific colors
+        if category == "strong":
+            section.setStyleSheet(section.styleSheet() + "QGroupBox { border-color: #4caf50; }")
+        elif category == "moderate":
+            section.setStyleSheet(section.styleSheet() + "QGroupBox { border-color: #ff9800; }")
+        else:
+            section.setStyleSheet(section.styleSheet() + "QGroupBox { border-color: #b0b0b0; }")
+        
+        section_layout = QVBoxLayout()
+        section_layout.setSpacing(5)
+        
+        # Store recommendations in section for access
+        section.recommendations = recommendations
+        
+        # Add each recommendation
+        for rec in recommendations:
+            rec_widget = self.create_recommendation_item(rec)
+            section_layout.addWidget(rec_widget)
+        
+        section.setLayout(section_layout)
+        
+        # Connect toggle signal
+        section.toggled.connect(lambda checked, s=section: s.setVisible(checked))
+        
+        return section
+    
+    def create_recommendation_item(self, recommendation: dict) -> QWidget:
+        """Create a widget for a single recommendation."""
+        item_widget = QWidget()
+        item_layout = QHBoxLayout()
+        item_layout.setContentsMargins(10, 5, 10, 5)
+        
+        # Checkbox for selection (will be implemented in Unit 2.2)
+        checkbox = QCheckBox()
+        checkbox.setChecked(False)
+        checkbox.recommendation = recommendation  # Store reference
+        checkbox.stateChanged.connect(lambda state, rec=recommendation: self.on_recommendation_toggled(rec, state == 2))
+        item_layout.addWidget(checkbox)
+        
+        # Description label
+        desc_label = QLabel(recommendation.get('description', ''))
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet("color: #ffffff;")
+        item_layout.addWidget(desc_label, 1)
+        
+        # Info button (will be implemented later with feature descriptions)
+        info_btn = QPushButton("ℹ")
+        info_btn.setFixedSize(25, 25)
+        info_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                border: 1px solid #00d4aa;
+                border-radius: 12px;
+                color: #00d4aa;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #00d4aa;
+                color: #000000;
+            }
+        """)
+        info_btn.setToolTip("Show feature information")
+        # Will connect to feature info dialog in later phase
+        item_layout.addWidget(info_btn)
+        
+        # Preview Impact button (will be implemented in Unit 2.3)
+        preview_btn = QPushButton("Preview Impact")
+        preview_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 5px 10px;
+            }
+            QPushButton:hover {
+                background-color: #00d4aa;
+                color: #000000;
+            }
+        """)
+        preview_btn.setToolTip("Preview impact of this filter")
+        preview_btn.recommendation = recommendation
+        # Will connect to impact preview in Unit 2.3
+        item_layout.addWidget(preview_btn)
+        
+        item_widget.setLayout(item_layout)
+        return item_widget
+    
+    def on_recommendation_toggled(self, recommendation: dict, checked: bool):
+        """Handle recommendation checkbox toggle."""
+        if checked:
+            if recommendation not in self.selected_filters:
+                self.selected_filters.append(recommendation)
+        else:
+            if recommendation in self.selected_filters:
+                self.selected_filters.remove(recommendation)
+    
+    def select_all_recommendations(self):
+        """Select all recommendation checkboxes."""
+        if not self.analysis_results or not self.analysis_results.get('recommendations'):
+            return
+        
+        # Find all checkboxes in recommendations container
+        for i in range(self.recommendations_layout.count()):
+            item = self.recommendations_layout.itemAt(i)
+            if item and item.widget():
+                widget = item.widget()
+                if isinstance(widget, QGroupBox):
+                    # Find checkboxes in this group
+                    self._set_checkboxes_in_widget(widget, True)
+    
+    def deselect_all_recommendations(self):
+        """Deselect all recommendation checkboxes."""
+        # Find all checkboxes in recommendations container
+        for i in range(self.recommendations_layout.count()):
+            item = self.recommendations_layout.itemAt(i)
+            if item and item.widget():
+                widget = item.widget()
+                if isinstance(widget, QGroupBox):
+                    # Find checkboxes in this group
+                    self._set_checkboxes_in_widget(widget, False)
+        
+        self.selected_filters.clear()
+    
+    def _set_checkboxes_in_widget(self, widget: QWidget, checked: bool):
+        """Recursively set all checkboxes in a widget."""
+        if isinstance(widget, QCheckBox):
+            widget.setChecked(checked)
+        elif isinstance(widget, QGroupBox):
+            layout = widget.layout()
+            if layout:
+                for i in range(layout.count()):
+                    item = layout.itemAt(i)
+                    if item and item.widget():
+                        self._set_checkboxes_in_widget(item.widget(), checked)
+        else:
+            layout = widget.layout()
+            if layout:
+                for i in range(layout.count()):
+                    item = layout.itemAt(i)
+                    if item and item.widget():
+                        self._set_checkboxes_in_widget(item.widget(), checked)
+    
+    def apply_selected_filters(self):
+        """Apply selected filters (will be implemented in Unit 2.3 with impact preview)."""
+        if not self.selected_filters:
+            QMessageBox.information(self, "No Filters Selected", "Please select at least one filter to apply.")
+            return
+        
+        # This will show impact preview in Unit 2.3
+        QMessageBox.information(self, "Filters Selected", 
+                               f"{len(self.selected_filters)} filter(s) selected. Impact preview will be implemented in Unit 2.3.")
+    
+    def save_selected_as_preset(self):
+        """Save selected filters as a preset (will be implemented in Unit 4.1)."""
+        if not self.selected_filters:
+            QMessageBox.information(self, "No Filters Selected", "Please select at least one filter to save as a preset.")
+            return
+        
+        # This will be implemented in Unit 4.1
+        QMessageBox.information(self, "Save Preset", 
+                               "Preset saving will be implemented in Unit 4.1.")
 
