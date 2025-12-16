@@ -2354,12 +2354,36 @@ class StopLossAnalysisService:
             **metadata  # Include all metadata (source_backtest, model_name, etc.)
         }
         
+        # Convert numpy/pandas types to native Python types for JSON serialization
+        preset_data = self._convert_to_json_serializable(preset_data)
+        
         # Save to JSON file
         import json
         with open(filepath, 'w') as f:
             json.dump(preset_data, f, indent=2)
         
         return str(filepath)
+    
+    def _convert_to_json_serializable(self, obj):
+        """Convert numpy/pandas types to native Python types for JSON serialization."""
+        import numpy as np
+        
+        if isinstance(obj, dict):
+            return {key: self._convert_to_json_serializable(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [self._convert_to_json_serializable(item) for item in obj]
+        elif isinstance(obj, (np.integer, np.int64, np.int32)):
+            return int(obj)
+        elif isinstance(obj, (np.floating, np.float64, np.float32)):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif pd.isna(obj):
+            return None
+        elif isinstance(obj, (pd.Timestamp, datetime)):
+            return obj.isoformat()
+        else:
+            return obj
     
     def load_preset(self, preset_name: str) -> Dict:
         """
