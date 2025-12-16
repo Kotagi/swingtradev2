@@ -2010,8 +2010,17 @@ class StopLossAnalysisService:
                 entry_dates = stop_loss_features.index
             
             if entry_dates is not None:
-                day_of_week_counts = entry_dates.dayofweek.value_counts().sort_index().to_dict()
-                month_counts = entry_dates.month.value_counts().sort_index().to_dict()
+                # Handle both Series and DatetimeIndex
+                if isinstance(entry_dates, pd.Series):
+                    day_of_week = entry_dates.dt.dayofweek
+                    month = entry_dates.dt.month
+                else:
+                    # DatetimeIndex
+                    day_of_week = entry_dates.dayofweek
+                    month = entry_dates.month
+                
+                day_of_week_counts = day_of_week.value_counts().sort_index().to_dict()
+                month_counts = month.value_counts().sort_index().to_dict()
                 
                 results['timing_analysis'] = {
                     'day_of_week': {int(k): int(v) for k, v in day_of_week_counts.items()},
