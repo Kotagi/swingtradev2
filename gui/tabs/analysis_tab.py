@@ -63,17 +63,18 @@ class AnalysisTab(QWidget):
         # Tab widget for different analysis views
         self.tab_widget = QTabWidget()
         
-        # Tab 1: Trade Log Viewer
-        trade_log_tab = self.create_trade_log_tab()
-        self.tab_widget.addTab(trade_log_tab, "Trade Log")
+        # Tab 1: Backtest Comparison
+        from gui.tabs.backtest_comparison_tab import BacktestComparisonTab
+        comparison_tab = BacktestComparisonTab()
+        self.tab_widget.addTab(comparison_tab, "Backtest Comparison")
         
         # Tab 2: Performance Metrics
         metrics_tab = self.create_metrics_tab()
         self.tab_widget.addTab(metrics_tab, "Performance Metrics")
         
-        # Tab 3: Model Comparison
-        comparison_tab = self.create_comparison_tab()
-        self.tab_widget.addTab(comparison_tab, "Model Comparison")
+        # Tab 3: Trade Log Viewer
+        trade_log_tab = self.create_trade_log_tab()
+        self.tab_widget.addTab(trade_log_tab, "Trade Log")
         
         layout.addWidget(self.tab_widget)
         

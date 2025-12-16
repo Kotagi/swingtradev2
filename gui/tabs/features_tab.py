@@ -86,27 +86,11 @@ class FeaturesTab(QWidget):
         params_group = QGroupBox("Feature Parameters")
         params_layout = QVBoxLayout()
         
-        # Horizon
-        horizon_row = QHBoxLayout()
-        horizon_row.addWidget(QLabel("Trade Horizon (days):"))
-        self.horizon_spin = QSpinBox()
-        self.horizon_spin.setRange(1, 365)
-        self.horizon_spin.setValue(5)
-        horizon_row.addWidget(self.horizon_spin)
-        horizon_row.addStretch()
-        params_layout.addLayout(horizon_row)
-        
-        # Return threshold (as percentage)
-        threshold_row = QHBoxLayout()
-        threshold_row.addWidget(QLabel("Return Threshold:"))
-        self.threshold_spin = QSpinBox()
-        self.threshold_spin.setRange(0, 100)
-        self.threshold_spin.setSingleStep(1)
-        self.threshold_spin.setValue(0)
-        self.threshold_spin.setSuffix("%")
-        threshold_row.addWidget(self.threshold_spin)
-        threshold_row.addStretch()
-        params_layout.addLayout(threshold_row)
+        # Note about labels
+        note_label = QLabel("Note: Labels are now calculated during training based on your horizon and return threshold settings.")
+        note_label.setStyleSheet("color: #b0b0b0; font-style: italic; padding: 10px;")
+        note_label.setWordWrap(True)
+        params_layout.addWidget(note_label)
         
         # Feature set
         featureset_row = QHBoxLayout()
@@ -299,12 +283,7 @@ class FeaturesTab(QWidget):
         
         # Get parameters
         # Convert percentage to decimal (e.g., 5 -> 0.05)
-        threshold_percent = self.threshold_spin.value()
-        threshold_decimal = threshold_percent / 100.0
-        
         kwargs = {
-            "horizon": self.horizon_spin.value(),
-            "threshold": threshold_decimal,
             "full": self.full_features_check.isChecked()
         }
         

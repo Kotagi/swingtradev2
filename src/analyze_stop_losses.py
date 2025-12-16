@@ -26,6 +26,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.enhanced_backtest import run_backtest, load_model, TICKERS_CSV, DATA_DIR, DEFAULT_MODEL
+from utils.stop_loss_policy import create_stop_loss_config_from_args
 
 
 def load_trades_from_csv(csv_path: Path) -> pd.DataFrame:
@@ -343,7 +344,44 @@ def main():
         "--stop-loss",
         type=float,
         default=None,
-        help="Stop-loss threshold (for running backtest if trades-csv not provided)"
+        help="Stop-loss threshold (for running backtest if trades-csv not provided). DEPRECATED: Use --stop-loss-mode and related args for adaptive stops."
+    )
+    parser.add_argument(
+        "--stop-loss-mode",
+        type=str,
+        choices=["constant", "adaptive_atr", "swing_atr"],
+        default=None,
+        help="Stop-loss mode: 'constant' (fixed), 'adaptive_atr' (ATR-based), or 'swing_atr' (swing low + ATR buffer)"
+    )
+    parser.add_argument(
+        "--atr-stop-k",
+        type=float,
+        default=1.8,
+        help="ATR multiplier for adaptive stops (default: 1.8). Used for adaptive_atr and swing_atr fallback."
+    )
+    parser.add_argument(
+        "--atr-stop-min-pct",
+        type=float,
+        default=0.04,
+        help="Minimum stop distance for adaptive stops (default: 0.04 = 4%%). Used for adaptive_atr and swing_atr."
+    )
+    parser.add_argument(
+        "--atr-stop-max-pct",
+        type=float,
+        default=0.10,
+        help="Maximum stop distance for adaptive stops (default: 0.10 = 10%%). Used for adaptive_atr and swing_atr."
+    )
+    parser.add_argument(
+        "--swing-lookback-days",
+        type=int,
+        default=10,
+        help="Days to look back for swing low (default: 10). Only used when --stop-loss-mode=swing_atr."
+    )
+    parser.add_argument(
+        "--swing-atr-buffer-k",
+        type=float,
+        default=0.75,
+        help="ATR multiplier for swing_atr buffer (default: 0.75). Only used when --stop-loss-mode=swing_atr."
     )
     parser.add_argument(
         "--output",
@@ -386,7 +424,20 @@ def main():
         tickers_df = pd.read_csv(TICKERS_CSV, header=None)
         tickers = tickers_df.iloc[:, 0].astype(str).tolist()
         
-        # Calculate stop-loss
+        # Create stop-loss configuration
+        stop_loss_config = create_stop_loss_config_from_args(
+            stop_loss_mode=getattr(args, 'stop_loss_mode', None),
+            constant_stop_loss_pct=None,
+            atr_stop_k=getattr(args, 'atr_stop_k', 1.8),
+            atr_stop_min_pct=getattr(args, 'atr_stop_min_pct', 0.04),
+            atr_stop_max_pct=getattr(args, 'atr_stop_max_pct', 0.10),
+            swing_lookback_days=getattr(args, 'swing_lookback_days', 10),
+            swing_atr_buffer_k=getattr(args, 'swing_atr_buffer_k', 0.75),
+            return_threshold=args.return_threshold,
+            legacy_stop_loss=getattr(args, 'stop_loss', None)
+        )
+        
+        # Legacy stop_loss_value for backward compatibility
         stop_loss_value = args.stop_loss
         if stop_loss_value is None and args.return_threshold is not None:
             stop_loss_value = -abs(args.return_threshold) / 2
@@ -403,6 +454,18 @@ def main():
             analysis_end = None  # Use all available test data
             print(f"\nUsing TEST data for analysis: {analysis_start} onwards")
         
+        print(f"\nStop-Loss Configuration:")
+        print(f"  Mode: {stop_loss_config.mode}")
+        if stop_loss_config.mode == "constant":
+            print(f"  Stop-Loss: {stop_loss_config.constant_stop_loss_pct:.2%}")
+        elif stop_loss_config.mode == "adaptive_atr":
+            print(f"  ATR Stop K: {stop_loss_config.atr_stop_k}")
+            print(f"  ATR Stop Range: {stop_loss_config.atr_stop_min_pct:.2%} - {stop_loss_config.atr_stop_max_pct:.2%}")
+        elif stop_loss_config.mode == "swing_atr":
+            print(f"  Swing Lookback Days: {stop_loss_config.swing_lookback_days}")
+            print(f"  Swing ATR Buffer K: {stop_loss_config.swing_atr_buffer_k}")
+            print(f"  Stop Range: {stop_loss_config.atr_stop_min_pct:.2%} - {stop_loss_config.atr_stop_max_pct:.2%}")
+        
         # Run backtest on validation/test data
         trades = run_backtest(
             tickers=tickers,
@@ -414,7 +477,8 @@ def main():
             features=features,
             model_threshold=args.model_threshold,
             strategy="model",
-            stop_loss=stop_loss_value,
+            stop_loss=stop_loss_value,  # Legacy parameter
+            stop_loss_config=stop_loss_config,  # New parameter
             scaler=scaler,
             features_to_scale=features_to_scale,
             test_start_date=analysis_start,

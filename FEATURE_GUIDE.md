@@ -1,6 +1,6 @@
 # Complete Feature Guide
 
-This document provides comprehensive documentation for all 42 technical indicators used in the swing trading ML pipeline. Each feature includes calculation details, normalization methods, and characteristics.
+This document provides comprehensive documentation for all 57 technical indicators used in the swing trading ML pipeline. Each feature includes calculation details, normalization methods, and characteristics.
 
 ---
 
@@ -9,14 +9,14 @@ This document provides comprehensive documentation for all 42 technical indicato
 1. [Price Features (3)](#price-features-3)
 2. [Return Features (6)](#return-features-6)
 3. [52-Week Features (3)](#52-week-features-3)
-4. [Moving Average Features (7)](#moving-average-features-7)
-5. [Volatility Features (6)](#volatility-features-6)
+4. [Moving Average Features (8)](#moving-average-features-8)
+5. [Volatility Features (8)](#volatility-features-8)
 6. [Volume Features (5)](#volume-features-5)
 7. [Momentum Features (3)](#momentum-features-3)
 8. [Market Context (1)](#market-context-1)
 9. [Candlestick Features (3)](#candlestick-features-3)
 10. [Price Action Features (4)](#price-action-features-4)
-11. [Trend Features (2)](#trend-features-2)
+11. [Trend Features (8)](#trend-features-8)
 
 ---
 
@@ -250,7 +250,7 @@ This document provides comprehensive documentation for all 42 technical indicato
 
 ---
 
-## Moving Average Features (7)
+## Moving Average Features (8)
 
 ### 13. sma20_ratio
 **What it represents:** Price relative to 20-day SMA.
@@ -432,7 +432,7 @@ This document provides comprehensive documentation for all 42 technical indicato
 
 ---
 
-## Volatility Features (7)
+## Volatility Features (8)
 
 ### 20. volatility_5d
 **What it represents:** 5-day rolling standard deviation of daily returns.
@@ -599,6 +599,32 @@ This document provides comprehensive documentation for all 42 technical indicato
 - Helps identify which direction the breakout is likely to occur
 - Normalized by price makes it comparable across different price ranges
 - Works in combination with squeeze_on to identify high-probability setups
+
+---
+
+### 27. volatility_of_volatility
+**What it represents:** Measures how unstable volatility itself is (meta volatility).
+
+**How to Calculate:**
+1. Compute 21-day volatility: `σ_21,t = std(r_{t-20}, ..., r_t)`
+2. Compute rolling std of volatility over 21 bars: `VoV_t = std(σ_21,{t-20}, ..., σ_21,t)`
+3. Normalize by dividing by long-term average volatility: `VoV_rel = VoV_t / mean(σ_21)`
+4. Clip to `[0, 3]`
+
+**Normalization:**
+- Division by long-term average volatility makes it relative and comparable
+- Clipped to [0, 3] to limit extreme values
+
+**Feature Characteristics:**
+- Low VoV → calm, stable regime (signals behave more cleanly)
+- High VoV → chaotic regime, risk of whipsaws/gaps/wild moves
+- Range: [0, 3] (normalized relative to long-term average volatility)
+- Tells model whether volatility indicators are reliable or chaotic
+
+**Why it's valuable:**
+- Tells the model whether volatility indicators are reliable or chaotic
+- Helps risk-aware decision making (e.g., avoid super unstable regimes)
+- Strong context feature when paired with ATR, BB width, TTM squeeze, volatility_ratio
 
 ---
 
@@ -1157,7 +1183,7 @@ This document provides comprehensive documentation for all 42 technical indicato
 
 ---
 
-## Trend Features (5)
+## Trend Features (8)
 
 ### 49. trend_residual
 **What it represents:** Deviation from linear trend (noise vs trend).
@@ -1307,6 +1333,96 @@ This document provides comprehensive documentation for all 42 technical indicato
 
 ---
 
+### 54. fractal_dimension_index
+**What it represents:** Measures how "rough" the price path is (fractal dimension).
+
+**How to Calculate:**
+1. For each rolling window of N=100 prices:
+   - Compute net displacement: `L_net = |P_N-1 - P_0|`
+   - Compute path length: `L_path = sum(|P_i - P_i-1|)` for i=1 to N-1
+   - Roughness ratio: `R = L_path / (L_net + ε)`
+   - Fractal dimension: `FDI = 1 + log(R+1) / log(N)`
+2. Normalize: Map from [1.0, 1.8] to [0, 1]: `FDI_norm = clip((FDI - 1.0) / (1.8 - 1.0), 0, 1)`
+
+**Normalization:**
+- FDI for financial time series typically lives in [1.0, 1.8]
+- Normalized to [0, 1] using linear mapping
+
+**Feature Characteristics:**
+- FDI ≈ 0.0-0.4 (raw 1.0-1.3) → smooth, trending (trend-friendly environment)
+- FDI ≈ 0.6 (raw 1.5) → borderline
+- FDI ≈ 0.75-1.0 (raw 1.6-1.8) → choppy, mean-reverting, noisy (whipsaw environment)
+- Range: [0, 1] (normalized)
+- Tells model whether it's in a trend-friendly vs whipsaw environment
+
+**Why it's valuable:**
+- Directly encodes "is this tradable with trend-following or not"
+- Helps model downweight momentum signals in very noisy regimes
+- Pairs beautifully with ADX, Aroon, Donchian, TTM squeeze
+- Very few retail systems use it – it's a genuine edge-type feature
+
+---
+
+### 55. hurst_exponent
+**What it represents:** Quantifies whether returns persist, mean-revert, or act like noise (R/S method).
+
+**How to Calculate:**
+1. Compute log returns: `r_t = ln(P_t / P_{t-1})`
+2. For each rolling window of N=100 returns:
+   - Mean of returns: `μ`
+   - Cumulative deviation series: `X_k = sum(r_i - μ)` for i=1 to k
+   - Range: `R = max(X_k) - min(X_k)`
+   - Standard deviation: `S = std(r_i)`
+   - Rescaled range: `R/S`
+   - Hurst estimate: `H ≈ log(R/S) / log(N)`
+3. Clip to `[0, 1]`
+
+**Normalization:**
+- H naturally lives in [0, 1]
+- Clipped to [0, 1] for ML use
+
+**Feature Characteristics:**
+- H > 0.5 → persistent/trending (moves tend to continue)
+- H < 0.5 → mean-reverting (moves tend to snap back)
+- H ≈ 0.5 → near-random walk
+- Range: [0, 1]
+- Tells model: should I expect continuation or snap-back after a move
+
+**Why it's valuable:**
+- Tells the model if momentum features should be trusted
+- Great for swing trading where persistence matters
+- Helps separate "fake breakouts" (H < 0.5, mean-reverting) from real trends
+- Works great with existing ROC, RSI, Stoch, MACD/PPO, Donchian features
+
+---
+
+### 56. price_curvature
+**What it represents:** Second derivative of trend (acceleration/deceleration).
+
+**How to Calculate:**
+1. Use SMA20 as smooth reference line: `T_t = SMA20(close)_t`
+2. First derivative (slope): `S_t = T_t - T_{t-1}`
+3. Second derivative (curvature): `C_t = S_t - S_{t-1}`
+4. Normalize: `C_norm = clip(C_t / (close_t + ε), -0.05, 0.05)`
+
+**Normalization:**
+- Division by price makes it scale-invariant (comparable across tickers)
+- Clipping to [-0.05, 0.05] limits insane spikes from gappy days
+
+**Feature Characteristics:**
+- Positive curvature → trend is bending up (acceleration)
+- Negative curvature → trend is bending down (deceleration/topping)
+- Near 0 → linear-ish trend, not bending much
+- Range: [-0.05, 0.05] (normalized)
+
+**Why it's valuable:**
+- Distinguishes steady trends from accelerating/rolling-over ones
+- Helps the model time entries inside an already-known trend
+- Complements trend_residual, which measures deviation from a line, not curvature
+- Very relevant for swing trading horizons
+
+---
+
 ## Feature Summary by Category
 
 | Category | Count | Features |
@@ -1315,14 +1431,14 @@ This document provides comprehensive documentation for all 42 technical indicato
 | Returns | 6 | daily_return, gap_pct, weekly_return_5d, monthly_return_21d, quarterly_return_63d, ytd_return |
 | 52-Week | 3 | dist_52w_high, dist_52w_low, pos_52w |
 | Moving Averages | 8 | sma20_ratio, sma50_ratio, sma200_ratio, sma20_sma50_ratio, sma50_sma200_ratio, sma50_slope, sma200_slope, kama_slope |
-| Volatility | 7 | volatility_5d, volatility_21d, volatility_ratio, atr14_normalized, bollinger_band_width, ttm_squeeze_on, ttm_squeeze_momentum |
+| Volatility | 8 | volatility_5d, volatility_21d, volatility_ratio, atr14_normalized, bollinger_band_width, ttm_squeeze_on, ttm_squeeze_momentum, volatility_of_volatility |
 | Volume | 5 | log_volume, log_avg_volume_20d, relative_volume, chaikin_money_flow, obv_momentum |
 | Momentum | 9 | rsi14, macd_histogram_normalized, ppo_histogram, dpo, roc10, roc20, stochastic_k14, cci20, williams_r14 |
 | Market Context | 1 | beta_spy_252d |
 | Candlestick | 3 | candle_body_pct, candle_upper_wick_pct, candle_lower_wick_pct |
 | Price Action | 4 | higher_high_10d, higher_low_10d, donchian_position, donchian_breakout |
-| Trend | 5 | trend_residual, adx14, aroon_up, aroon_down, aroon_oscillator |
-| **Total** | **53** | |
+| Trend | 8 | trend_residual, adx14, aroon_up, aroon_down, aroon_oscillator, fractal_dimension_index, hurst_exponent, price_curvature |
+| **Total** | **57** | |
 
 ---
 
@@ -1341,7 +1457,7 @@ This document provides comprehensive documentation for all 42 technical indicato
 
 ## Best Practices
 
-1. **Feature Selection**: All 53 features are enabled by default in `config/features.yaml`
+1. **Feature Selection**: All 57 features are enabled by default in `config/features.yaml`
 2. **Training**: Use `config/train_features.yaml` to select features for model training
 3. **Scaling**: Features are automatically scaled during training (StandardScaler for unbounded features)
 4. **Validation**: Feature validation checks for infinities, excessive NaNs, and constant values

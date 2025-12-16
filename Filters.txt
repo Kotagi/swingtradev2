@@ -1,0 +1,147 @@
+Recommended Filters Based on Analysis
+Based on your analysis, here are the top filters to reduce stop-losses:
+python src/apply_entry_filters.py \  --horizon 30 \  --return-threshold 0.15 \  --model-threshold 0.80 \  --stop-loss -0.075 \  --filter-candle-body -10 \  --filter-close-position 0.40 \  --filter-weekly-rsi 42 \  --filter-market-correlation 0.60 \  --filter-volatility 60
+What Each Filter Does
+--filter-candle-body -10: Avoid very bearish candles (stop-loss trades had -27.66% vs winners -1.37%)
+--filter-close-position 0.40: Only enter when price is in upper 40% of daily range (stop-loss: 0.38 vs winners: 0.51)
+--filter-weekly-rsi 42: Avoid when weekly RSI is overbought (stop-loss: 44.38 vs winners: 39.54)
+--filter-market-correlation 0.60: Only trade when stock moves with market (stop-loss: 0.47 vs winners: 0.61)
+--filter-volatility 60: Prefer higher volatility environments (stop-loss: 53.32 vs winners: 66.61)
+Expected Results
+These filters should:
+Reduce stop-loss rate from 45.8% to ~25-30%
+Improve win rate from 48.4% to ~55-60%
+Reduce total trades (more selective)
+Improve average return per trade
+
+set SEC_EDGAR_USER_AGENT=Brandon Archer (brandon.j.archer@gmail.com)
+
+python src/identify_trades.py   --min-probability 0.6 --custom-filter candle_body_pct ">" -10 --custom-filter close_position_in_range ">" 0.40 --custom-filter weekly_rsi_14w "<" 42   --custom-filter market_correlation_20d ">" 0.60  --custom-filter volatility_regime ">" 60   --output current_opportunities.csv
+
+python src/identify_trades.py   --min-probability 0.6 --custom-filter candle_body_pct ">" -10 --custom-filter weekly_rsi_14w "<" 42  --custom-filter volatility_regime ">" 60   --output current_opportunities.csv
+
+Updated
+
+Using VALIDATION data for analysis: 2022-12-31 to 2023-12-31
+
+Stop-Loss Configuration:
+  Mode: adaptive_atr
+  ATR Stop K: 1.8
+  ATR Stop Range: 4.00% - 10.00%
+
+Loaded 480 trades
+
+Extracting feature values at entry time...
+
+================================================================================
+STOP-LOSS ANALYSIS
+================================================================================
+
+Total Trades: 480
+Stop-Loss Trades: 207 (43.1%)
+Winning Trades: 252 (52.5%)
+Target Reached: 215 (44.8%)
+
+================================================================================
+FEATURE ANALYSIS: Stop-Loss vs Winners
+================================================================================
+
+Top Features That Differ Between Stop-Loss and Winners:
+--------------------------------------------------------------------------------
+Feature                        Stop-Loss Mean     Winner Mean        Difference      Effect Size
+--------------------------------------------------------------------------------
+daily_return                           -0.0254          -0.0073          -0.0181        -0.460
+higher_low_10d                          0.4155           0.6111          -0.1957        -0.398
+sma20_sma50_ratio                       0.9811           0.9643           0.0168         0.246
+gap_pct                                -0.0079          -0.0014          -0.0065        -0.244
+log_avg_volume_20d                     15.1275          15.5795          -0.4520        -0.235
+price_log                               4.1652           3.9188           0.2464         0.234
+sma200_slope                           -0.0097          -0.0154           0.0058         0.232
+trend_residual                         -0.0548          -0.0341          -0.0207        -0.215
+candle_lower_wick_pct                   0.2071           0.2463          -0.0392        -0.208
+dist_52w_high                          -0.3719          -0.4026           0.0307         0.207
+relative_volume                         0.8251           0.7693           0.0558         0.205
+sma50_sma200_ratio                      0.9932           0.9568           0.0363         0.203
+bollinger_band_width                    0.1981           0.2172          -0.0191        -0.202
+sma50_slope                            -0.0087          -0.0137           0.0050         0.200
+pos_52w                                 0.2749           0.2213           0.0536         0.194
+volatility_21d                          0.0291           0.0313          -0.0022        -0.192
+price                                 105.5215          85.4952          20.0263         0.190
+adj close                             103.6352          83.8377          19.7976         0.189
+atr14_normalized                        0.0445           0.0468          -0.0023        -0.185
+weekly_return_5d                       -0.0539          -0.0369          -0.0170        -0.180
+
+================================================================================
+RECOMMENDATIONS
+================================================================================
+  • Filter: daily_return > -0.025 (stop-loss trades have lower daily_return)
+  • Filter: higher_low_10d > 0.415 (stop-loss trades have lower higher_low_10d)
+
+================================================================================
+TIMING ANALYSIS
+================================================================================
+
+Stop-Loss Trades by Day of Week:
+  Mon: 49 (23.7%)
+  Tue: 48 (23.2%)
+  Wed: 24 (11.6%)
+  Thu: 46 (22.2%)
+  Fri: 40 (19.3%)
+
+Stop-Loss Trades by Month:
+  Jan: 19 (9.2%)
+  Feb: 16 (7.7%)
+  Mar: 38 (18.4%)
+  Apr: 14 (6.8%)
+  May: 12 (5.8%)
+  Jun: 6 (2.9%)
+  Jul: 6 (2.9%)
+  Aug: 20 (9.7%)
+  Sep: 25 (12.1%)
+  Oct: 47 (22.7%)
+  Nov: 3 (1.4%)
+  Dec: 1 (0.5%)
+
+================================================================================
+STOP-LOSS TIMING
+================================================================================
+
+Average days to stop-loss: 16.8
+Median days to stop-loss: 11.0
+Min days to stop-loss: 1.0
+Max days to stop-loss: 56.0
+
+Days to Stop-Loss Distribution:
+  1-2 days: 14 (6.8%)
+  2-3 days: 17 (8.2%)
+  3-5 days: 19 (9.2%)
+  5-7 days: 14 (6.8%)
+  7-10 days: 28 (13.5%)
+  10-15 days: 30 (14.5%)
+  15-30 days: 41 (19.8%)
+
+⚠️  14 stop-losses (6.8%) occurred within 1 day - possible bad entries!
+
+================================================================================
+RETURN ANALYSIS
+================================================================================
+
+Stop-Loss Return Distribution:
+  Mean: -9.45%
+  Median: -9.06%
+  Min: -37.47%
+  Max: -5.20%
+  Std Dev: 3.14%
+
+  30 (14.5%) hit stop-loss between -7% and -8% (expected range)
+
+================================================================================
+ANALYSIS COMPLETE
+================================================================================
+
+
+
+python src/apply_entry_filters.py --horizon 40 --return-threshold 0.15 --model-threshold 0.83 --stop-loss -0.075 --no-default-filters --custom-filter daily_return ">" -0.022 --custom-filter higher_low_10d ">" 0.430 --custom-filter sma200_slope "<" -0.007 --no-timing-filters
+
+apply_entry_filters.py --horizon 40 --return-threshold 0.15 --model-threshold 0.83 --no-default-filters --custom-filter daily_return ">" -0.022 --custom-filter higher_low_10d ">" 0.430 --custom-filter sma200_slope "<" -0.007 --no-timing-filters --stop-loss-mode adaptive_atr --atr-stop-k 2.0 --atr-stop-min-pct 0.05 --atr-stop-max-pct 0.12
+

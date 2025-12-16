@@ -10,8 +10,8 @@ python src\feature_pipeline.py ^
     --input-dir data\clean ^
     --output-dir data\features_labeled ^
     --config config\features.yaml ^
-    --horizon 5 ^
-    --threshold 0.01 ^
+    --horizon 21 ^
+    --threshold 10 ^
 	--full
 
 popd

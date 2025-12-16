@@ -894,8 +894,6 @@ class FeatureService:
         input_dir: str = None,
         output_dir: str = None,
         config: str = None,
-        horizon: int = 5,
-        threshold: float = 0.0,
         full: bool = False,
         feature_set: Optional[str] = None,
         progress_callback=None
@@ -935,9 +933,7 @@ class FeatureService:
         scripts_dir = PROJECT_ROOT / "src"
         cmd = [
             sys.executable,
-            str(scripts_dir / "feature_pipeline.py"),
-            "--horizon", str(horizon),
-            "--threshold", str(threshold)
+            str(scripts_dir / "feature_pipeline.py")
         ]
         
         if feature_set:
@@ -1058,7 +1054,7 @@ class FeatureService:
                     progress_callback(adjusted_count, total_count)
                 
                 # Parse output to get statistics
-                message = self._parse_feature_summary(stdout, stderr, horizon, threshold)
+                message = self._parse_feature_summary(stdout, stderr)
                 return True, message
             else:
                 error_msg = stderr if stderr else stdout if stdout else f"Process exited with code {process.returncode}"
@@ -1066,7 +1062,7 @@ class FeatureService:
         except Exception as e:
             return False, f"Error: {str(e)}"
     
-    def _parse_feature_summary(self, stdout: str, stderr: str, horizon: int, threshold: float) -> str:
+    def _parse_feature_summary(self, stdout: str, stderr: str) -> str:
         """
         Parse feature building output to extract statistics.
         
@@ -1113,7 +1109,7 @@ class FeatureService:
         if stats_parts:
             message = f"Features built successfully ({', '.join(stats_parts)})"
         else:
-            message = f"Features built successfully (horizon={horizon}d, threshold={threshold:.2%})"
+            message = "Features built successfully"
         
         return message
 
@@ -1137,10 +1133,11 @@ class TrainingService:
         val_end: Optional[str] = None,
         horizon: Optional[int] = None,
         label_col: Optional[str] = None,
+        return_threshold: Optional[float] = None,
         feature_set: Optional[str] = None,
         model_output: Optional[str] = None,
         progress_callback=None
-    ) -> Tuple[bool, str]:
+    ) -> Tuple[bool, str, Dict]:
         """
         Train ML model.
         
@@ -1159,9 +1156,9 @@ class TrainingService:
         scripts_dir = PROJECT_ROOT / "src"
         train_script = scripts_dir / "train_model.py"
         
-        # Verify script exists
+            # Verify script exists
         if not train_script.exists():
-            return False, f"Training script not found: {train_script}"
+            return False, f"Training script not found: {train_script}", {}
         
         cmd = [sys.executable, str(train_script)]
         
@@ -1190,6 +1187,8 @@ class TrainingService:
             cmd.extend(["--horizon", str(horizon)])
         if label_col is not None:
             cmd.extend(["--label-col", label_col])
+        if return_threshold is not None:
+            cmd.extend(["--return-threshold", str(return_threshold)])
         if feature_set is not None:
             cmd.extend(["--feature-set", feature_set])
         if model_output is not None:
@@ -1330,7 +1329,7 @@ class TrainingService:
                 stdout = ''.join(stdout_lines)
                 stderr = ''.join(stderr_lines)
                 error_msg = (stdout + stderr).strip() if (stdout or stderr) else "Process exited immediately with no output"
-                return False, f"Training failed to start: {error_msg}"
+                return False, f"Training failed to start: {error_msg}", {}
             
             # Wait for process to complete
             # Use a simple wait with periodic checks for progress updates
@@ -1342,7 +1341,7 @@ class TrainingService:
                 elapsed = time.time() - start_time
                 if elapsed > 3600:  # 1 hour timeout
                     process.kill()
-                    return False, "Training timed out after 1 hour"
+                    return False, "Training timed out after 1 hour", {}
                 
                 # If we have output but haven't updated progress in a while, show we're working
                 if len(stdout_lines) > 0 and time.time() - last_progress_update > 10:
@@ -1376,9 +1375,9 @@ class TrainingService:
                 if progress_callback:
                     progress_callback(total_stages, total_stages, "Training completed")
                 
-                # Parse output to get model info
-                message = self._parse_training_summary(stdout, stderr)
-                return True, message
+                # Parse output to get model info and metrics
+                message, metrics_dict = self._parse_training_summary(stdout, stderr)
+                return True, message, metrics_dict
             else:
                 # Include both stdout and stderr in error message for debugging
                 error_parts = []
@@ -1390,29 +1389,128 @@ class TrainingService:
                     error_parts.append(f"Process exited with code {returncode}")
                 
                 error_msg = " | ".join(error_parts)
-                return False, f"Training failed (exit code {returncode}): {error_msg}"
+                return False, f"Training failed (exit code {returncode}): {error_msg}", {}
         except Exception as e:
-            return False, f"Error: {str(e)}"
+            return False, f"Error: {str(e)}", {}
     
-    def _parse_training_summary(self, stdout: str, stderr: str) -> str:
+    def _parse_training_summary(self, stdout: str, stderr: str) -> Tuple[str, Dict]:
         """
-        Parse training output to extract summary information.
+        Parse training output to extract summary information and metrics.
         
         Returns:
-            Success message with training details
+            Tuple of (message: str, metrics_dict: Dict)
+            metrics_dict contains: model_path, training_time, test_metrics, validation_metrics
         """
         import re
         
         # Combine stdout and stderr
         output = stdout + stderr
         
+        metrics_dict = {}
+        
         # Look for model file path
         model_path_match = re.search(r'Model saved to:\s*(.+)', output, re.IGNORECASE)
         model_path = model_path_match.group(1).strip() if model_path_match else None
+        if model_path:
+            metrics_dict['model_path'] = model_path
         
         # Look for training time
         time_match = re.search(r'Total training time:\s*([\d.]+)\s*seconds', output, re.IGNORECASE)
         training_time = time_match.group(1) if time_match else None
+        if training_time:
+            metrics_dict['training_time'] = float(training_time)
+        
+        # Look for label column (used to extract horizon)
+        # Patterns: "Using specified label column: label_30d"
+        #           "Using label column from horizon: label_30d"
+        #           "Auto-detected label column: label_30d"
+        label_col_match = re.search(
+            r'(?:Using (?:specified )?label column|Using label column from horizon|Auto-detected label column):\s*(label_\d+d)',
+            output,
+            re.IGNORECASE
+        )
+        if label_col_match:
+            label_col = label_col_match.group(1)
+            metrics_dict['label_col'] = label_col
+            # Extract horizon from label_col (e.g., "label_30d" -> 30)
+            horizon_match = re.search(r'label_(\d+)d', label_col, re.IGNORECASE)
+            if horizon_match:
+                metrics_dict['horizon'] = int(horizon_match.group(1))
+        
+        # Parse TEST SET metrics
+        test_metrics = {}
+        test_section_match = re.search(r'=== TEST SET METRICS ===(.*?)(?===|$)', output, re.IGNORECASE | re.DOTALL)
+        if test_section_match:
+            test_section = test_section_match.group(1)
+            
+            # Extract metrics using regex
+            auc_match = re.search(r'ROC AUC:\s*([\d.]+)', test_section, re.IGNORECASE)
+            if auc_match:
+                test_metrics['roc_auc'] = float(auc_match.group(1))
+            
+            ap_match = re.search(r'Average Precision \(AP\):\s*([\d.]+)', test_section, re.IGNORECASE)
+            if ap_match:
+                test_metrics['average_precision'] = float(ap_match.group(1))
+            
+            f1_match = re.search(r'F1 Score:\s*([\d.]+)', test_section, re.IGNORECASE)
+            if f1_match:
+                test_metrics['f1_score'] = float(f1_match.group(1))
+            
+            precision_match = re.search(r'Precision \(Positive\):\s*([\d.]+)', test_section, re.IGNORECASE)
+            if precision_match:
+                test_metrics['precision'] = float(precision_match.group(1))
+            
+            recall_match = re.search(r'Recall \(Sensitivity\):\s*([\d.]+)', test_section, re.IGNORECASE)
+            if recall_match:
+                test_metrics['recall'] = float(recall_match.group(1))
+            
+            accuracy_match = re.search(r'Accuracy:\s*([\d.]+)', test_section, re.IGNORECASE)
+            if accuracy_match:
+                test_metrics['accuracy'] = float(accuracy_match.group(1))
+            
+            # Confusion matrix
+            cm_match = re.search(r'Confusion Matrix:\s*\[\[(\d+)\s+(\d+)\]\s*\[(\d+)\s+(\d+)\]\]', test_section, re.IGNORECASE)
+            if cm_match:
+                test_metrics['confusion_matrix'] = [
+                    [int(cm_match.group(1)), int(cm_match.group(2))],
+                    [int(cm_match.group(3)), int(cm_match.group(4))]
+                ]
+        
+        if test_metrics:
+            metrics_dict['test_metrics'] = test_metrics
+        
+        # Parse VALIDATION SET metrics (if available)
+        val_metrics = {}
+        val_section_match = re.search(r'=== VALIDATION SET METRICS ===(.*?)(?===|$)', output, re.IGNORECASE | re.DOTALL)
+        if val_section_match:
+            val_section = val_section_match.group(1)
+            
+            auc_match = re.search(r'ROC AUC:\s*([\d.]+)', val_section, re.IGNORECASE)
+            if auc_match:
+                val_metrics['roc_auc'] = float(auc_match.group(1))
+            
+            ap_match = re.search(r'Average Precision \(AP\):\s*([\d.]+)', val_section, re.IGNORECASE)
+            if ap_match:
+                val_metrics['average_precision'] = float(ap_match.group(1))
+            
+            f1_match = re.search(r'F1 Score:\s*([\d.]+)', val_section, re.IGNORECASE)
+            if f1_match:
+                val_metrics['f1_score'] = float(f1_match.group(1))
+            
+            precision_match = re.search(r'Precision \(Positive\):\s*([\d.]+)', val_section, re.IGNORECASE)
+            if precision_match:
+                val_metrics['precision'] = float(precision_match.group(1))
+            
+            recall_match = re.search(r'Recall \(Sensitivity\):\s*([\d.]+)', val_section, re.IGNORECASE)
+            if recall_match:
+                val_metrics['recall'] = float(recall_match.group(1))
+            
+            accuracy_match = re.search(r'Accuracy:\s*([\d.]+)', val_section, re.IGNORECASE)
+            if accuracy_match:
+                val_metrics['accuracy'] = float(accuracy_match.group(1))
+        
+        if val_metrics:
+            metrics_dict['validation_metrics'] = val_metrics
         
         # Build message
         message = "Model training completed successfully"
@@ -1421,8 +1519,10 @@ class TrainingService:
         if training_time:
             minutes = float(training_time) / 60
             message += f" ({minutes:.1f} minutes)"
+        if test_metrics.get('roc_auc'):
+            message += f" - Test ROC AUC: {test_metrics['roc_auc']:.4f}"
         
-        return message
+        return message, metrics_dict
 
 
 class BacktestService:

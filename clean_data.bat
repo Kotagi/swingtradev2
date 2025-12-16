@@ -15,6 +15,18 @@ IF %ERRORLEVEL% NEQ 0 (
   exit /b %ERRORLEVEL%
 )
 
+echo === 2) Cleaning raw macro data into data\macro\clean ===
+python src\clean_data.py^
+	--raw-dir data\macro\raw^
+	--clean-dir data\macro\clean
+	
+IF %ERRORLEVEL% NEQ 0 (
+  echo.
+  echo [ERROR] clean_data.py failed.
+  pause
+  exit /b %ERRORLEVEL%
+)
+
 echo.
 echo Clean complete.  
 pause

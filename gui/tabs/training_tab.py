@@ -16,12 +16,13 @@ from datetime import datetime
 
 from gui.services import TrainingService, DataService
 from gui.widgets import PresetManagerWidget
+from gui.utils.model_registry import ModelRegistry
 
 
 class TrainingWorker(QThread):
     """Worker thread for model training."""
     
-    finished = pyqtSignal(bool, str)  # success, message
+    finished = pyqtSignal(bool, str, dict)  # success, message, metrics_dict
     progress = pyqtSignal(int, int)  # current_stage, total_stages (for progress bar)
     progress_message = pyqtSignal(str)  # progress message text
     
@@ -40,10 +41,10 @@ class TrainingWorker(QThread):
         try:
             # Add progress callback
             self.kwargs['progress_callback'] = self.training_progress_callback
-            success, message = self.service.train_model(**self.kwargs)
-            self.finished.emit(success, message)
+            success, message, metrics_dict = self.service.train_model(**self.kwargs)
+            self.finished.emit(success, message, metrics_dict)
         except Exception as e:
-            self.finished.emit(False, f"Error: {str(e)}")
+            self.finished.emit(False, f"Error: {str(e)}", {})
 
 
 class TrainingTab(QWidget):
@@ -53,6 +54,7 @@ class TrainingTab(QWidget):
         super().__init__(parent)
         self.service = TrainingService()
         self.data_service = DataService()
+        self.registry = ModelRegistry()
         self.worker = None
         
         self.init_ui()
@@ -156,6 +158,30 @@ class TrainingTab(QWidget):
         imbalance_row.addWidget(self.imbalance_spin)
         imbalance_row.addStretch()
         advanced_layout.addLayout(imbalance_row)
+        
+        # Horizon (trading days)
+        horizon_row = QHBoxLayout()
+        horizon_row.addWidget(QLabel("Horizon (Trading Days):"))
+        self.horizon_spin = QSpinBox()
+        self.horizon_spin.setRange(1, 365)
+        self.horizon_spin.setValue(30)
+        self.horizon_spin.setSuffix(" days")
+        self.horizon_spin.setToolTip("Trade horizon in trading days (used to select label column, e.g., label_30d)")
+        horizon_row.addWidget(self.horizon_spin)
+        horizon_row.addStretch()
+        advanced_layout.addLayout(horizon_row)
+        
+        # Return threshold (for metadata tracking)
+        threshold_row = QHBoxLayout()
+        threshold_row.addWidget(QLabel("Return Threshold (%):"))
+        self.return_threshold_spin = QSpinBox()
+        self.return_threshold_spin.setRange(0, 100)
+        self.return_threshold_spin.setValue(5)
+        self.return_threshold_spin.setSuffix("%")
+        self.return_threshold_spin.setToolTip("Return threshold used for labeling (for metadata tracking only)")
+        threshold_row.addWidget(self.return_threshold_spin)
+        threshold_row.addStretch()
+        advanced_layout.addLayout(threshold_row)
         
         # Feature set
         featureset_row = QHBoxLayout()
@@ -271,6 +297,8 @@ class TrainingTab(QWidget):
             "diagnostics": self.diagnostics_check.isChecked(),
             "no_early_stop": self.no_early_stop_check.isChecked(),
             "imbalance_multiplier": self.imbalance_spin.value(),
+            "horizon": self.horizon_spin.value(),
+            "return_threshold": self.return_threshold_spin.value(),
             "feature_set": self.featureset_combo.currentText().strip(),
             "model_output": self.model_output_edit.text().strip()
         }
@@ -295,6 +323,10 @@ class TrainingTab(QWidget):
             self.no_early_stop_check.setChecked(config["no_early_stop"])
         if "imbalance_multiplier" in config:
             self.imbalance_spin.setValue(config["imbalance_multiplier"])
+        if "horizon" in config:
+            self.horizon_spin.setValue(config["horizon"])
+        if "return_threshold" in config:
+            self.return_threshold_spin.setValue(config["return_threshold"])
         if "feature_set" in config:
             index = self.featureset_combo.findText(config["feature_set"])
             if index >= 0:
@@ -341,6 +373,16 @@ class TrainingTab(QWidget):
             "imbalance_multiplier": self.imbalance_spin.value()
         }
         
+        # Horizon
+        horizon = self.horizon_spin.value()
+        if horizon > 0:
+            kwargs["horizon"] = horizon
+        
+        # Return threshold (convert from percentage to decimal)
+        return_threshold_pct = self.return_threshold_spin.value()
+        if return_threshold_pct > 0:
+            kwargs["return_threshold"] = return_threshold_pct / 100.0
+        
         # Feature set
         feature_set = self.featureset_combo.currentText().strip()
         if feature_set:
@@ -385,7 +427,7 @@ class TrainingTab(QWidget):
         timestamp = datetime.now().strftime('%H:%M:%S')
         self.log_text.append(f"[{timestamp}] {message}")
     
-    def on_training_finished(self, success: bool, message: str):
+    def on_training_finished(self, success: bool, message: str, metrics_dict: dict = None):
         """Handle completion of model training."""
         # Re-enable button
         self.train_btn.setEnabled(True)
@@ -400,6 +442,52 @@ class TrainingTab(QWidget):
             self.status_label.setText(message)
             self.status_label.setStyleSheet("color: #4caf50;")
             self.log_text.append(f"[{timestamp}] ✓ {message}")
+            
+            # Save model to registry if we have metrics
+            if metrics_dict and metrics_dict.get('model_path'):
+                try:
+                    # Extract parameters from current UI state
+                    # Use horizon from UI (or fallback to extracted from label_col if not set)
+                    horizon = self.horizon_spin.value() if self.horizon_spin.value() > 0 else metrics_dict.get('horizon')
+                    
+                    # Return threshold from UI (convert from percentage to decimal)
+                    return_threshold_pct = self.return_threshold_spin.value()
+                    return_threshold = return_threshold_pct / 100.0 if return_threshold_pct > 0 else None
+                    
+                    parameters = {
+                        'horizon': horizon,
+                        'return_threshold': return_threshold,
+                        'feature_set': self.featureset_combo.currentText().strip() or None,
+                        'tune': self.tune_check.isChecked(),
+                        'cv': self.cv_check.isChecked(),
+                        'imbalance_multiplier': self.imbalance_spin.value(),
+                        'n_iter': self.n_iter_spin.value() if self.tune_check.isChecked() else None,
+                        'cv_folds': self.cv_folds_spin.value() if self.cv_check.isChecked() else None,
+                    }
+                    
+                    # Extract training info
+                    training_info = {
+                        'training_time': metrics_dict.get('training_time'),
+                        'feature_count': None,  # Could be extracted from model if needed
+                    }
+                    
+                    # Prepare metrics for registry
+                    registry_metrics = {
+                        'test': metrics_dict.get('test_metrics', {}),
+                        'validation': metrics_dict.get('validation_metrics', {})
+                    }
+                    
+                    # Register the model
+                    model_id = self.registry.register_model(
+                        model_path=metrics_dict['model_path'],
+                        metrics=registry_metrics,
+                        parameters=parameters,
+                        training_info=training_info
+                    )
+                    
+                    self.log_text.append(f"[{timestamp}] ✓ Model registered in registry (ID: {model_id})")
+                except Exception as e:
+                    self.log_text.append(f"[{timestamp}] ⚠ Failed to register model: {str(e)}")
         else:
             self.status_label.setText(f"Error: {message}")
             self.status_label.setStyleSheet("color: #f44336;")

@@ -24,6 +24,7 @@ This script:
 """
 
 import argparse
+import sys
 import yaml
 import json
 import time
@@ -33,6 +34,13 @@ from pathlib import Path
 from datetime import datetime
 import joblib
 import os
+
+# Add project root and src to Python path
+PROJECT_ROOT = Path(__file__).parent.parent
+SRC_DIR = Path(__file__).parent
+sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(SRC_DIR))
+
 from xgboost import XGBClassifier
 from sklearn.metrics import (
     roc_auc_score, classification_report, confusion_matrix,
@@ -42,6 +50,9 @@ from sklearn.dummy import DummyClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
 from typing import Tuple, List, Dict, Optional
+
+# Import labeling utility (used during training to calculate labels)
+from utils.labeling import label_future_return
 
 # Import feature set manager
 try:
@@ -493,6 +504,12 @@ def main() -> None:
         help="Label column name (e.g., 'label_5d', 'label_30d'). If not specified, will auto-detect from data."
     )
     parser.add_argument(
+        "--return-threshold",
+        type=float,
+        default=None,
+        help="Return threshold used for labeling (as decimal, e.g., 0.05 for 5%%). Used for metadata tracking only."
+    )
+    parser.add_argument(
         "--feature-set",
         type=str,
         default=None,
@@ -552,28 +569,50 @@ def main() -> None:
     print("Loading data...")
     df_all = load_data()
     
-    # Step 2.5: Determine label column name
-    if args.label_col:
-        label_col = args.label_col
-        print(f"Using specified label column: {label_col}")
-    elif args.horizon:
-        label_col = f"label_{args.horizon}d"
-        print(f"Using label column from horizon: {label_col}")
-    else:
-        # Auto-detect label column (look for pattern label_*d)
-        label_cols = [col for col in df_all.columns if col.startswith("label_") and col.endswith("d")]
-        if not label_cols:
-            raise ValueError("No label column found. Expected pattern: 'label_{horizon}d' (e.g., 'label_5d', 'label_30d'). "
-                           "Use --horizon or --label-col to specify.")
-        if len(label_cols) > 1:
-            print(f"Warning: Multiple label columns found: {label_cols}")
-            print(f"Using first one: {label_cols[0]}")
-        label_col = label_cols[0]
-        print(f"Auto-detected label column: {label_col}")
+    # Step 2.5: Calculate labels based on horizon and return_threshold
+    # Labels are now calculated during training, not during feature engineering
+    # (label_future_return is imported at the top of the file)
     
-    # Verify label column exists
-    if label_col not in df_all.columns:
-        raise ValueError(f"Label column '{label_col}' not found in data. Available columns: {list(df_all.columns)[:10]}...")
+    # Determine horizon and threshold
+    horizon = args.horizon if args.horizon else 30  # Default to 30 if not specified
+    return_threshold = args.return_threshold if args.return_threshold is not None else 0.0
+    
+    print(f"Calculating labels with horizon={horizon} days, threshold={return_threshold:.2%}")
+    
+    # Find close and high columns (case-insensitive)
+    close_col = None
+    high_col = None
+    for col in df_all.columns:
+        if col.lower() == 'close' or col.lower() == 'adj close':
+            close_col = col
+        if col.lower() == 'high':
+            high_col = col
+    
+    if not close_col:
+        raise ValueError("Could not find 'close' or 'adj close' column in data")
+    if not high_col:
+        raise ValueError("Could not find 'high' column in data")
+    
+    # Ensure close and high columns are numeric (convert from string if needed)
+    if df_all[close_col].dtype == 'object':
+        print(f"Converting {close_col} column to numeric...")
+        df_all[close_col] = pd.to_numeric(df_all[close_col], errors='coerce')
+    if df_all[high_col].dtype == 'object':
+        print(f"Converting {high_col} column to numeric...")
+        df_all[high_col] = pd.to_numeric(df_all[high_col], errors='coerce')
+    
+    # Calculate labels using the labeling utility
+    label_col = "training_label"  # Generic name, not horizon-specific
+    df_all = label_future_return(
+        df_all,
+        close_col=close_col,
+        high_col=high_col,
+        horizon=horizon,
+        threshold=return_threshold,
+        label_name=label_col
+    )
+    
+    print(f"Labels calculated and stored in column: {label_col}")
     
     X_all, y_all, all_feats = prepare(df_all, label_col)
 
@@ -906,7 +945,10 @@ def main() -> None:
         'class_imbalance_ratio': float(scale_pos_weight),
         'train_date_range': [str(X_train.index.min()), str(X_train.index.max())],
         'test_date_range': [str(X_test.index.min()), str(X_test.index.max())],
-        'plot_files': plot_files if plot_files else None
+        'plot_files': plot_files if plot_files else None,
+        'return_threshold': args.return_threshold,  # Store return threshold for metadata
+        'horizon': args.horizon,  # Store horizon for metadata
+        'label_col': label_col  # Store label column for metadata
     }
     
     # Add early stopping info if available

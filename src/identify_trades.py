@@ -25,6 +25,8 @@ import sys
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from utils.stop_loss_policy import StopLossConfig, calculate_stop_loss_pct
+
 # —— CONFIGURATION —— #
 DATA_DIR = PROJECT_ROOT / "data" / "features_labeled"
 MODEL_DIR = PROJECT_ROOT / "models"
@@ -199,7 +201,8 @@ def identify_opportunities(
     top_n: int = 20,
     scaler=None,
     features_to_scale: List[str] = None,
-    entry_filters: Optional[Dict[str, Tuple[str, float]]] = None
+    entry_filters: Optional[Dict[str, Tuple[str, float]]] = None,
+    stop_loss_config: Optional[StopLossConfig] = None
 ) -> pd.DataFrame:
     """
     Identify trading opportunities across a universe of tickers.
@@ -264,10 +267,24 @@ def identify_opportunities(
             
             if proba >= min_probability:
                 current_price = get_current_price(ticker)
+                
+                # Calculate adaptive stop-loss if configured
+                stop_loss_pct = None
+                if stop_loss_config is not None and stop_loss_config.mode in ["adaptive_atr", "swing_atr"]:
+                    try:
+                        # Use the feature_vector (not X, which may be scaled) to get atr14_normalized
+                        # Pass entry_price for swing_atr mode
+                        entry_price_val = current_price if current_price is not None else None
+                        stop_loss_pct, _ = calculate_stop_loss_pct(feature_vector, stop_loss_config, entry_price=entry_price_val)
+                    except Exception as e:
+                        # If stop calculation fails, leave as None
+                        pass
+                
                 opportunities.append({
                     'ticker': ticker,
                     'probability': proba,
                     'current_price': current_price,
+                    'stop_loss_pct': stop_loss_pct,
                     'date': datetime.now().strftime('%Y-%m-%d')
                 })
         except Exception as e:
@@ -341,6 +358,43 @@ def main():
         metavar=("FEATURE", "OPERATOR", "THRESHOLD"),
         help="Add custom filter: --custom-filter feature_name > 0.5 (can be used multiple times)"
     )
+    parser.add_argument(
+        "--stop-loss-mode",
+        type=str,
+        choices=["constant", "adaptive_atr", "swing_atr"],
+        default=None,
+        help="Stop-loss mode: 'constant' (fixed), 'adaptive_atr' (ATR-based), or 'swing_atr' (swing low + ATR buffer). If specified, calculates and displays recommended stop-loss for each trade."
+    )
+    parser.add_argument(
+        "--atr-stop-k",
+        type=float,
+        default=1.8,
+        help="ATR multiplier for adaptive stops (default: 1.8). Used for adaptive_atr and swing_atr fallback."
+    )
+    parser.add_argument(
+        "--atr-stop-min-pct",
+        type=float,
+        default=0.04,
+        help="Minimum stop distance for adaptive stops (default: 0.04 = 4%%). Used for adaptive_atr and swing_atr."
+    )
+    parser.add_argument(
+        "--atr-stop-max-pct",
+        type=float,
+        default=0.10,
+        help="Maximum stop distance for adaptive stops (default: 0.10 = 10%%). Used for adaptive_atr and swing_atr."
+    )
+    parser.add_argument(
+        "--swing-lookback-days",
+        type=int,
+        default=10,
+        help="Days to look back for swing low (default: 10). Only used when --stop-loss-mode=swing_atr."
+    )
+    parser.add_argument(
+        "--swing-atr-buffer-k",
+        type=float,
+        default=0.75,
+        help="ATR multiplier for swing_atr buffer (default: 0.75). Only used when --stop-loss-mode=swing_atr."
+    )
     
     args = parser.parse_args()
     
@@ -383,6 +437,27 @@ def main():
     else:
         print("\nNo entry filters applied")
     
+    # Create stop-loss configuration if adaptive mode is specified
+    stop_loss_config = None
+    if args.stop_loss_mode in ["adaptive_atr", "swing_atr"]:
+        stop_loss_config = StopLossConfig(
+            mode=args.stop_loss_mode,
+            atr_stop_k=args.atr_stop_k,
+            atr_stop_min_pct=args.atr_stop_min_pct,
+            atr_stop_max_pct=args.atr_stop_max_pct,
+            swing_lookback_days=args.swing_lookback_days,
+            swing_atr_buffer_k=args.swing_atr_buffer_k
+        )
+        mode_name = "Adaptive ATR" if args.stop_loss_mode == "adaptive_atr" else "Swing ATR"
+        print(f"\n{mode_name} Stop-Loss Configuration:")
+        if args.stop_loss_mode == "adaptive_atr":
+            print(f"  ATR Stop K: {stop_loss_config.atr_stop_k}")
+            print(f"  ATR Stop Range: {stop_loss_config.atr_stop_min_pct:.2%} - {stop_loss_config.atr_stop_max_pct:.2%}")
+        else:
+            print(f"  Swing Lookback Days: {stop_loss_config.swing_lookback_days}")
+            print(f"  Swing ATR Buffer K: {stop_loss_config.swing_atr_buffer_k}")
+            print(f"  Stop Range: {stop_loss_config.atr_stop_min_pct:.2%} - {stop_loss_config.atr_stop_max_pct:.2%}")
+    
     # Identify opportunities
     print("\nIdentifying trading opportunities...")
     opportunities = identify_opportunities(
@@ -394,7 +469,8 @@ def main():
         top_n=args.top_n,
         scaler=scaler,
         features_to_scale=features_to_scale,
-        entry_filters=entry_filters if entry_filters else None
+        entry_filters=entry_filters if entry_filters else None,
+        stop_loss_config=stop_loss_config
     )
     
     # Display results
@@ -406,9 +482,31 @@ def main():
         print("\nNo trading opportunities found matching the criteria.")
     else:
         print(f"\nFound {len(opportunities)} opportunities:\n")
-        print(opportunities.to_string(index=False))
         
-        # Save to file if requested
+        # Format output for display
+        display_df = opportunities.copy()
+        
+        # Format probability as percentage
+        if 'probability' in display_df.columns:
+            display_df['probability'] = display_df['probability'].apply(lambda x: f"{x:.1%}")
+        
+        # Format stop-loss percentage if present
+        if 'stop_loss_pct' in display_df.columns:
+            display_df['stop_loss_pct'] = display_df['stop_loss_pct'].apply(
+                lambda x: f"{x:.2%}" if pd.notna(x) and x is not None else "N/A"
+            )
+            # Rename column for better display
+            display_df = display_df.rename(columns={'stop_loss_pct': 'stop_loss_%'})
+        
+        # Format current price
+        if 'current_price' in display_df.columns:
+            display_df['current_price'] = display_df['current_price'].apply(
+                lambda x: f"${x:.2f}" if pd.notna(x) and x is not None else "N/A"
+            )
+        
+        print(display_df.to_string(index=False))
+        
+        # Save to file if requested (save original data with numeric values)
         if args.output:
             opportunities.to_csv(args.output, index=False)
             print(f"\nResults saved to {args.output}")

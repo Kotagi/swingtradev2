@@ -114,23 +114,35 @@ def build_features(
     config: str = "config/features.yaml",
     horizon: int = 5,
     threshold: float = 0.0,
-    full: bool = False
+    full: bool = False,
+    feature_set: Optional[str] = None
 ) -> bool:
     """Build feature set from cleaned data."""
     cmd = [
         sys.executable,
         str(SCRIPTS_DIR / "feature_pipeline.py"),
-        "--input-dir", input_dir,
-        "--output-dir", output_dir,
-        "--config", config,
         "--horizon", str(horizon),
         "--threshold", str(threshold)
     ]
     
+    if feature_set:
+        # Use feature set (automatically sets config and output_dir)
+        cmd.extend(["--feature-set", feature_set])
+        if input_dir != "data/clean":
+            cmd.extend(["--input-dir", input_dir])
+    else:
+        # Use explicit paths (backward compatibility)
+        cmd.extend([
+            "--input-dir", input_dir,
+            "--output-dir", output_dir,
+            "--config", config
+        ])
+    
     if full:
         cmd.append("--full")
     
-    return run_command(cmd, f"Building Features (horizon={horizon}d, threshold={threshold:.2%})")
+    feature_set_desc = f" (feature set: {feature_set})" if feature_set else ""
+    return run_command(cmd, f"Building Features (horizon={horizon}d, threshold={threshold:.2%}){feature_set_desc}")
 
 
 def train_model(
@@ -143,8 +155,13 @@ def train_model(
     fast: bool = False,
     cv_folds: Optional[int] = None,
     imbalance_multiplier: float = 1.0,
+    train_start: Optional[str] = None,
     train_end: Optional[str] = None,
-    val_end: Optional[str] = None
+    val_end: Optional[str] = None,
+    horizon: Optional[int] = None,
+    label_col: Optional[str] = None,
+    feature_set: Optional[str] = None,
+    model_output: Optional[str] = None
 ) -> bool:
     """Train ML model with optional hyperparameter tuning and visualization."""
     cmd = [
@@ -183,7 +200,20 @@ def train_model(
     if val_end is not None:
         cmd.extend(["--val-end", val_end])
     
-    return run_command(cmd, "Training ML Model")
+    if horizon is not None:
+        cmd.extend(["--horizon", str(horizon)])
+    
+    if label_col is not None:
+        cmd.extend(["--label-col", label_col])
+    
+    if feature_set is not None:
+        cmd.extend(["--feature-set", feature_set])
+    
+    if model_output is not None:
+        cmd.extend(["--model-output", model_output])
+    
+    feature_set_desc = f" (feature set: {feature_set})" if feature_set else ""
+    return run_command(cmd, f"Training ML Model{feature_set_desc}")
 
 
 def run_backtest(
@@ -193,6 +223,11 @@ def run_backtest(
     strategy: str = "model",
     model_path: str = "models/xgb_classifier_selected_features.pkl",
     model_threshold: float = 0.5,
+    stop_loss: Optional[float] = None,
+    stop_loss_mode: Optional[str] = None,
+    atr_stop_k: float = 1.8,
+    atr_stop_min_pct: float = 0.04,
+    atr_stop_max_pct: float = 0.10,
     output: Optional[str] = None
 ) -> bool:
     """Run backtest with configurable parameters."""
@@ -207,6 +242,17 @@ def run_backtest(
         "--model-threshold", str(model_threshold)
     ]
     
+    if stop_loss is not None:
+        cmd.extend(["--stop-loss", str(stop_loss)])
+    if stop_loss_mode is not None:
+        cmd.extend(["--stop-loss-mode", stop_loss_mode])
+        cmd.extend(["--atr-stop-k", str(atr_stop_k)])
+        cmd.extend(["--atr-stop-min-pct", str(atr_stop_min_pct)])
+        cmd.extend(["--atr-stop-max-pct", str(atr_stop_max_pct)])
+        if stop_loss_mode == "swing_atr":
+            cmd.extend(["--swing-lookback-days", str(swing_lookback_days)])
+            cmd.extend(["--swing-atr-buffer-k", str(swing_atr_buffer_k)])
+    
     if output:
         cmd.extend(["--output", output])
     
@@ -220,7 +266,11 @@ def identify_trades(
     model_path: str = "models/xgb_classifier_selected_features.pkl",
     min_probability: float = 0.5,
     top_n: int = 20,
-    output: Optional[str] = None
+    output: Optional[str] = None,
+    stop_loss_mode: Optional[str] = None,
+    atr_stop_k: float = 1.8,
+    atr_stop_min_pct: float = 0.04,
+    atr_stop_max_pct: float = 0.10
 ) -> bool:
     """Identify current potential trades."""
     cmd = [
@@ -233,6 +283,12 @@ def identify_trades(
     
     if output:
         cmd.extend(["--output", output])
+    
+    if stop_loss_mode is not None:
+        cmd.extend(["--stop-loss-mode", stop_loss_mode])
+        cmd.extend(["--atr-stop-k", str(atr_stop_k)])
+        cmd.extend(["--atr-stop-min-pct", str(atr_stop_min_pct)])
+        cmd.extend(["--atr-stop-max-pct", str(atr_stop_max_pct)])
     
     return run_command(cmd, "Identifying Current Trading Opportunities")
 
@@ -289,6 +345,7 @@ Examples:
     
     # Features command
     feat_parser = subparsers.add_parser("features", help="Build feature set")
+    feat_parser.add_argument("--feature-set", type=str, default=None, help="Feature set name (e.g., 'v1', 'v2'). If specified, automatically sets config and output-dir. Default: uses explicit paths.")
     feat_parser.add_argument("--input-dir", default="data/clean")
     feat_parser.add_argument("--output-dir", default="data/features_labeled")
     feat_parser.add_argument("--config", default="config/features.yaml")
@@ -307,8 +364,13 @@ Examples:
     train_parser.add_argument("--cv-folds", type=int, default=None, help="Number of CV folds (default: 3, or 2 if --fast)")
     train_parser.add_argument("--diagnostics", action="store_true", help="Include SHAP diagnostics")
     train_parser.add_argument("--imbalance-multiplier", type=float, default=1.0, help="Class imbalance multiplier (default: 1.0, try 2.0-3.0 for more trades)")
+    train_parser.add_argument("--train-start", type=str, default=None, help="Training data start date (YYYY-MM-DD). Default: None (use all available data from the beginning)")
     train_parser.add_argument("--train-end", type=str, default=None, help="Training data end date (YYYY-MM-DD, default: 2022-12-31)")
     train_parser.add_argument("--val-end", type=str, default=None, help="Validation data end date (YYYY-MM-DD, default: 2023-12-31)")
+    train_parser.add_argument("--horizon", type=int, default=None, help="Trade horizon in days (e.g., 5, 30). Used to auto-detect label column.")
+    train_parser.add_argument("--label-col", type=str, default=None, help="Label column name (e.g., 'label_5d', 'label_30d'). Auto-detected if not specified.")
+    train_parser.add_argument("--feature-set", type=str, default=None, help="Feature set name (e.g., 'v1', 'v2'). If specified, automatically sets data directory and train config.")
+    train_parser.add_argument("--model-output", type=str, default=None, help="Custom model output file path (e.g., 'models/my_custom_model.pkl'). If not specified, uses default naming.")
     
     # Backtest command
     bt_parser = subparsers.add_parser("backtest", help="Run backtest")
@@ -318,6 +380,13 @@ Examples:
     bt_parser.add_argument("--strategy", choices=["model", "oracle", "rsi"], default="model")
     bt_parser.add_argument("--model", default="models/xgb_classifier_selected_features.pkl")
     bt_parser.add_argument("--model-threshold", type=float, default=0.5, help="Model probability threshold")
+    bt_parser.add_argument("--stop-loss", type=float, default=None, help="Stop-loss threshold as decimal (e.g., -0.05 for -5%%). If not specified and return-threshold is provided, uses 2:1 risk-reward. DEPRECATED: Use --stop-loss-mode and related args for adaptive stops.")
+    bt_parser.add_argument("--stop-loss-mode", type=str, choices=["constant", "adaptive_atr", "swing_atr"], default=None, help="Stop-loss mode: 'constant' (fixed), 'adaptive_atr' (ATR-based), or 'swing_atr' (swing low + ATR buffer)")
+    bt_parser.add_argument("--atr-stop-k", type=float, default=1.8, help="ATR multiplier for adaptive stops (default: 1.8). Used for adaptive_atr and swing_atr fallback.")
+    bt_parser.add_argument("--atr-stop-min-pct", type=float, default=0.04, help="Minimum stop distance for adaptive stops (default: 0.04 = 4%%)")
+    bt_parser.add_argument("--atr-stop-max-pct", type=float, default=0.10, help="Maximum stop distance for adaptive stops (default: 0.10 = 10%%)")
+    bt_parser.add_argument("--swing-lookback-days", type=int, default=10, help="Days to look back for swing low (default: 10). Only used when --stop-loss-mode=swing_atr.")
+    bt_parser.add_argument("--swing-atr-buffer-k", type=float, default=0.75, help="ATR multiplier for swing_atr buffer (default: 0.75). Only used when --stop-loss-mode=swing_atr.")
     bt_parser.add_argument("--output", help="Output CSV file for trades")
     
     # Identify command
@@ -326,6 +395,12 @@ Examples:
     id_parser.add_argument("--min-probability", type=float, default=0.5, help="Minimum prediction probability")
     id_parser.add_argument("--top-n", type=int, default=20, help="Maximum number of opportunities")
     id_parser.add_argument("--output", help="Output CSV file")
+    id_parser.add_argument("--stop-loss-mode", type=str, choices=["constant", "adaptive_atr", "swing_atr"], default=None, help="Stop-loss mode: 'constant' (fixed), 'adaptive_atr' (ATR-based), or 'swing_atr' (swing low + ATR buffer). If specified, calculates and displays recommended stop-loss for each trade.")
+    id_parser.add_argument("--atr-stop-k", type=float, default=1.8, help="ATR multiplier for adaptive stops (default: 1.8). Used for adaptive_atr and swing_atr fallback.")
+    id_parser.add_argument("--atr-stop-min-pct", type=float, default=0.04, help="Minimum stop distance for adaptive stops (default: 0.04 = 4%%)")
+    id_parser.add_argument("--atr-stop-max-pct", type=float, default=0.10, help="Maximum stop distance for adaptive stops (default: 0.10 = 10%%)")
+    id_parser.add_argument("--swing-lookback-days", type=int, default=10, help="Days to look back for swing low (default: 10). Only used when --stop-loss-mode=swing_atr.")
+    id_parser.add_argument("--swing-atr-buffer-k", type=float, default=0.75, help="ATR multiplier for swing_atr buffer (default: 0.75). Only used when --stop-loss-mode=swing_atr.")
     
     # Full pipeline command
     pipeline_parser = subparsers.add_parser("full-pipeline", help="Run complete pipeline")
@@ -375,7 +450,8 @@ Examples:
             config=args.config,
             horizon=args.horizon,
             threshold=args.threshold,
-            full=args.full
+            full=args.full,
+            feature_set=getattr(args, 'feature_set', None)
         )
     
     elif args.command == "train":
@@ -389,19 +465,46 @@ Examples:
             fast=args.fast,
             cv_folds=args.cv_folds,
             imbalance_multiplier=getattr(args, 'imbalance_multiplier', 1.0),
+            train_start=getattr(args, 'train_start', None),
             train_end=getattr(args, 'train_end', None),
-            val_end=getattr(args, 'val_end', None)
+            val_end=getattr(args, 'val_end', None),
+            horizon=getattr(args, 'horizon', None),
+            label_col=getattr(args, 'label_col', None),
+            feature_set=getattr(args, 'feature_set', None),
+            model_output=getattr(args, 'model_output', None)
         )
     
     elif args.command == "backtest":
-        success = run_backtest(
-            horizon=args.horizon,
-            return_threshold=args.return_threshold,
-            position_size=args.position_size,
-            strategy=args.strategy,
-            model_path=args.model,
-            model_threshold=args.model_threshold,
-            output=args.output
+        # Build command with new stop-loss parameters
+        cmd = [
+            sys.executable,
+            str(SCRIPTS_DIR / "enhanced_backtest.py"),
+            "--horizon", str(args.horizon),
+            "--return-threshold", str(args.return_threshold),
+            "--position-size", str(args.position_size),
+            "--strategy", args.strategy,
+            "--model", args.model,
+            "--model-threshold", str(args.model_threshold)
+        ]
+        
+        # Add stop-loss parameters
+        if getattr(args, 'stop_loss', None) is not None:
+            cmd.extend(["--stop-loss", str(args.stop_loss)])
+        if getattr(args, 'stop_loss_mode', None) is not None:
+            cmd.extend(["--stop-loss-mode", args.stop_loss_mode])
+            cmd.extend(["--atr-stop-k", str(getattr(args, 'atr_stop_k', 1.8))])
+            cmd.extend(["--atr-stop-min-pct", str(getattr(args, 'atr_stop_min_pct', 0.04))])
+            cmd.extend(["--atr-stop-max-pct", str(getattr(args, 'atr_stop_max_pct', 0.10))])
+            if args.stop_loss_mode == "swing_atr":
+                cmd.extend(["--swing-lookback-days", str(getattr(args, 'swing_lookback_days', 10))])
+                cmd.extend(["--swing-atr-buffer-k", str(getattr(args, 'swing_atr_buffer_k', 0.75))])
+        
+        if args.output:
+            cmd.extend(["--output", args.output])
+        
+        success = run_command(
+            cmd,
+            f"Running Backtest (horizon={args.horizon}d, threshold={args.return_threshold:.2%}, strategy={args.strategy})"
         )
     
     elif args.command == "identify":
@@ -409,7 +512,11 @@ Examples:
             model_path=args.model,
             min_probability=args.min_probability,
             top_n=args.top_n,
-            output=args.output
+            output=args.output,
+            stop_loss_mode=getattr(args, 'stop_loss_mode', None),
+            atr_stop_k=getattr(args, 'atr_stop_k', 1.8),
+            atr_stop_min_pct=getattr(args, 'atr_stop_min_pct', 0.04),
+            atr_stop_max_pct=getattr(args, 'atr_stop_max_pct', 0.10)
         )
     
     elif args.command == "full-pipeline":

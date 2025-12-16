@@ -63,7 +63,9 @@ features:
   higher_high_10d: 1
   # 31. Higher Low (10-day)
   higher_low_10d: 1
-  # 32. Trend Residual (Noise vs Trend)
+  # 32. Swing Low (10-day)
+  swing_low_10d: 1
+  # 33. Trend Residual (Noise vs Trend)
   trend_residual: 1
   # 33. MACD Histogram (Normalized)
   macd_histogram_normalized: 1

@@ -40,6 +40,18 @@ IF %ERRORLEVEL% NEQ 0 (
   exit /b %ERRORLEVEL%
 )
 
+echo === 1) Downloading VIX Data ===
+python src\download_vix.py ^
+  --output-folder data\macro\clean ^
+  --start-date   2008-01-01
+
+	
+IF %ERRORLEVEL% NEQ 0 (
+  echo.
+  echo [ERROR] Downloading VIX data failed.
+  pause
+  exit /b %ERRORLEVEL%
+)
 echo.
-echo Redownload complete.  
+echo Download complete.  
 pause

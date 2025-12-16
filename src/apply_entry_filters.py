@@ -21,6 +21,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.enhanced_backtest import run_backtest, load_model, calculate_metrics, TICKERS_CSV, DATA_DIR, DEFAULT_MODEL
+from utils.stop_loss_policy import create_stop_loss_config_from_args
 
 
 def get_default_filters() -> Dict[str, Tuple[str, float]]:
@@ -128,7 +129,44 @@ def main():
         "--stop-loss",
         type=float,
         default=None,
-        help="Stop-loss threshold (e.g., -0.075 for -7.5%%)"
+        help="Stop-loss threshold (e.g., -0.075 for -7.5%%). DEPRECATED: Use --stop-loss-mode and related args for adaptive stops."
+    )
+    parser.add_argument(
+        "--stop-loss-mode",
+        type=str,
+        choices=["constant", "adaptive_atr", "swing_atr"],
+        default=None,
+        help="Stop-loss mode: 'constant' (fixed), 'adaptive_atr' (ATR-based), or 'swing_atr' (swing low + ATR buffer)"
+    )
+    parser.add_argument(
+        "--atr-stop-k",
+        type=float,
+        default=1.8,
+        help="ATR multiplier for adaptive stops (default: 1.8). Used for adaptive_atr and swing_atr fallback."
+    )
+    parser.add_argument(
+        "--atr-stop-min-pct",
+        type=float,
+        default=0.04,
+        help="Minimum stop distance for adaptive stops (default: 0.04 = 4%%). Used for adaptive_atr and swing_atr."
+    )
+    parser.add_argument(
+        "--atr-stop-max-pct",
+        type=float,
+        default=0.10,
+        help="Maximum stop distance for adaptive stops (default: 0.10 = 10%%). Used for adaptive_atr and swing_atr."
+    )
+    parser.add_argument(
+        "--swing-lookback-days",
+        type=int,
+        default=10,
+        help="Days to look back for swing low (default: 10). Only used when --stop-loss-mode=swing_atr."
+    )
+    parser.add_argument(
+        "--swing-atr-buffer-k",
+        type=float,
+        default=0.75,
+        help="ATR multiplier for swing_atr buffer (default: 0.75). Only used when --stop-loss-mode=swing_atr."
     )
     parser.add_argument(
         "--position-size",
@@ -213,7 +251,20 @@ def main():
     tickers_df = pd.read_csv(TICKERS_CSV, header=None)
     tickers = tickers_df.iloc[:, 0].astype(str).tolist()
     
-    # Calculate stop-loss
+    # Create stop-loss configuration
+    stop_loss_config = create_stop_loss_config_from_args(
+        stop_loss_mode=getattr(args, 'stop_loss_mode', None),
+        constant_stop_loss_pct=None,
+        atr_stop_k=getattr(args, 'atr_stop_k', 1.8),
+        atr_stop_min_pct=getattr(args, 'atr_stop_min_pct', 0.04),
+        atr_stop_max_pct=getattr(args, 'atr_stop_max_pct', 0.10),
+        swing_lookback_days=getattr(args, 'swing_lookback_days', 10),
+        swing_atr_buffer_k=getattr(args, 'swing_atr_buffer_k', 0.75),
+        return_threshold=args.return_threshold,
+        legacy_stop_loss=getattr(args, 'stop_loss', None)
+    )
+    
+    # Legacy stop_loss_value for backward compatibility
     stop_loss_value = args.stop_loss
     if stop_loss_value is None and args.return_threshold is not None:
         stop_loss_value = -abs(args.return_threshold) / 2
@@ -225,7 +276,16 @@ def main():
     print(f"  Horizon: {args.horizon} days")
     print(f"  Return Threshold: {args.return_threshold:.2%}")
     print(f"  Model Threshold: {args.model_threshold:.2f}")
-    print(f"  Stop-Loss: {stop_loss_value:.2%}" if stop_loss_value else "  Stop-Loss: None")
+    print(f"  Stop-Loss Mode: {stop_loss_config.mode}")
+    if stop_loss_config.mode == "constant":
+        print(f"  Stop-Loss: {stop_loss_config.constant_stop_loss_pct:.2%}")
+    elif stop_loss_config.mode == "adaptive_atr":
+        print(f"  ATR Stop K: {stop_loss_config.atr_stop_k}")
+        print(f"  ATR Stop Range: {stop_loss_config.atr_stop_min_pct:.2%} - {stop_loss_config.atr_stop_max_pct:.2%}")
+    elif stop_loss_config.mode == "swing_atr":
+        print(f"  Swing Lookback Days: {stop_loss_config.swing_lookback_days}")
+        print(f"  Swing ATR Buffer K: {stop_loss_config.swing_atr_buffer_k}")
+        print(f"  Stop Range: {stop_loss_config.atr_stop_min_pct:.2%} - {stop_loss_config.atr_stop_max_pct:.2%}")
     print(f"  Position Size: ${args.position_size:,.2f}")
     print(f"  Test Period: {args.test_start_date} to {args.test_end_date or 'end'}")
     print(f"  Timing Filters: {'Disabled' if args.no_timing_filters else 'Enabled (avoid Mon/Tue, Oct)'}")
@@ -245,7 +305,8 @@ def main():
         features=features,
         model_threshold=args.model_threshold,
         strategy="model",
-        stop_loss=stop_loss_value,
+        stop_loss=stop_loss_value,  # Legacy parameter
+        stop_loss_config=stop_loss_config,  # New parameter
         scaler=scaler,
         features_to_scale=features_to_scale,
         test_start_date=args.test_start_date,
@@ -320,6 +381,32 @@ def main():
         stop_loss_count = exit_reasons.get('stop_loss', 0)
         stop_loss_pct = (stop_loss_count / len(trades)) * 100 if len(trades) > 0 else 0
         print(f"\nStop-Loss Rate: {stop_loss_pct:.1f}%")
+    
+    # Show adaptive stop-loss statistics if applicable
+    if stop_loss_config.mode in ["adaptive_atr", "swing_atr"] and not trades.empty and "stop_loss_pct" in trades.columns:
+        from utils.stop_loss_policy import summarize_adaptive_stops
+        stop_stats = summarize_adaptive_stops(trades, mode=stop_loss_config.mode)
+        mode_name = "Adaptive ATR" if stop_loss_config.mode == "adaptive_atr" else "Swing ATR"
+        print(f"\n{mode_name} Stop-Loss Statistics:")
+        if stop_stats["avg_stop_pct"] is not None:
+            print(f"  Average Stop Distance: {stop_stats['avg_stop_pct']:.2%}")
+            print(f"  Minimum Stop Distance: {stop_stats['min_stop_pct']:.2%}")
+            print(f"  Maximum Stop Distance: {stop_stats['max_stop_pct']:.2%}")
+            if stop_stats["stop_distribution"]:
+                print(f"  Stop Distance Distribution:")
+                for label, stats in stop_stats["stop_distribution"].items():
+                    print(f"    {label}: {stats['count']:,} trades ({stats['pct']:.1f}%)")
+        
+        # Show swing_atr-specific statistics
+        if stop_loss_config.mode == "swing_atr" and "swing_atr_stats" in stop_stats:
+            swing_stats = stop_stats["swing_atr_stats"]
+            print(f"\n  Swing ATR Details:")
+            print(f"    Trades Using Swing Low: {swing_stats.get('trades_using_swing_low', 0):,} ({swing_stats.get('swing_low_usage_pct', 0):.1f}%)")
+            print(f"    Trades Using Fallback: {swing_stats.get('trades_using_fallback', 0):,}")
+            if 'avg_swing_distance_pct' in swing_stats:
+                print(f"    Average Swing Distance: {swing_stats['avg_swing_distance_pct']:.2%}")
+            if 'avg_buffer_pct' in swing_stats:
+                print(f"    Average ATR Buffer: {swing_stats['avg_buffer_pct']:.2%}")
         print(f"  (Baseline without filters: ~44.9%)")
 
 

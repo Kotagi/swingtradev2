@@ -16,6 +16,7 @@ from gui.tabs.features_tab import FeaturesTab
 from gui.tabs.training_tab import TrainingTab
 from gui.tabs.backtest_tab import BacktestTab
 from gui.tabs.analysis_tab import AnalysisTab
+from gui.tabs.model_comparison_tab import ModelComparisonTab
 
 
 class MainWindow(QMainWindow):
@@ -26,19 +27,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Swing Trading ML Application")
         self.setMinimumSize(1200, 800)
         
-        # Set default window size (80% of screen size, but at least minimum)
-        app = QApplication.instance()
-        if app:
-            screen = app.primaryScreen()
-            if screen:
-                screen_geometry = screen.availableGeometry()
-                default_width = max(1200, int(screen_geometry.width() * 0.8))
-                default_height = max(800, int(screen_geometry.height() * 0.8))
-                self.resize(default_width, default_height)
-            else:
-                self.resize(1400, 900)
-        else:
-            self.resize(1400, 900)
+        # Set window to maximized by default
+        self.setWindowState(Qt.WindowState.WindowMaximized)
         
         self.init_ui()
     
@@ -84,6 +74,10 @@ class MainWindow(QMainWindow):
         # Tab 7: Analysis
         analysis_tab = AnalysisTab()
         self.tabs.addTab(analysis_tab, "Analysis")
+        
+        # Tab 8: Model Comparison
+        model_comparison_tab = ModelComparisonTab()
+        self.tabs.addTab(model_comparison_tab, "Model Comparison")
         
         layout.addWidget(self.tabs)
         
