@@ -17,7 +17,7 @@ from pathlib import Path
 from datetime import datetime
 import pandas as pd
 
-from gui.services import BacktestService, DataService
+from gui.services import BacktestService, DataService, StopLossAnalysisService
 from gui.widgets import PresetManagerWidget, EquityCurveWidget, ReturnsDistributionWidget
 from gui.utils.feature_descriptions import get_feature_description, get_feature_display_name
 
@@ -128,10 +128,35 @@ class ApplyFeaturesDialog(QDialog):
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(10)
         
+        # Top row with info and load preset button
+        top_row = QHBoxLayout()
         info = QLabel("Select features to filter trades. Enable/disable and set a threshold value (normalized values).")
         info.setWordWrap(True)
         info.setStyleSheet("color: #b0b0b0;")
-        layout.addWidget(info)
+        top_row.addWidget(info, 1)
+        
+        load_preset_btn = QPushButton("Load Preset")
+        load_preset_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 5px 10px;
+            }
+            QPushButton:hover {
+                background-color: #00d4aa;
+                color: #000000;
+            }
+        """)
+        load_preset_btn.clicked.connect(self.load_preset_in_dialog)
+        top_row.addWidget(load_preset_btn)
+        layout.addLayout(top_row)
+        
+        # Preset status label
+        self.preset_status_label = QLabel("")
+        self.preset_status_label.setStyleSheet("color: #4caf50; font-style: italic;")
+        self.preset_status_label.setWordWrap(True)
+        layout.addWidget(self.preset_status_label)
         
         # Scroll area for feature list
         scroll = QDialogScrollArea()
@@ -242,6 +267,86 @@ class ApplyFeaturesDialog(QDialog):
         dialog = FeatureInfoDialog(feature_name, parent=self)
         dialog.show()  # Use show() instead of exec() for non-modal
     
+    def load_preset_in_dialog(self):
+        """Load a preset in the dialog."""
+        # Get parent (BacktestTab) to access sl_analysis_service
+        parent = self.parent()
+        if not hasattr(parent, 'sl_analysis_service'):
+            QMessageBox.warning(self, "Error", "Cannot access preset service.")
+            return
+        
+        try:
+            presets = parent.sl_analysis_service.list_presets()
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to load presets: {str(e)}")
+            return
+        
+        if not presets:
+            QMessageBox.information(self, "No Presets", "No filter presets found.")
+            return
+        
+        # Create menu
+        menu = QMenu(self)
+        
+        # Recent stop-loss filters
+        recent_sl_presets = [p for p in presets if p.get('source_backtest')][:5]
+        if recent_sl_presets:
+            recent_menu = menu.addMenu("Recent Stop-Loss Filters")
+            for preset in recent_sl_presets:
+                sl_rate_before = preset.get('stop_loss_rate_before', 0.0) * 100
+                sl_rate_after = preset.get('stop_loss_rate_after', 0.0) * 100
+                action_text = f"{preset['name']} (SL: {sl_rate_before:.1f}% → {sl_rate_after:.1f}%)"
+                action = recent_menu.addAction(action_text)
+                action.setData(preset['filename'])
+        
+        menu.addSeparator()
+        
+        # All presets
+        all_menu = menu.addMenu("All Saved Presets")
+        for preset in presets:
+            action = all_menu.addAction(preset['name'])
+            action.setData(preset['filename'])
+        
+        # Show menu
+        action = menu.exec(self.sender().mapToGlobal(self.sender().rect().bottomLeft()))
+        
+        if action and action.data():
+            try:
+                preset_data = parent.sl_analysis_service.load_preset(action.data())
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"Failed to load preset: {str(e)}")
+                return
+            
+            filters = preset_data.get('filters', [])
+            if not filters:
+                QMessageBox.information(self, "Empty Preset", "This preset contains no filters.")
+                return
+            
+            # Update existing_filters
+            self.existing_filters = [
+                (f['feature'], f['operator'], f['value'])
+                for f in filters
+            ]
+            
+            # Refresh dialog to show loaded filters
+            self.refresh_dialog()
+            
+            # Update status label
+            preset_name = preset_data.get('name', action.data())
+            self.preset_status_label.setText(f"Loaded preset: {preset_name} ({len(filters)} filters)")
+    
+    def refresh_dialog(self):
+        """Refresh dialog to show existing filters."""
+        # Update checkboxes and values based on existing_filters
+        for feature_name, cb, op_combo, val_edit in self.rows:
+            cb.setChecked(False)
+            for f_name, f_op, f_val in self.existing_filters:
+                if f_name == feature_name:
+                    cb.setChecked(True)
+                    op_combo.setCurrentText(f_op)
+                    val_edit.setText(str(f_val))
+                    break
+    
     def get_filters(self):
         """Return list of (feature, operator, value)."""
         filters = []
@@ -299,6 +404,7 @@ class BacktestTab(QWidget):
         super().__init__(parent)
         self.service = BacktestService()
         self.data_service = DataService()
+        self.sl_analysis_service = StopLossAnalysisService()
         self.worker = None
         self.entry_filters = []  # List of (feature, operator, value)
         
@@ -401,6 +507,24 @@ class BacktestTab(QWidget):
         self.apply_features_btn = QPushButton("Apply Features")
         self.apply_features_btn.clicked.connect(self.open_features_dialog)
         filters_row.addWidget(self.apply_features_btn)
+        
+        # Load Preset button with dropdown
+        self.load_preset_btn = QPushButton("Load Preset ▼")
+        self.load_preset_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 5px 10px;
+            }
+            QPushButton:hover {
+                background-color: #00d4aa;
+                color: #000000;
+            }
+        """)
+        self.load_preset_btn.clicked.connect(self.show_preset_menu)
+        filters_row.addWidget(self.load_preset_btn)
+        
         self.filters_status_label = QLabel("No filters applied")
         self.filters_status_label.setStyleSheet("color: #b0b0b0;")
         filters_row.addWidget(self.filters_status_label)
@@ -816,6 +940,97 @@ class BacktestTab(QWidget):
                 self.filters_status_label.setText("No filters applied")
                 self.filters_status_label.setStyleSheet("color: #b0b0b0;")
 
+    def show_preset_menu(self):
+        """Show preset menu with recent and all presets."""
+        try:
+            presets = self.sl_analysis_service.list_presets()
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to load presets: {str(e)}")
+            return
+        
+        if not presets:
+            QMessageBox.information(self, "No Presets", "No filter presets found. Create one from the Stop-Loss Analysis tab.")
+            return
+        
+        # Separate recent stop-loss filters (last 5) from all presets
+        recent_sl_presets = [p for p in presets if p.get('source_backtest')][:5]
+        all_presets = presets
+        
+        # Create menu
+        menu = QMenu(self)
+        
+        # Recent stop-loss filters section
+        if recent_sl_presets:
+            recent_menu = menu.addMenu("Recent Stop-Loss Filters")
+            for preset in recent_sl_presets:
+                sl_rate_before = preset.get('stop_loss_rate_before', 0.0) * 100
+                sl_rate_after = preset.get('stop_loss_rate_after', 0.0) * 100
+                improvement = sl_rate_before - sl_rate_after
+                
+                action_text = f"{preset['name']} (SL: {sl_rate_before:.1f}% → {sl_rate_after:.1f}%)"
+                action = recent_menu.addAction(action_text)
+                action.setData(preset['filename'])
+        
+        menu.addSeparator()
+        
+        # All saved presets section
+        all_menu = menu.addMenu("All Saved Presets")
+        for preset in all_presets:
+            action = all_menu.addAction(preset['name'])
+            action.setData(preset['filename'])
+        
+        menu.addSeparator()
+        
+        # Manage presets option
+        manage_action = menu.addAction("Manage Presets...")
+        manage_action.triggered.connect(self.manage_presets)
+        
+        # Show menu and get selection
+        action = menu.exec(self.load_preset_btn.mapToGlobal(self.load_preset_btn.rect().bottomLeft()))
+        
+        if action and action.data():
+            self.load_preset(action.data())
+    
+    def load_preset(self, preset_filename: str):
+        """Load a preset and populate the Apply Features dialog."""
+        try:
+            preset_data = self.sl_analysis_service.load_preset(preset_filename)
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to load preset: {str(e)}")
+            return
+        
+        filters = preset_data.get('filters', [])
+        if not filters:
+            QMessageBox.information(self, "Empty Preset", "This preset contains no filters.")
+            return
+        
+        # Convert preset filters to entry_filters format (feature, operator, value)
+        self.entry_filters = [
+            (f['feature'], f['operator'], f['value'])
+            for f in filters
+        ]
+        
+        # Update status label
+        preset_name = preset_data.get('name', preset_filename)
+        self.filters_status_label.setText(f"Preset loaded: {preset_name} ({len(self.entry_filters)} filters)")
+        self.filters_status_label.setStyleSheet("color: #4caf50;")
+        
+        QMessageBox.information(
+            self,
+            "Preset Loaded",
+            f"Preset '{preset_name}' loaded successfully!\n\n"
+            f"Filters: {len(self.entry_filters)}\n"
+            f"Source: {preset_data.get('source_backtest', 'N/A')}\n\n"
+            f"Click 'Apply Features' to view or modify the filters."
+        )
+    
+    def manage_presets(self):
+        """Open preset management dialog."""
+        from gui.tabs.preset_management_dialog import PresetManagementDialog
+        
+        dialog = PresetManagementDialog(self.sl_analysis_service, parent=self)
+        dialog.exec()
+    
     def get_available_features(self):
         """Get list of feature columns from the feature data (single feature set)."""
         try:

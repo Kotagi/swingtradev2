@@ -2332,21 +2332,60 @@ class StopLossAnalysisService:
         Returns:
             Path to saved preset file
         """
-        # This will be implemented in Unit 4.1
-        pass
+        # Ensure presets directory exists
+        self.presets_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Sanitize preset name for filename
+        safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).strip()
+        safe_name = safe_name.replace(' ', '_')
+        if not safe_name:
+            safe_name = "preset"
+        
+        # Add timestamp to ensure uniqueness
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{safe_name}_{timestamp}.json"
+        filepath = self.presets_dir / filename
+        
+        # Prepare preset data
+        preset_data = {
+            'name': name,
+            'created_date': datetime.now().isoformat(),
+            'filters': filters,
+            **metadata  # Include all metadata (source_backtest, model_name, etc.)
+        }
+        
+        # Save to JSON file
+        import json
+        with open(filepath, 'w') as f:
+            json.dump(preset_data, f, indent=2)
+        
+        return str(filepath)
     
     def load_preset(self, preset_name: str) -> Dict:
         """
         Load filter preset from file.
         
         Args:
-            preset_name: Name of preset to load (filename without .json extension)
+            preset_name: Name of preset to load (filename without .json extension, or full filename)
             
         Returns:
             Preset dictionary with filters and metadata
         """
-        # This will be implemented in Unit 4.2
-        pass
+        import json
+        
+        # Handle both filename with and without extension
+        if not preset_name.endswith('.json'):
+            preset_name = f"{preset_name}.json"
+        
+        filepath = self.presets_dir / preset_name
+        
+        if not filepath.exists():
+            raise FileNotFoundError(f"Preset file not found: {filepath}")
+        
+        with open(filepath, 'r') as f:
+            preset_data = json.load(f)
+        
+        return preset_data
     
     def list_presets(self) -> List[Dict]:
         """
@@ -2355,33 +2394,119 @@ class StopLossAnalysisService:
         Returns:
             List of preset metadata dictionaries (name, created_date, source_backtest, etc.)
         """
-        # This will be implemented in Unit 4.2
-        pass
+        import json
+        
+        if not self.presets_dir.exists():
+            return []
+        
+        presets = []
+        for preset_file in self.presets_dir.glob("*.json"):
+            try:
+                with open(preset_file, 'r') as f:
+                    preset_data = json.load(f)
+                
+                # Extract metadata
+                preset_info = {
+                    'filename': preset_file.name,
+                    'name': preset_data.get('name', preset_file.stem),
+                    'created_date': preset_data.get('created_date', ''),
+                    'source_backtest': preset_data.get('source_backtest'),
+                    'model_name': preset_data.get('model_name'),
+                    'stop_loss_rate_before': preset_data.get('stop_loss_rate_before', 0.0),
+                    'stop_loss_rate_after': preset_data.get('stop_loss_rate_after', 0.0),
+                    'filters_count': len(preset_data.get('filters', [])),
+                    'total_trades_before': preset_data.get('total_trades_before', 0),
+                    'total_trades_after': preset_data.get('total_trades_after', 0)
+                }
+                presets.append(preset_info)
+            except Exception:
+                # Skip corrupted files
+                continue
+        
+        # Sort by created_date (newest first)
+        presets.sort(key=lambda x: x.get('created_date', ''), reverse=True)
+        
+        return presets
     
     def delete_preset(self, preset_name: str) -> bool:
         """
         Delete a preset.
         
         Args:
-            preset_name: Name of preset to delete (filename without .json extension)
+            preset_name: Name of preset to delete (filename with or without .json extension)
             
         Returns:
             True if deleted, False if not found
         """
-        # This will be implemented in Unit 4.4
-        pass
+        # Handle both filename with and without extension
+        if not preset_name.endswith('.json'):
+            preset_name = f"{preset_name}.json"
+        
+        filepath = self.presets_dir / preset_name
+        
+        if not filepath.exists():
+            return False
+        
+        try:
+            filepath.unlink()
+            return True
+        except Exception:
+            return False
     
-    def rename_preset(self, old_name: str, new_name: str) -> bool:
+    def rename_preset(self, old_filename: str, new_name: str) -> bool:
         """
         Rename a preset.
         
         Args:
-            old_name: Current preset name (filename without .json extension)
-            new_name: New preset name
+            old_filename: Current preset filename (with or without .json extension)
+            new_name: New preset name (will be sanitized for filename)
             
         Returns:
             True if renamed, False if not found
         """
-        # This will be implemented in Unit 4.4
-        pass
+        import json
+        
+        # Handle filename with or without extension
+        if not old_filename.endswith('.json'):
+            old_filename = f"{old_filename}.json"
+        
+        old_filepath = self.presets_dir / old_filename
+        
+        if not old_filepath.exists():
+            return False
+        
+        # Load existing preset
+        try:
+            with open(old_filepath, 'r') as f:
+                preset_data = json.load(f)
+        except Exception:
+            return False
+        
+        # Update name in preset data
+        preset_data['name'] = new_name
+        
+        # Create new filename
+        safe_name = "".join(c for c in new_name if c.isalnum() or c in (' ', '-', '_')).strip()
+        safe_name = safe_name.replace(' ', '_')
+        if not safe_name:
+            safe_name = "preset"
+        
+        # Keep same timestamp or use existing one
+        timestamp = old_filename.split('_')[-1].replace('.json', '')
+        if not timestamp or len(timestamp) != 15:  # Format: YYYYMMDD_HHMMSS
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        new_filename = f"{safe_name}_{timestamp}.json"
+        new_filepath = self.presets_dir / new_filename
+        
+        # Save with new name
+        try:
+            with open(new_filepath, 'w') as f:
+                json.dump(preset_data, f, indent=2)
+            
+            # Delete old file
+            old_filepath.unlink()
+            return True
+        except Exception:
+            return False
 

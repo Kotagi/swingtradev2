@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, QPushButton,
     QFileDialog, QMessageBox, QScrollArea, QTableWidget, QTableWidgetItem,
     QHeaderView, QLineEdit, QSpinBox, QDoubleSpinBox, QCheckBox, QTextEdit,
-    QProgressBar, QTabWidget
+    QProgressBar, QTabWidget, QInputDialog
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from pathlib import Path
@@ -1003,14 +1003,70 @@ class StopLossAnalysisTab(QWidget):
         self.impact_preview_group.setVisible(True)
     
     def save_selected_as_preset(self):
-        """Save selected filters as a preset (will be implemented in Unit 4.1)."""
+        """Save selected filters as a preset."""
         if not self.selected_filters:
             QMessageBox.information(self, "No Filters Selected", "Please select at least one filter to save as a preset.")
             return
         
-        # This will be implemented in Unit 4.1
-        QMessageBox.information(self, "Save Preset", 
-                               "Preset saving will be implemented in Unit 4.1.")
+        # Get preset name from user
+        name, ok = QInputDialog.getText(
+            self,
+            "Save Filter Preset",
+            "Enter preset name:",
+            text=f"SL Analysis - {Path(self.current_csv_path).stem if self.current_csv_path else 'backtest'}"
+        )
+        
+        if not ok or not name.strip():
+            return
+        
+        # Calculate impact to get stop_loss_rate_after
+        filter_tuples = [
+            (f['feature'], f['operator'], f['value'])
+            for f in self.selected_filters
+        ]
+        
+        try:
+            impact = self.service.calculate_impact(
+                filter_tuples,
+                self.current_trades_df,
+                self.current_features_df
+            )
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to calculate impact: {str(e)}")
+            return
+        
+        # Prepare metadata
+        metadata = {
+            'source_backtest': Path(self.current_csv_path).name if self.current_csv_path else None,
+            'model_name': None,  # Will be populated if available
+            'stop_loss_rate_before': self.analysis_results.get('stop_loss_rate', 0.0) if self.analysis_results else 0.0,
+            'stop_loss_rate_after': impact.get('estimated_new_sl_rate', 0.0) / 100.0,  # Convert from percentage
+            'total_trades_before': self.analysis_results.get('total_trades', 0) if self.analysis_results else 0,
+            'total_trades_after': impact.get('estimated_total_trades', 0),
+            'stop_loss_count_before': self.analysis_results.get('stop_loss_count', 0) if self.analysis_results else 0,
+            'stop_loss_count_after': impact.get('stop_loss_count_after', 0),
+            'filters_count': len(self.selected_filters),
+            'immediate_stop_filters': [f for f in self.selected_filters if f.get('from_immediate', False)]
+        }
+        
+        # Save preset
+        try:
+            preset_path = self.service.save_preset(
+                name.strip(),
+                self.selected_filters,
+                metadata
+            )
+            
+            QMessageBox.information(
+                self,
+                "Preset Saved",
+                f"Filter preset '{name}' saved successfully!\n\n"
+                f"Location: {preset_path}\n"
+                f"Filters: {len(self.selected_filters)}\n"
+                f"Stop-loss rate: {metadata['stop_loss_rate_before']*100:.1f}% → {metadata['stop_loss_rate_after']*100:.1f}%"
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save preset: {str(e)}")
     
     def analyze_immediate_stops(self):
         """Analyze immediate stops (≤1 day) separately."""
