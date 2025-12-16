@@ -121,6 +121,7 @@ class StopLossAnalysisTab(QWidget):
         self.analysis_results = None
         self.feature_worker = None
         self.analysis_worker = None
+        self.feature_cache = {}  # Cache features by CSV path hash
         self.init_ui()
     
     def init_ui(self):
@@ -407,6 +408,62 @@ class StopLossAnalysisTab(QWidget):
         charts_group.setLayout(charts_layout)
         layout.addWidget(charts_group)
         
+        # Export Section
+        export_group = QGroupBox("Export")
+        export_layout = QHBoxLayout()
+        
+        export_report_btn = QPushButton("Export Full Report")
+        export_report_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 8px 15px;
+            }
+            QPushButton:hover {
+                background-color: #00d4aa;
+                color: #000000;
+            }
+        """)
+        export_report_btn.clicked.connect(self.export_full_report)
+        export_layout.addWidget(export_report_btn)
+        
+        export_table_btn = QPushButton("Export Recommendations Table")
+        export_table_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 8px 15px;
+            }
+            QPushButton:hover {
+                background-color: #00d4aa;
+                color: #000000;
+            }
+        """)
+        export_table_btn.clicked.connect(self.export_recommendations_table)
+        export_layout.addWidget(export_table_btn)
+        
+        export_preset_btn = QPushButton("Export Selected as Preset")
+        export_preset_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 8px 15px;
+            }
+            QPushButton:hover {
+                background-color: #00d4aa;
+                color: #000000;
+            }
+        """)
+        export_preset_btn.clicked.connect(self.save_selected_as_preset)
+        export_layout.addWidget(export_preset_btn)
+        
+        export_layout.addStretch()
+        export_group.setLayout(export_layout)
+        layout.addWidget(export_group)
+        
         # Progress bar (hidden by default)
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
@@ -473,6 +530,10 @@ class StopLossAnalysisTab(QWidget):
             self.csv_path_edit.setText(Path(file_path).name)
             self.status_label.setText(f"Loaded: {Path(file_path).name}")
             self.status_label.setStyleSheet("color: #4caf50;")
+            
+            # Auto-run analysis if enabled (can be made configurable)
+            # For now, just enable the analyze button
+            self.analyze_btn.setEnabled(True)
     
     def run_analysis(self):
         """Run stop-loss analysis."""
@@ -491,6 +552,39 @@ class StopLossAnalysisTab(QWidget):
         self.status_label.setStyleSheet("color: #ff9800;")
         
         try:
+            # Check cache first
+            import hashlib
+            csv_hash = hashlib.md5(str(self.current_csv_path).encode()).hexdigest()
+            
+            if csv_hash in self.feature_cache:
+                self.status_label.setText("Using cached features...")
+                # Still need to load trades_df
+                self.current_trades_df = pd.read_csv(self.current_csv_path)
+                if 'entry_date' in self.current_trades_df.columns:
+                    self.current_trades_df['entry_date'] = pd.to_datetime(
+                        self.current_trades_df['entry_date'], errors='coerce'
+                    )
+                    self.current_trades_df = self.current_trades_df.set_index('entry_date')
+                
+                self.current_features_df = self.feature_cache[csv_hash]
+                # Run analysis immediately with cached features
+                self.status_label.setText("Running analysis with cached features...")
+                self.progress_bar.setVisible(True)
+                self.progress_bar.setRange(0, 100)
+                self.progress_bar.setValue(0)
+                
+                self.analysis_worker = AnalysisWorker(
+                    self.service,
+                    self.current_trades_df,
+                    self.current_features_df,
+                    self.threshold_spin.value()
+                )
+                self.analysis_worker.finished.connect(self.on_analysis_finished)
+                self.analysis_worker.progress.connect(self.on_analysis_progress)
+                self.analysis_worker.progress_message.connect(self.on_analysis_message)
+                self.analysis_worker.start()
+                return
+            
             # Load trades from CSV
             self.current_trades_df = pd.read_csv(self.current_csv_path)
             
@@ -516,6 +610,7 @@ class StopLossAnalysisTab(QWidget):
             self.feature_worker.finished.connect(self.on_feature_extraction_finished)
             self.feature_worker.progress.connect(self.on_feature_extraction_progress)
             self.feature_worker.progress_message.connect(self.on_feature_extraction_message)
+            self.feature_worker.csv_hash = csv_hash  # Store hash for caching
             self.feature_worker.start()
             
         except Exception as e:
@@ -546,6 +641,10 @@ class StopLossAnalysisTab(QWidget):
             return
         
         self.current_features_df = features_df
+        
+        # Cache the features
+        if hasattr(self.feature_worker, 'csv_hash'):
+            self.feature_cache[self.feature_worker.csv_hash] = features_df.copy()
         
         # Now run the analysis
         self.status_label.setText("Running stop-loss analysis...")
@@ -1544,4 +1643,198 @@ class StopLossAnalysisTab(QWidget):
         
         fig.tight_layout()
         layout.addWidget(canvas)
+    
+    def export_full_report(self):
+        """Export full analysis report (PDF/HTML)."""
+        if not self.analysis_results:
+            QMessageBox.warning(self, "No Analysis", "Please run analysis first before exporting.")
+            return
+        
+        # Get export format
+        format_choice, ok = QInputDialog.getItem(
+            self,
+            "Export Format",
+            "Select export format:",
+            ["HTML", "PDF"],
+            0,
+            False
+        )
+        
+        if not ok:
+            return
+        
+        # Get output file
+        if format_choice == "HTML":
+            ext = "html"
+            filter_str = "HTML Files (*.html);;All Files (*)"
+        else:
+            ext = "pdf"
+            filter_str = "PDF Files (*.pdf);;All Files (*)"
+        
+        default_name = f"stop_loss_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
+        default_path = PROJECT_ROOT / "data" / "backtest_results" / default_name
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            f"Export {format_choice} Report",
+            str(default_path),
+            filter_str
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            if format_choice == "HTML":
+                self._export_html_report(file_path)
+            else:
+                self._export_pdf_report(file_path)
+            
+            QMessageBox.information(self, "Export Successful", f"Report exported to:\n{file_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Export Failed", f"Failed to export report: {str(e)}")
+    
+    def _export_html_report(self, file_path: str):
+        """Export analysis report as HTML."""
+        results = self.analysis_results
+        
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Stop-Loss Analysis Report</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; background-color: #1e1e1e; color: #ffffff; }}
+        h1 {{ color: #00d4aa; }}
+        h2 {{ color: #00d4aa; margin-top: 30px; }}
+        table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
+        th, td {{ border: 1px solid #555; padding: 8px; text-align: left; }}
+        th {{ background-color: #2d2d2d; color: #00d4aa; }}
+        tr:nth-child(even) {{ background-color: #2d2d2d; }}
+        .summary {{ display: flex; gap: 20px; margin: 20px 0; }}
+        .summary-card {{ background-color: #2d2d2d; padding: 15px; border-radius: 5px; border: 1px solid #555; }}
+        .summary-card h3 {{ margin: 0 0 10px 0; color: #b0b0b0; }}
+        .summary-card .value {{ font-size: 24px; font-weight: bold; color: #ffffff; }}
+    </style>
+</head>
+<body>
+    <h1>Stop-Loss Analysis Report</h1>
+    <p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+    <p>Source: {Path(self.current_csv_path).name if self.current_csv_path else 'N/A'}</p>
+    
+    <h2>Summary</h2>
+    <div class="summary">
+        <div class="summary-card">
+            <h3>Total Trades</h3>
+            <div class="value">{results.get('total_trades', 0)}</div>
+        </div>
+        <div class="summary-card">
+            <h3>Stop-Losses</h3>
+            <div class="value">{results.get('stop_loss_count', 0)} ({results.get('stop_loss_rate', 0.0)*100:.1f}%)</div>
+        </div>
+        <div class="summary-card">
+            <h3>Winners</h3>
+            <div class="value">{results.get('winning_count', 0)}</div>
+        </div>
+        <div class="summary-card">
+            <h3>Target Reached</h3>
+            <div class="value">{results.get('target_count', 0)}</div>
+        </div>
+    </div>
+    
+    <h2>Top Differentiating Features</h2>
+    <table>
+        <tr>
+            <th>Feature</th>
+            <th>Stop-Loss Mean</th>
+            <th>Winner Mean</th>
+            <th>Difference</th>
+            <th>Effect Size</th>
+        </tr>
+"""
+        
+        for comp in results.get('feature_comparisons', [])[:20]:
+            html += f"""
+        <tr>
+            <td>{comp.get('feature', 'N/A')}</td>
+            <td>{comp.get('stop_loss_mean', 0):.4f}</td>
+            <td>{comp.get('winner_mean', 0):.4f}</td>
+            <td>{comp.get('difference', 0):.4f}</td>
+            <td>{comp.get('abs_effect', 0):.3f}</td>
+        </tr>
+"""
+        
+        html += """
+    </table>
+    
+    <h2>Recommendations</h2>
+    <table>
+        <tr>
+            <th>Feature</th>
+            <th>Operator</th>
+            <th>Value</th>
+            <th>Effect Size</th>
+            <th>Category</th>
+        </tr>
+"""
+        
+        for rec in results.get('recommendations', []):
+            html += f"""
+        <tr>
+            <td>{rec.get('feature', 'N/A')}</td>
+            <td>{rec.get('operator', 'N/A')}</td>
+            <td>{rec.get('value', 0):.4f}</td>
+            <td>{rec.get('effect_size', 0):.3f}</td>
+            <td>{rec.get('category', 'N/A')}</td>
+        </tr>
+"""
+        
+        html += """
+    </table>
+</body>
+</html>
+"""
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(html)
+    
+    def _export_pdf_report(self, file_path: str):
+        """Export analysis report as PDF."""
+        # For PDF, we'll use HTML to PDF conversion or a simple approach
+        # For now, export as HTML and inform user they can convert it
+        html_path = file_path.replace('.pdf', '.html')
+        self._export_html_report(html_path)
+        QMessageBox.information(
+            self,
+            "PDF Export",
+            f"PDF export requires additional libraries.\n\n"
+            f"HTML report saved to: {html_path}\n\n"
+            f"You can open this in a browser and print to PDF."
+        )
+    
+    def export_recommendations_table(self):
+        """Export recommendations table as CSV."""
+        if not self.analysis_results or not self.analysis_results.get('recommendations'):
+            QMessageBox.warning(self, "No Recommendations", "No recommendations to export. Run analysis first.")
+            return
+        
+        default_name = f"stop_loss_recommendations_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        default_path = PROJECT_ROOT / "data" / "backtest_results" / default_name
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Recommendations CSV",
+            str(default_path),
+            "CSV Files (*.csv);;All Files (*)"
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            recommendations = self.analysis_results['recommendations']
+            df = pd.DataFrame(recommendations)
+            df.to_csv(file_path, index=False)
+            QMessageBox.information(self, "Export Successful", f"Recommendations exported to:\n{file_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Export Failed", f"Failed to export CSV: {str(e)}")
 
