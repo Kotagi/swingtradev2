@@ -407,6 +407,7 @@ class BacktestTab(QWidget):
         self.sl_analysis_service = StopLossAnalysisService()
         self.worker = None
         self.entry_filters = []  # List of (feature, operator, value)
+        self.loaded_preset_name = None  # Track which preset was loaded
         
         self.init_ui()
     
@@ -928,15 +929,25 @@ class BacktestTab(QWidget):
             return
 
         dialog = ApplyFeaturesDialog(features=features, existing_filters=self.entry_filters, parent=self)
+        original_filters = self.entry_filters.copy() if self.entry_filters else []
         if dialog.exec() == QDialog.DialogCode.Accepted:
             filters = dialog.get_filters()
             if filters is None:
                 return  # validation failed
+            
+            # Clear preset name if filters were manually edited (different from what was loaded)
+            if self.loaded_preset_name and filters != original_filters:
+                self.loaded_preset_name = None
+            
             self.entry_filters = filters
             if self.entry_filters:
-                self.filters_status_label.setText(f"Filters applied ({len(self.entry_filters)})")
+                if self.loaded_preset_name:
+                    self.filters_status_label.setText(f"Preset: {self.loaded_preset_name} ({len(self.entry_filters)} filters)")
+                else:
+                    self.filters_status_label.setText(f"Filters applied ({len(self.entry_filters)})")
                 self.filters_status_label.setStyleSheet("color: #4caf50;")
             else:
+                self.loaded_preset_name = None
                 self.filters_status_label.setText("No filters applied")
                 self.filters_status_label.setStyleSheet("color: #b0b0b0;")
 
@@ -1010,8 +1021,9 @@ class BacktestTab(QWidget):
             for f in filters
         ]
         
-        # Update status label
+        # Update status label and track preset name
         preset_name = preset_data.get('name', preset_filename)
+        self.loaded_preset_name = preset_name
         self.filters_status_label.setText(f"Preset loaded: {preset_name} ({len(self.entry_filters)} filters)")
         self.filters_status_label.setStyleSheet("color: #4caf50;")
         
@@ -1174,6 +1186,8 @@ class BacktestTab(QWidget):
             
             if output_file:
                 self.log_text.append(f"[{timestamp}] Loading results from: {output_file}")
+                # Save metadata
+                self.save_backtest_metadata(output_file)
                 self.load_and_visualize_results(output_file)
             else:
                 self.log_text.append(f"[{timestamp}] Warning: No output file specified, cannot visualize results")
@@ -1184,6 +1198,54 @@ class BacktestTab(QWidget):
             QMessageBox.critical(self, "Backtest Failed", message)
         
         self.progress_bar.setVisible(False)
+    
+    def save_backtest_metadata(self, output_file: str):
+        """Save backtest metadata including filter information."""
+        import json
+        
+        try:
+            output_path = Path(output_file)
+            metadata_path = output_path.parent / f"{output_path.stem}_metadata.json"
+            
+            # Get model name from model file input
+            model_file = self.model_file_edit.text().strip()
+            model_name = Path(model_file).name if model_file else None
+            
+            # Prepare metadata
+            metadata = {
+                'backtest_file': output_path.name,
+                'created_date': datetime.now().isoformat(),
+                'model_name': model_name,
+                'filter_preset_name': self.loaded_preset_name,
+                'filters_applied': [
+                    {
+                        'feature': f[0],
+                        'operator': f[1],
+                        'value': float(f[2]) if isinstance(f[2], (int, float)) else f[2]
+                    }
+                    for f in self.entry_filters
+                ] if self.entry_filters else [],
+                'backtest_settings': {
+                    'horizon': self.horizon_spin.value(),
+                    'return_threshold': self.return_threshold_spin.value() / 100.0,  # Convert from percentage
+                    'stop_loss_mode': self.stoploss_combo.currentText(),
+                    'stop_loss': self.stop_loss_spin.value() / 100.0 if self.stoploss_combo.currentText() == 'constant' else None,
+                    'atr_k': self.atr_k_spin.value() if self.stoploss_combo.currentText() in ['adaptive_atr', 'swing_atr'] else None,
+                    'atr_min': self.atr_min_spin.value() / 100.0 if self.stoploss_combo.currentText() in ['adaptive_atr', 'swing_atr'] else None,
+                    'atr_max': self.atr_max_spin.value() / 100.0 if self.stoploss_combo.currentText() in ['adaptive_atr', 'swing_atr'] else None,
+                    'model_threshold': self.model_threshold_spin.value() / 100.0,
+                    'strategy': self.strategy_combo.currentText()
+                }
+            }
+            
+            # Save to JSON file
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            
+        except Exception as e:
+            # Don't fail the backtest if metadata save fails
+            timestamp = datetime.now().strftime('%H:%M:%S')
+            self.log_text.append(f"[{timestamp}] Warning: Failed to save backtest metadata: {str(e)}")
     
     def load_and_visualize_results(self, csv_file: str):
         """Load backtest results CSV and display visualizations."""

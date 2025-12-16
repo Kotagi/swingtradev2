@@ -159,7 +159,7 @@ class BacktestComparisonTab(QWidget):
         self.backtests_table.setHorizontalHeaderLabels([
             "Select", "Filename", "Date", "Total Trades", "Win Rate", 
             "Avg Return", "Total P&L", "Avg P&L", "Max Drawdown", 
-            "Sharpe Ratio", "Profit Factor", "Avg Hold Days", "Annual Return", "Date Range"
+            "Sharpe Ratio", "Profit Factor", "Avg Hold Days", "Annual Return", "Date Range", "Filters Used"
         ])
         # Set Select column to fixed width
         self.backtests_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
@@ -292,6 +292,17 @@ class BacktestComparisonTab(QWidget):
                 file_date = datetime.fromtimestamp(csv_file.stat().st_mtime)
                 filename = csv_file.name
                 
+                # Load metadata if available
+                metadata = None
+                metadata_path = csv_file.parent / f"{csv_file.stem}_metadata.json"
+                if metadata_path.exists():
+                    try:
+                        import json
+                        with open(metadata_path, 'r') as f:
+                            metadata = json.load(f)
+                    except Exception:
+                        pass
+                
                 # Apply filters
                 if name_filter and name_filter not in filename.lower():
                     continue
@@ -306,7 +317,8 @@ class BacktestComparisonTab(QWidget):
                     "filename": filename,
                     "file_path": str(csv_file),
                     "date": file_date,
-                    "metrics": metrics
+                    "metrics": metrics,
+                    "metadata": metadata
                 })
             except Exception:
                 # Skip files that can't be parsed
@@ -447,6 +459,26 @@ class BacktestComparisonTab(QWidget):
             date_range = metrics.get("date_range", "N/A")
             range_item = QTableWidgetItem(str(date_range))
             self.backtests_table.setItem(row_idx, 13, range_item)
+            
+            # Filters Used
+            metadata = backtest_info.get("metadata")
+            if metadata and metadata.get("filters_applied"):
+                filters_count = len(metadata.get("filters_applied", []))
+                preset_name = metadata.get("filter_preset_name")
+                if preset_name:
+                    filter_text = f"{preset_name} ({filters_count})"
+                else:
+                    filter_text = f"{filters_count} filters"
+                filter_item = QTableWidgetItem(filter_text)
+                filter_item.setToolTip(f"Click to view filter details\nPreset: {preset_name or 'None'}\nFilters: {filters_count}")
+                # Store metadata for click handler
+                filter_item.setData(Qt.ItemDataRole.UserRole, metadata)
+            else:
+                filter_item = QTableWidgetItem("None")
+            self.backtests_table.setItem(row_idx, 14, filter_item)
+        
+        # Make filter column clickable
+        self.backtests_table.cellDoubleClicked.connect(self.on_filter_cell_clicked)
         
         self.backtests_table.setSortingEnabled(True)
         # Sort by date descending by default
@@ -597,6 +629,62 @@ class BacktestComparisonTab(QWidget):
                 f"Deleted {deleted_count} file(s), but {failed_count} file(s) could not be deleted:\n\n"
                 + "\n".join(f"  • {name}" for name in failed_files)
             )
+    
+    def on_filter_cell_clicked(self, row: int, col: int):
+        """Handle double-click on filter cell to show filter details."""
+        if col != 14:  # Filters Used column
+            return
+        
+        item = self.backtests_table.item(row, col)
+        if not item:
+            return
+        
+        metadata = item.data(Qt.ItemDataRole.UserRole)
+        if not metadata or not metadata.get("filters_applied"):
+            QMessageBox.information(self, "No Filters", "No filters were applied to this backtest.")
+            return
+        
+        # Create filter details dialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Filter Details")
+        dialog.setMinimumSize(500, 400)
+        
+        layout = QVBoxLayout()
+        
+        # Preset info
+        preset_name = metadata.get("filter_preset_name")
+        if preset_name:
+            preset_label = QLabel(f"<b>Preset:</b> {preset_name}")
+            preset_label.setStyleSheet("color: #00d4aa; font-size: 14px; margin-bottom: 10px;")
+            layout.addWidget(preset_label)
+        
+        # Filters list
+        filters_label = QLabel(f"<b>Filters Applied ({len(metadata.get('filters_applied', []))}):</b>")
+        filters_label.setStyleSheet("color: #ffffff; font-size: 12px; margin-top: 10px;")
+        layout.addWidget(filters_label)
+        
+        # Scrollable text area with filters
+        text_area = QTextEdit()
+        text_area.setReadOnly(True)
+        text_area.setStyleSheet("background-color: #2d2d2d; color: #ffffff; border: 1px solid #555;")
+        
+        filters_text = ""
+        for i, filter_dict in enumerate(metadata.get("filters_applied", []), 1):
+            feature = filter_dict.get("feature", "Unknown")
+            operator = filter_dict.get("operator", "")
+            value = filter_dict.get("value", "")
+            filters_text += f"{i}. {feature} {operator} {value}\n"
+        
+        text_area.setPlainText(filters_text)
+        layout.addWidget(text_area)
+        
+        # Close button
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        layout.addWidget(close_btn)
+        
+        dialog.setLayout(layout)
+        dialog.exec()
     
     def show_metrics_help(self):
         """Show help dialog for backtest metrics."""
