@@ -1796,17 +1796,17 @@ class StopLossAnalysisService:
     
     def analyze_stop_losses(
         self,
-        csv_path: str,
-        data_dir: Optional[Path] = None,
+        trades_df: pd.DataFrame,
+        features_df: pd.DataFrame,
         effect_size_threshold: float = 0.3,
         progress_callback: Optional[Callable] = None
     ) -> Dict:
         """
-        Analyze stop-loss trades from backtest CSV.
+        Analyze stop-loss trades from backtest data.
         
         Args:
-            csv_path: Path to backtest CSV file
-            data_dir: Directory containing feature parquet files (default: data/features_labeled)
+            trades_df: DataFrame with trade data
+            features_df: DataFrame with feature values at entry time
             effect_size_threshold: Minimum effect size for recommendations (default: 0.3)
             progress_callback: Callback(completed, total, message) for progress updates
             
@@ -1821,8 +1821,237 @@ class StopLossAnalysisService:
             - holding_period_stats (dict)
             - return_stats (dict)
         """
-        # This will be implemented in Unit 1.4
-        pass
+        if progress_callback:
+            progress_callback(0, 100, "Starting analysis...")
+        
+        results = {
+            'stop_loss_count': 0,
+            'winning_count': 0,
+            'target_count': 0,
+            'total_trades': len(trades_df),
+            'stop_loss_rate': 0.0,
+            'immediate_stop_count': 0,
+            'immediate_stop_rate': 0.0,
+            'feature_comparisons': [],
+            'recommendations': [],
+            'immediate_stop_recommendations': [],
+            'timing_analysis': {},
+            'holding_period_stats': {},
+            'return_stats': {}
+        }
+        
+        if trades_df.empty:
+            return results
+        
+        # Separate trades by exit reason
+        if progress_callback:
+            progress_callback(10, 100, "Categorizing trades...")
+        
+        # Handle exit_reason - check both trades_df and features_df
+        exit_reason_col = None
+        if 'exit_reason' in trades_df.columns:
+            exit_reason_col = trades_df['exit_reason']
+        elif 'exit_reason' in features_df.columns:
+            exit_reason_col = features_df['exit_reason']
+        
+        if exit_reason_col is not None:
+            stop_loss_mask = exit_reason_col == 'stop_loss'
+            target_mask = exit_reason_col == 'target_reached'
+        else:
+            # Fallback: use return to identify winners
+            return_col = trades_df.get('return', features_df.get('return', pd.Series()))
+            stop_loss_mask = return_col < 0
+            target_mask = pd.Series([False] * len(trades_df))
+        
+        # Get return column
+        return_col = trades_df.get('return', features_df.get('return', pd.Series()))
+        if return_col.empty and 'return' in features_df.columns:
+            return_col = features_df['return']
+        
+        winning_mask = return_col > 0
+        
+        # Count trades
+        results['stop_loss_count'] = stop_loss_mask.sum() if hasattr(stop_loss_mask, 'sum') else len([x for x in stop_loss_mask if x])
+        results['winning_count'] = winning_mask.sum() if hasattr(winning_mask, 'sum') else len([x for x in winning_mask if x])
+        results['target_count'] = target_mask.sum() if hasattr(target_mask, 'sum') else len([x for x in target_mask if x])
+        results['stop_loss_rate'] = results['stop_loss_count'] / results['total_trades'] if results['total_trades'] > 0 else 0.0
+        
+        # Get stop-loss trades for further analysis
+        if results['stop_loss_count'] > 0:
+            if 'exit_reason' in features_df.columns:
+                stop_loss_features = features_df[features_df['exit_reason'] == 'stop_loss'].copy()
+            elif 'exit_reason' in trades_df.columns:
+                stop_loss_indices = trades_df[trades_df['exit_reason'] == 'stop_loss'].index
+                stop_loss_features = features_df[features_df.index.isin(stop_loss_indices)].copy()
+            else:
+                # Use return < 0
+                stop_loss_features = features_df[features_df.get('return', 0) < 0].copy()
+            
+            # Detect immediate stops (≤1 day)
+            if 'holding_days' in stop_loss_features.columns:
+                immediate_mask = stop_loss_features['holding_days'] <= 1
+                results['immediate_stop_count'] = immediate_mask.sum()
+                results['immediate_stop_rate'] = results['immediate_stop_count'] / results['stop_loss_count'] if results['stop_loss_count'] > 0 else 0.0
+        else:
+            stop_loss_features = pd.DataFrame()
+        
+        # Feature comparison
+        if progress_callback:
+            progress_callback(30, 100, "Comparing features...")
+        
+        if not features_df.empty and results['stop_loss_count'] > 0 and results['winning_count'] > 0:
+            # Get winner features
+            if 'exit_reason' in features_df.columns:
+                winner_features = features_df[features_df['exit_reason'] != 'stop_loss'].copy()
+                winner_features = winner_features[winner_features.get('return', 0) > 0]
+            else:
+                winner_features = features_df[features_df.get('return', 0) > 0].copy()
+            
+            if not stop_loss_features.empty and not winner_features.empty:
+                # Get feature columns (exclude metadata)
+                exclude_cols = {'ticker', 'entry_date', 'exit_reason', 'return', 'pnl', 'holding_days'}
+                feature_cols = [col for col in features_df.columns if col not in exclude_cols]
+                
+                comparisons = []
+                for i, feat in enumerate(feature_cols):
+                    if progress_callback and i % 10 == 0:
+                        progress_callback(30 + int(50 * i / len(feature_cols)), 100, f"Analyzing feature {i+1}/{len(feature_cols)}...")
+                    
+                    try:
+                        sl_values = stop_loss_features[feat].dropna()
+                        win_values = winner_features[feat].dropna()
+                        
+                        if len(sl_values) > 0 and len(win_values) > 0:
+                            sl_mean = sl_values.mean()
+                            win_mean = win_values.mean()
+                            sl_std = sl_values.std()
+                            win_std = win_values.std()
+                            
+                            if pd.notna(sl_mean) and pd.notna(win_mean) and sl_std > 0:
+                                # Calculate Cohen's d (effect size)
+                                pooled_std = np.sqrt((sl_std**2 + win_std**2) / 2)
+                                if pooled_std > 0:
+                                    cohens_d = (sl_mean - win_mean) / pooled_std
+                                    abs_effect = abs(cohens_d)
+                                    
+                                    comparisons.append({
+                                        'feature': feat,
+                                        'stop_loss_mean': float(sl_mean),
+                                        'winner_mean': float(win_mean),
+                                        'difference': float(sl_mean - win_mean),
+                                        'cohens_d': float(cohens_d),
+                                        'abs_effect': float(abs_effect)
+                                    })
+                    except Exception:
+                        continue
+                
+                # Sort by absolute effect size
+                if comparisons:
+                    comparisons_df = pd.DataFrame(comparisons)
+                    comparisons_df = comparisons_df.sort_values('abs_effect', ascending=False)
+                    results['feature_comparisons'] = comparisons_df.to_dict('records')
+        
+        # Generate recommendations
+        if progress_callback:
+            progress_callback(80, 100, "Generating recommendations...")
+        
+        if results['feature_comparisons']:
+            recommendations = []
+            for comp in results['feature_comparisons']:
+                if comp['abs_effect'] >= effect_size_threshold:
+                    feat = comp['feature']
+                    sl_val = comp['stop_loss_mean']
+                    win_val = comp['winner_mean']
+                    cohens_d = comp['cohens_d']
+                    
+                    # Determine operator and value
+                    if sl_val > win_val:
+                        # Stop-loss trades have higher values - filter to exclude high values
+                        operator = "<"
+                        # Use a value between winner mean and stop-loss mean
+                        threshold_value = win_val + (sl_val - win_val) * 0.3  # 30% toward winner mean
+                    else:
+                        # Stop-loss trades have lower values - filter to exclude low values
+                        operator = ">"
+                        # Use a value between stop-loss mean and winner mean
+                        threshold_value = sl_val + (win_val - sl_val) * 0.3  # 30% toward stop-loss mean
+                    
+                    # Categorize effect size
+                    abs_effect = comp['abs_effect']
+                    if abs_effect > 0.5:
+                        category = "strong"
+                    elif abs_effect >= 0.3:
+                        category = "moderate"
+                    else:
+                        category = "weak"
+                    
+                    recommendations.append({
+                        'feature': feat,
+                        'operator': operator,
+                        'value': float(threshold_value),
+                        'effect_size': float(abs_effect),
+                        'cohens_d': float(cohens_d),
+                        'category': category,
+                        'description': f"Filter: {feat} {operator} {threshold_value:.4f} (effect size: {abs_effect:.3f})"
+                    })
+            
+            results['recommendations'] = recommendations
+        
+        # Timing analysis
+        if progress_callback:
+            progress_callback(85, 100, "Analyzing timing patterns...")
+        
+        if results['stop_loss_count'] > 0 and not stop_loss_features.empty:
+            # Get entry dates
+            entry_dates = None
+            if 'entry_date' in stop_loss_features.columns:
+                entry_dates = pd.to_datetime(stop_loss_features['entry_date'])
+            elif isinstance(stop_loss_features.index, pd.DatetimeIndex):
+                entry_dates = stop_loss_features.index
+            
+            if entry_dates is not None:
+                day_of_week_counts = entry_dates.dayofweek.value_counts().sort_index().to_dict()
+                month_counts = entry_dates.month.value_counts().sort_index().to_dict()
+                
+                results['timing_analysis'] = {
+                    'day_of_week': {int(k): int(v) for k, v in day_of_week_counts.items()},
+                    'month': {int(k): int(v) for k, v in month_counts.items()}
+                }
+        
+        # Holding period stats
+        if progress_callback:
+            progress_callback(90, 100, "Calculating holding period statistics...")
+        
+        if results['stop_loss_count'] > 0 and not stop_loss_features.empty and 'holding_days' in stop_loss_features.columns:
+            holding_days = stop_loss_features['holding_days'].dropna()
+            if len(holding_days) > 0:
+                results['holding_period_stats'] = {
+                    'mean': float(holding_days.mean()),
+                    'median': float(holding_days.median()),
+                    'min': float(holding_days.min()),
+                    'max': float(holding_days.max()),
+                    'distribution': {}  # Will be populated if needed for charts
+                }
+        
+        # Return stats
+        if progress_callback:
+            progress_callback(95, 100, "Calculating return statistics...")
+        
+        if results['stop_loss_count'] > 0 and not stop_loss_features.empty and 'return' in stop_loss_features.columns:
+            returns = stop_loss_features['return'].dropna()
+            if len(returns) > 0:
+                results['return_stats'] = {
+                    'mean': float(returns.mean()),
+                    'median': float(returns.median()),
+                    'min': float(returns.min()),
+                    'max': float(returns.max()),
+                    'std_dev': float(returns.std())
+                }
+        
+        if progress_callback:
+            progress_callback(100, 100, "Analysis complete!")
+        
+        return results
     
     def get_entry_features(
         self,

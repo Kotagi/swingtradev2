@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from pathlib import Path
+from typing import Tuple
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -58,6 +59,42 @@ class FeatureExtractionWorker(QThread):
             self.finished.emit(False, pd.DataFrame(), f"Error: {str(e)}")
 
 
+class AnalysisWorker(QThread):
+    """Worker thread for running stop-loss analysis."""
+    
+    finished = pyqtSignal(bool, dict, str)  # success, results, message
+    progress = pyqtSignal(int, int)  # completed, total
+    progress_message = pyqtSignal(str)  # message
+    
+    def __init__(self, service: StopLossAnalysisService, trades_df: pd.DataFrame, 
+                 features_df: pd.DataFrame, effect_size_threshold: float):
+        super().__init__()
+        self.service = service
+        self.trades_df = trades_df
+        self.features_df = features_df
+        self.effect_size_threshold = effect_size_threshold
+    
+    def run(self):
+        """Run analysis in background thread."""
+        try:
+            def progress_callback(completed, total, message=None):
+                self.progress.emit(completed, total)
+                if message:
+                    self.progress_message.emit(message)
+            
+            results = self.service.analyze_stop_losses(
+                self.trades_df,
+                self.features_df,
+                self.effect_size_threshold,
+                progress_callback=progress_callback
+            )
+            
+            self.finished.emit(True, results, 
+                             f"Analysis complete: {results.get('stop_loss_count', 0)} stop-losses found")
+        except Exception as e:
+            self.finished.emit(False, {}, f"Error: {str(e)}")
+
+
 class StopLossAnalysisTab(QWidget):
     """Tab for analyzing stop-loss trades and generating filter recommendations."""
     
@@ -70,6 +107,7 @@ class StopLossAnalysisTab(QWidget):
         self.current_features_df = None
         self.analysis_results = None
         self.feature_worker = None
+        self.analysis_worker = None
         self.init_ui()
     
     def init_ui(self):
@@ -137,10 +175,10 @@ class StopLossAnalysisTab(QWidget):
         summary_group = QGroupBox("Summary")
         summary_layout = QHBoxLayout()
         
-        self.total_trades_card = self.create_summary_card("Total Trades", "0")
-        self.stop_loss_card = self.create_summary_card("Stop-Losses", "0 (0%)")
-        self.winners_card = self.create_summary_card("Winners", "0 (0%)")
-        self.target_card = self.create_summary_card("Target Reached", "0 (0%)")
+        self.total_trades_card, self.total_trades_label = self.create_summary_card("Total Trades", "0")
+        self.stop_loss_card, self.stop_loss_label = self.create_summary_card("Stop-Losses", "0 (0%)")
+        self.winners_card, self.winners_label = self.create_summary_card("Winners", "0 (0%)")
+        self.target_card, self.target_label = self.create_summary_card("Target Reached", "0 (0%)")
         
         summary_layout.addWidget(self.total_trades_card)
         summary_layout.addWidget(self.stop_loss_card)
@@ -221,8 +259,8 @@ class StopLossAnalysisTab(QWidget):
         # Set main layout
         self.setLayout(main_layout)
     
-    def create_summary_card(self, title: str, value: str) -> QWidget:
-        """Create a summary card widget."""
+    def create_summary_card(self, title: str, value: str) -> Tuple[QWidget, QLabel]:
+        """Create a summary card widget and return both the widget and value label."""
         card = QWidget()
         card.setStyleSheet("""
             QWidget {
@@ -244,7 +282,7 @@ class StopLossAnalysisTab(QWidget):
         card_layout.addWidget(value_label)
         
         card.setLayout(card_layout)
-        return card
+        return card, value_label
     
     def browse_csv(self):
         """Browse for backtest CSV file."""
@@ -327,17 +365,119 @@ class StopLossAnalysisTab(QWidget):
     
     def on_feature_extraction_finished(self, success: bool, features_df: pd.DataFrame, message: str):
         """Handle completion of feature extraction."""
-        self.progress_bar.setVisible(False)
+        if not success:
+            self.progress_bar.setVisible(False)
+            self.analyze_btn.setEnabled(True)
+            self.status_label.setText(f"✗ {message}")
+            self.status_label.setStyleSheet("color: #f44336;")
+            QMessageBox.warning(self, "Feature Extraction Failed", message)
+            return
         
-        # Re-enable analyze button
+        self.current_features_df = features_df
+        
+        # Now run the analysis
+        self.status_label.setText("Running stop-loss analysis...")
+        self.status_label.setStyleSheet("color: #ff9800;")
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        
+        # Run analysis in background thread
+        self.analysis_worker = AnalysisWorker(
+            self.service,
+            self.current_trades_df,
+            self.current_features_df,
+            self.threshold_spin.value()
+        )
+        self.analysis_worker.finished.connect(self.on_analysis_finished)
+        self.analysis_worker.progress.connect(self.on_analysis_progress)
+        self.analysis_worker.progress_message.connect(self.on_analysis_message)
+        self.analysis_worker.start()
+    
+    def on_analysis_progress(self, completed: int, total: int):
+        """Handle analysis progress updates."""
+        if total > 0:
+            self.progress_bar.setMaximum(total)
+            self.progress_bar.setValue(completed)
+    
+    def on_analysis_message(self, message: str):
+        """Handle analysis progress messages."""
+        self.status_label.setText(message)
+    
+    def on_analysis_finished(self, success: bool, results: dict, message: str):
+        """Handle completion of analysis."""
+        self.progress_bar.setVisible(False)
         self.analyze_btn.setEnabled(True)
         
         if success:
-            self.current_features_df = features_df
-            self.status_label.setText(f"✓ {message} - Analysis will be implemented in Unit 1.4")
+            self.analysis_results = results
+            self.update_summary_cards()
+            self.update_feature_comparison_table()
+            self.status_label.setText(f"✓ {message}")
             self.status_label.setStyleSheet("color: #4caf50;")
         else:
             self.status_label.setText(f"✗ {message}")
             self.status_label.setStyleSheet("color: #f44336;")
-            QMessageBox.warning(self, "Feature Extraction Failed", message)
+            QMessageBox.warning(self, "Analysis Failed", message)
+    
+    def update_summary_cards(self):
+        """Update summary cards with analysis results."""
+        if not self.analysis_results:
+            return
+        
+        results = self.analysis_results
+        
+        # Update total trades card
+        self.total_trades_label.setText(str(results.get('total_trades', 0)))
+        
+        # Update stop-loss card
+        sl_count = results.get('stop_loss_count', 0)
+        sl_rate = results.get('stop_loss_rate', 0.0) * 100
+        self.stop_loss_label.setText(f"{sl_count} ({sl_rate:.1f}%)")
+        
+        # Update winners card
+        win_count = results.get('winning_count', 0)
+        win_rate = (win_count / results.get('total_trades', 1)) * 100 if results.get('total_trades', 0) > 0 else 0
+        self.winners_label.setText(f"{win_count} ({win_rate:.1f}%)")
+        
+        # Update target card
+        target_count = results.get('target_count', 0)
+        target_rate = (target_count / results.get('total_trades', 1)) * 100 if results.get('total_trades', 0) > 0 else 0
+        self.target_label.setText(f"{target_count} ({target_rate:.1f}%)")
+    
+    def update_feature_comparison_table(self):
+        """Update feature comparison table with analysis results."""
+        if not self.analysis_results or not self.analysis_results.get('feature_comparisons'):
+            self.features_table.setRowCount(0)
+            return
+        
+        comparisons = self.analysis_results['feature_comparisons']
+        self.features_table.setRowCount(len(comparisons))
+        
+        for row_idx, comp in enumerate(comparisons):
+            # Feature name
+            self.features_table.setItem(row_idx, 0, QTableWidgetItem(comp['feature']))
+            
+            # Stop-loss mean
+            sl_item = QTableWidgetItem(f"{comp['stop_loss_mean']:.4f}")
+            sl_item.setData(Qt.ItemDataRole.EditRole, comp['stop_loss_mean'])
+            self.features_table.setItem(row_idx, 1, sl_item)
+            
+            # Winner mean
+            win_item = QTableWidgetItem(f"{comp['winner_mean']:.4f}")
+            win_item.setData(Qt.ItemDataRole.EditRole, comp['winner_mean'])
+            self.features_table.setItem(row_idx, 2, win_item)
+            
+            # Difference
+            diff_item = QTableWidgetItem(f"{comp['difference']:.4f}")
+            diff_item.setData(Qt.ItemDataRole.EditRole, comp['difference'])
+            self.features_table.setItem(row_idx, 3, diff_item)
+            
+            # Effect size
+            effect_item = QTableWidgetItem(f"{comp['abs_effect']:.3f}")
+            effect_item.setData(Qt.ItemDataRole.EditRole, comp['abs_effect'])
+            self.features_table.setItem(row_idx, 4, effect_item)
+        
+        # Enable sorting
+        self.features_table.setSortingEnabled(True)
 
