@@ -6,8 +6,9 @@ This provides a clean interface between the GUI and the existing CLI code.
 import sys
 import re
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Callable
 import pandas as pd
+import numpy as np
 import joblib
 from datetime import datetime
 
@@ -1782,4 +1783,159 @@ class BacktestService:
                 # Skip invalid filter
                 continue
         return filtered
+
+
+class StopLossAnalysisService:
+    """Service for stop-loss analysis functionality."""
+    
+    def __init__(self):
+        """Initialize the stop-loss analysis service."""
+        self.data_dir = PROJECT_ROOT / "data" / "features_labeled"
+        self.presets_dir = PROJECT_ROOT / "data" / "filter_presets"
+        self.presets_dir.mkdir(parents=True, exist_ok=True)
+    
+    def analyze_stop_losses(
+        self,
+        csv_path: str,
+        data_dir: Optional[Path] = None,
+        effect_size_threshold: float = 0.3,
+        progress_callback: Optional[Callable] = None
+    ) -> Dict:
+        """
+        Analyze stop-loss trades from backtest CSV.
+        
+        Args:
+            csv_path: Path to backtest CSV file
+            data_dir: Directory containing feature parquet files (default: data/features_labeled)
+            effect_size_threshold: Minimum effect size for recommendations (default: 0.3)
+            progress_callback: Callback(completed, total, message) for progress updates
+            
+        Returns:
+            Analysis results dictionary with:
+            - stop_loss_count, winning_count, target_count, total_trades
+            - stop_loss_rate, immediate_stop_count, immediate_stop_rate
+            - feature_comparisons (list of dicts)
+            - recommendations (list of dicts)
+            - immediate_stop_recommendations (list of dicts)
+            - timing_analysis (dict)
+            - holding_period_stats (dict)
+            - return_stats (dict)
+        """
+        # This will be implemented in Unit 1.4
+        pass
+    
+    def get_entry_features(
+        self,
+        trades: pd.DataFrame,
+        data_dir: Optional[Path] = None,
+        progress_callback: Optional[Callable] = None
+    ) -> pd.DataFrame:
+        """
+        Extract feature values at entry time for each trade.
+        
+        Args:
+            trades: DataFrame with trade data (must have 'ticker' and entry date info)
+            data_dir: Directory containing feature parquet files (default: data/features_labeled)
+            progress_callback: Callback(completed, total, message) for progress updates
+            
+        Returns:
+            DataFrame with trades + feature values at entry time
+        """
+        # This will be implemented in Unit 1.3
+        pass
+    
+    def calculate_impact(
+        self,
+        filters: List[Tuple[str, str, float]],
+        trades_df: pd.DataFrame,
+        features_df: pd.DataFrame
+    ) -> Dict:
+        """
+        Calculate impact of applying filters to trades.
+        
+        Args:
+            filters: List of (feature, operator, value) tuples
+            trades_df: Original trades DataFrame
+            features_df: Features at entry time DataFrame
+            
+        Returns:
+            Dictionary with impact metrics:
+            - stop_loss_excluded_pct: Percentage of stop-loss trades excluded
+            - winner_excluded_pct: Percentage of winning trades excluded
+            - estimated_new_sl_rate: Estimated new stop-loss rate
+            - estimated_total_trades: Estimated total trades remaining
+            - warnings: List of warning messages
+        """
+        # This will be implemented in Unit 2.3
+        pass
+    
+    def save_preset(
+        self,
+        name: str,
+        filters: List[Dict],
+        metadata: Dict
+    ) -> str:
+        """
+        Save filter preset to file.
+        
+        Args:
+            name: Preset name
+            filters: List of filter dictionaries with feature, operator, value, effect_size, category
+            metadata: Additional metadata (source_backtest, model_name, stop_loss_rate_before, etc.)
+            
+        Returns:
+            Path to saved preset file
+        """
+        # This will be implemented in Unit 4.1
+        pass
+    
+    def load_preset(self, preset_name: str) -> Dict:
+        """
+        Load filter preset from file.
+        
+        Args:
+            preset_name: Name of preset to load (filename without .json extension)
+            
+        Returns:
+            Preset dictionary with filters and metadata
+        """
+        # This will be implemented in Unit 4.2
+        pass
+    
+    def list_presets(self) -> List[Dict]:
+        """
+        List all available presets.
+        
+        Returns:
+            List of preset metadata dictionaries (name, created_date, source_backtest, etc.)
+        """
+        # This will be implemented in Unit 4.2
+        pass
+    
+    def delete_preset(self, preset_name: str) -> bool:
+        """
+        Delete a preset.
+        
+        Args:
+            preset_name: Name of preset to delete (filename without .json extension)
+            
+        Returns:
+            True if deleted, False if not found
+        """
+        # This will be implemented in Unit 4.4
+        pass
+    
+    def rename_preset(self, old_name: str, new_name: str) -> bool:
+        """
+        Rename a preset.
+        
+        Args:
+            old_name: Current preset name (filename without .json extension)
+            new_name: New preset name
+            
+        Returns:
+            True if renamed, False if not found
+        """
+        # This will be implemented in Unit 4.4
+        pass
 
