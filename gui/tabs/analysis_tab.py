@@ -76,6 +76,11 @@ class AnalysisTab(QWidget):
         trade_log_tab = self.create_trade_log_tab()
         self.tab_widget.addTab(trade_log_tab, "Trade Log")
         
+        # Tab 4: Stop-Loss Analysis
+        from gui.tabs.stop_loss_analysis_tab import StopLossAnalysisTab
+        stop_loss_tab = StopLossAnalysisTab()
+        self.tab_widget.addTab(stop_loss_tab, "Stop-Loss Analysis")
+        
         layout.addWidget(self.tab_widget)
         
         # Set layout on content widget
