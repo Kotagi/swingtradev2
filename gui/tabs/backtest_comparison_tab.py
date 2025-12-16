@@ -461,7 +461,7 @@ class BacktestComparisonTab(QWidget):
             self.backtests_table.setItem(row_idx, 13, range_item)
             
             # Filters Used
-            metadata = backtest_info.get("metadata")
+            metadata = backtest.get("metadata")
             if metadata and metadata.get("filters_applied"):
                 filters_count = len(metadata.get("filters_applied", []))
                 preset_name = metadata.get("filter_preset_name")
