@@ -8,8 +8,10 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QGroupBox, QSpinBox, QDoubleSpinBox, QComboBox, QCheckBox,
     QMessageBox, QProgressBar, QTextEdit, QLineEdit, QFileDialog,
-    QTableWidget, QTableWidgetItem, QHeaderView, QScrollArea, QDialog, QScrollArea as QDialogScrollArea, QFrame
+    QTableWidget, QTableWidgetItem, QHeaderView, QScrollArea, QDialog, QScrollArea as QDialogScrollArea, QFrame, QMenu
 )
+from PyQt6.QtGui import QIcon, QPalette, QColor
+from PyQt6.QtCore import QSize
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from pathlib import Path
 from datetime import datetime
@@ -17,8 +19,96 @@ import pandas as pd
 
 from gui.services import BacktestService, DataService
 from gui.widgets import PresetManagerWidget, EquityCurveWidget, ReturnsDistributionWidget
+from gui.utils.feature_descriptions import get_feature_description, get_feature_display_name
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
+
+
+class FeatureInfoDialog(QDialog):
+    """Dialog showing feature description and interpretation guidance."""
+    
+    def __init__(self, feature_name: str, parent=None):
+        super().__init__(parent)
+        self.feature_name = feature_name
+        self.setWindowTitle("Feature Information")
+        self.setMinimumSize(500, 400)
+        self.setModal(False)  # Non-modal - can keep open
+        self.init_ui()
+    
+    def init_ui(self):
+        """Initialize the UI components."""
+        layout = QVBoxLayout()
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+        
+        # Get feature description
+        desc = get_feature_description(self.feature_name)
+        
+        if desc:
+            # Feature name (title)
+            title = QLabel(desc["name"])
+            title.setStyleSheet("font-size: 20px; font-weight: bold; color: #00d4aa;")
+            layout.addWidget(title)
+            
+            # Description section
+            desc_label = QLabel("Description:")
+            desc_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff; margin-top: 10px;")
+            layout.addWidget(desc_label)
+            
+            desc_text = QTextEdit()
+            desc_text.setReadOnly(True)
+            desc_text.setPlainText(desc["description"])
+            desc_text.setStyleSheet("background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #555; border-radius: 5px; padding: 10px;")
+            desc_text.setMinimumHeight(100)
+            layout.addWidget(desc_text)
+            
+            # Interpretation section
+            interp_label = QLabel("How to Interpret Normalized Values:")
+            interp_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff; margin-top: 10px;")
+            layout.addWidget(interp_label)
+            
+            interp_text = QTextEdit()
+            interp_text.setReadOnly(True)
+            interp_text.setPlainText(desc["interpretation"])
+            interp_text.setStyleSheet("background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #555; border-radius: 5px; padding: 10px;")
+            interp_text.setMinimumHeight(120)
+            layout.addWidget(interp_text)
+        else:
+            # Generic message for unknown features
+            title = QLabel(get_feature_display_name(self.feature_name))
+            title.setStyleSheet("font-size: 20px; font-weight: bold; color: #00d4aa;")
+            layout.addWidget(title)
+            
+            generic_text = QTextEdit()
+            generic_text.setReadOnly(True)
+            generic_text.setPlainText(
+                "No detailed description available for this feature.\n\n"
+                "Normalized values are typically z-scores (mean=0, std=1) or min-max scaled values. "
+                "Positive values generally indicate above-average conditions, "
+                "while negative values indicate below-average conditions. "
+                "Use your knowledge of the feature to set appropriate filter thresholds."
+            )
+            generic_text.setStyleSheet("background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #555; border-radius: 5px; padding: 10px;")
+            generic_text.setMinimumHeight(200)
+            layout.addWidget(generic_text)
+        
+        # Close button
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        btn_row.addWidget(close_btn)
+        layout.addLayout(btn_row)
+        
+        self.setLayout(layout)
+        
+        # Center the dialog on parent
+        if self.parent():
+            parent_geometry = self.parent().geometry()
+            dialog_geometry = self.geometry()
+            x = parent_geometry.x() + (parent_geometry.width() - dialog_geometry.width()) // 2
+            y = parent_geometry.y() + (parent_geometry.height() - dialog_geometry.height()) // 2
+            self.move(x, y)
 
 
 class ApplyFeaturesDialog(QDialog):
@@ -57,7 +147,46 @@ class ApplyFeaturesDialog(QDialog):
             row_layout.setContentsMargins(0, 0, 0, 0)
             row_layout.setSpacing(8)
             
-            checkbox = QCheckBox(feature_name)
+            # Info button - use QWidget container with QLabel (exact same pattern as help button in model comparison)
+            info_btn_container = QWidget()
+            info_btn_container.setFixedSize(30, 30)
+            info_btn_container.setToolTip(f"Show information about {get_feature_display_name(feature_name)}")
+            info_btn_container.setStyleSheet("""
+                QWidget {
+                    background-color: #2d2d2d;
+                    border: 2px solid #00d4aa;
+                    border-radius: 15px;
+                }
+                QWidget:hover {
+                    background-color: #3d3d3d;
+                    border-color: #00ffcc;
+                }
+            """)
+            info_btn_layout = QHBoxLayout(info_btn_container)
+            info_btn_layout.setContentsMargins(0, 0, 0, 0)
+            info_label = QLabel("i")
+            info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            info_label.setStyleSheet("""
+                QLabel {
+                    color: #00d4aa;
+                    font-size: 20px;
+                    font-weight: bold;
+                    background-color: transparent;
+                    border: none;
+                }
+            """)
+            info_btn_layout.addWidget(info_label)
+            # Make it clickable
+            info_btn_container.mousePressEvent = lambda e, fn=feature_name: self.show_feature_info(fn)
+            row_layout.addWidget(info_btn_container)
+            
+            # Feature name label (readable format)
+            feature_label = QLabel(get_feature_display_name(feature_name))
+            feature_label.setMinimumWidth(150)
+            feature_label.setStyleSheet("color: #e0e0e0;")
+            row_layout.addWidget(feature_label)
+            
+            checkbox = QCheckBox()
             op_combo = QComboBox()
             op_combo.addItems([">", ">=", "<", "<="])
             op_combo.setCurrentText(">")
@@ -107,6 +236,11 @@ class ApplyFeaturesDialog(QDialog):
         for _, cb, _, val_edit in self.rows:
             cb.setChecked(False)
             val_edit.clear()
+    
+    def show_feature_info(self, feature_name: str):
+        """Show feature information dialog."""
+        dialog = FeatureInfoDialog(feature_name, parent=self)
+        dialog.show()  # Use show() instead of exec() for non-modal
     
     def get_filters(self):
         """Return list of (feature, operator, value)."""
@@ -212,8 +346,38 @@ class BacktestTab(QWidget):
         model_row.addWidget(QLabel("Model File:"))
         self.model_edit = QLineEdit("models/xgb_classifier_selected_features.pkl")
         model_row.addWidget(self.model_edit)
+        
+        # Create Browse button first to get its height
         browse_model_btn = QPushButton("Browse...")
         browse_model_btn.clicked.connect(self.browse_model)
+        
+        # Dropdown button for model selection - match Browse button height
+        # Use QPushButton with custom styling to ensure clicks work
+        model_dropdown_btn = QPushButton("▼")
+        model_dropdown_btn.setFixedWidth(35)
+        browse_height = browse_model_btn.sizeHint().height()
+        model_dropdown_btn.setFixedHeight(browse_height)
+        model_dropdown_btn.setToolTip("Select from available models")
+        model_dropdown_btn.clicked.connect(self.show_model_menu)
+        # Style the button to match GUI with rounded corners and white arrow
+        model_dropdown_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                border: 1px solid #555;
+                border-radius: 5px;
+                color: white;
+                font-size: 18px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #3d3d3d;
+            }
+            QPushButton:pressed {
+                background-color: #1d1d1d;
+            }
+        """)
+        
+        model_row.addWidget(model_dropdown_btn)
         model_row.addWidget(browse_model_btn)
         strategy_layout.addLayout(model_row)
         
@@ -348,7 +512,7 @@ class BacktestTab(QWidget):
         output_row = QHBoxLayout()
         output_row.addWidget(QLabel("Save Results To:"))
         self.output_edit = QLineEdit()
-        self.output_edit.setPlaceholderText("Filename (saves to data/backtest_results/) or full path")
+        self.output_edit.setPlaceholderText("Filename (.csv added automatically) or full path")
         output_row.addWidget(self.output_edit)
         browse_output_btn = QPushButton("Browse...")
         browse_output_btn.clicked.connect(self.browse_output)
@@ -443,6 +607,125 @@ class BacktestTab(QWidget):
         
         # Set main layout
         self.setLayout(main_layout)
+        
+        # Track if output field was manually edited (to avoid overwriting user input)
+        self.output_manually_edited = False
+        self._updating_auto_name = False  # Flag to prevent textChanged from marking as manual during auto-update
+        def on_output_text_changed(text):
+            # Don't mark as manual if we're programmatically updating
+            if self._updating_auto_name:
+                return
+            # Reset flag if field is cleared, otherwise mark as manually edited
+            if not text.strip():
+                self.output_manually_edited = False
+            else:
+                self.output_manually_edited = True
+        self.output_edit.textChanged.connect(on_output_text_changed)
+        
+        # Connect parameter changes to auto-name generation
+        self.strategy_combo.currentTextChanged.connect(self.update_auto_name)
+        self.horizon_spin.valueChanged.connect(self.update_auto_name)
+        self.return_threshold_spin.valueChanged.connect(self.update_auto_name)
+        self.stoploss_combo.currentTextChanged.connect(self.update_auto_name)
+        self.stop_loss_spin.valueChanged.connect(self.update_auto_name)
+        self.atr_k_spin.valueChanged.connect(self.update_auto_name)
+        self.atr_min_spin.valueChanged.connect(self.update_auto_name)
+        self.atr_max_spin.valueChanged.connect(self.update_auto_name)
+        
+        # Generate initial auto-name
+        self.update_auto_name()
+    
+    def generate_auto_name(self) -> str:
+        """
+        Generate an auto-name for the backtest based on current parameters.
+        Format: backtest_{strategy}_{horizon}d_{threshold}%_{stop_loss}_{timestamp}.csv
+        """
+        strategy = self.strategy_combo.currentText()
+        horizon = self.horizon_spin.value()
+        threshold = self.return_threshold_spin.value()
+        
+        # Build stop-loss description
+        stoploss_mode = self.stoploss_combo.currentText()
+        if stoploss_mode == "None":
+            stop_loss_str = "none"
+        elif stoploss_mode == "constant":
+            stop_pct = abs(self.stop_loss_spin.value())  # Make positive for filename
+            stop_loss_str = f"constant_{stop_pct}pct"
+        elif stoploss_mode == "adaptive_atr":
+            k = self.atr_k_spin.value()
+            min_pct = self.atr_min_spin.value()
+            max_pct = self.atr_max_spin.value()
+            stop_loss_str = f"adaptive_atr_{k}_{min_pct}pct_{max_pct}pct"
+        elif stoploss_mode == "swing_atr":
+            k = self.atr_k_spin.value()
+            min_pct = self.atr_min_spin.value()
+            max_pct = self.atr_max_spin.value()
+            stop_loss_str = f"swing_atr_{k}_{min_pct}pct_{max_pct}pct"
+        else:
+            stop_loss_str = "unknown"
+        
+        # Generate timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        
+        # Construct filename
+        filename = f"backtest_{strategy}_{horizon}d_{threshold}pct_{stop_loss_str}_{timestamp}.csv"
+        
+        return filename
+    
+    def update_auto_name(self):
+        """
+        Update the output field with auto-generated name, but only if:
+        - The field is empty, OR
+        - The field contains a previously auto-generated name (starts with "backtest_")
+        """
+        # Only auto-update if field is empty or contains an auto-generated name
+        current_text = self.output_edit.text().strip()
+        if not current_text or (current_text.startswith("backtest_") and not self.output_manually_edited):
+            auto_name = self.generate_auto_name()
+            # Only update if different to avoid unnecessary signals
+            if current_text != auto_name:
+                self._updating_auto_name = True
+                self.output_edit.setText(auto_name)
+                self.output_manually_edited = False
+                self._updating_auto_name = False
+    
+    def show_model_menu(self):
+        """Show a menu with available models from the models folder."""
+        models_dir = Path(self.data_service.get_models_dir())
+        
+        # Create menu
+        menu = QMenu(self)
+        
+        if models_dir.exists():
+            # Get all .pkl files
+            model_files = sorted(models_dir.glob("*.pkl"))
+            
+            if model_files:
+                # Add each model as a menu item
+                for model_file in model_files:
+                    relative_path = str(model_file.relative_to(PROJECT_ROOT))
+                    action = menu.addAction(model_file.name)
+                    action.setData(relative_path)  # Store full relative path
+                menu.triggered.connect(self.on_model_selected)
+            else:
+                # No models found
+                no_models_action = menu.addAction("No models found")
+                no_models_action.setEnabled(False)
+        else:
+            # Models directory doesn't exist
+            no_dir_action = menu.addAction("Models directory not found")
+            no_dir_action.setEnabled(False)
+        
+        # Show menu below the button
+        button = self.sender()
+        if button:
+            menu.exec(button.mapToGlobal(button.rect().bottomLeft()))
+    
+    def on_model_selected(self, action):
+        """Handle model selection from menu."""
+        model_path = action.data()
+        if model_path:
+            self.model_edit.setText(model_path)
     
     def browse_model(self):
         """Browse for model file."""
@@ -454,22 +737,33 @@ class BacktestTab(QWidget):
             "Pickle Files (*.pkl);;All Files (*)"
         )
         if file_path:
-            self.model_edit.setText(file_path)
+            # Convert to relative path if it's in the project
+            try:
+                relative_path = str(Path(file_path).relative_to(PROJECT_ROOT))
+                self.model_edit.setText(relative_path)
+            except ValueError:
+                # File is outside project, use absolute path
+                self.model_edit.setText(file_path)
     
     def _normalize_output_path(self, output: str) -> str:
         """
         Normalize output path: if just a filename, prepend data/backtest_results/.
+        Also automatically appends .csv extension if no extension is provided.
         
         Args:
             output: Output path or filename
             
         Returns:
-            Full path with default directory if needed
+            Full path with default directory and .csv extension if needed
         """
         if not output:
             return output
         
         output_path = Path(output)
+        
+        # Automatically add .csv extension if no extension is provided
+        if not output_path.suffix:
+            output_path = output_path.with_suffix('.csv')
         
         # If it's just a filename (no directory separators), use default directory
         if not output_path.parent or output_path.parent == Path('.'):
@@ -482,7 +776,7 @@ class BacktestTab(QWidget):
             return str(PROJECT_ROOT / output_path)
         
         # Already an absolute path, return as-is
-        return output
+        return str(output_path)
     
     def browse_output(self):
         """Browse for output file."""
@@ -500,6 +794,7 @@ class BacktestTab(QWidget):
         )
         if file_path:
             self.output_edit.setText(file_path)
+            self.output_manually_edited = True  # User manually selected a file
 
     def open_features_dialog(self):
         """Open dialog to apply feature filters."""
@@ -534,9 +829,19 @@ class BacktestTab(QWidget):
             # Read columns from first parquet file (read minimal data)
             df = pd.read_parquet(parquet_files[0]).head(1)
             cols = list(df.columns)
-            # Exclude label/metadata columns commonly present
-            excluded = {"label", "ticker", "date", "entry_signal", "entry_date", "exit_date", "pnl", "return", "holding_days"}
-            features = [c for c in cols if c not in excluded and not c.startswith("label_")]
+            # Exclude label/metadata columns and raw price columns
+            excluded = {
+                "label", "ticker", "date", "entry_signal", "entry_date", "exit_date", 
+                "pnl", "return", "holding_days",
+                "open", "high", "low", "close", "adj close"
+            }
+            # Case-insensitive exclusion check
+            excluded_lower = {col.lower() for col in excluded}
+            features = [
+                c for c in cols 
+                if c.lower() not in excluded_lower 
+                and not c.lower().startswith("label_")
+            ]
             return features
         except Exception as e:
             print(f"Error loading features: {e}")
@@ -580,17 +885,20 @@ class BacktestTab(QWidget):
         
         # Output file
         output = self.output_edit.text().strip()
-        if output:
-            # Normalize path: if just filename, use data/backtest_results/
-            kwargs["output"] = self._normalize_output_path(output)
-        elif self.entry_filters:
-            # Ensure we have an output path so we can post-filter trades
+        if not output:
+            # Generate auto-name if field is empty
+            auto_name = self.generate_auto_name()
             backtest_dir = PROJECT_ROOT / "data" / "backtest_results"
             backtest_dir.mkdir(parents=True, exist_ok=True)
-            default_output = backtest_dir / f"backtest_filtered_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-            kwargs["output"] = str(default_output)
-            # Also reflect in UI so user can find it
-            self.output_edit.setText(str(default_output))
+            output = str(backtest_dir / auto_name)
+            # Update UI to show the generated name
+            self._updating_auto_name = True
+            self.output_edit.setText(output)
+            self.output_manually_edited = False
+            self._updating_auto_name = False
+        
+        # Normalize path: if just filename, use data/backtest_results/
+        kwargs["output"] = self._normalize_output_path(output)
 
         # Entry filters
         if self.entry_filters:

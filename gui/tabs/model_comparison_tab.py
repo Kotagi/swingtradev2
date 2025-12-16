@@ -120,17 +120,17 @@ class ModelComparisonTab(QWidget):
         layout.addWidget(list_label)
         
         self.models_table = QTableWidget()
-        self.models_table.setColumnCount(12)
+        self.models_table.setColumnCount(16)
         self.models_table.setHorizontalHeaderLabels([
             "Select", "Name", "Date", "Test ROC AUC", "Test Accuracy", 
             "Test Precision", "Test Recall", "Test F1", "Test Avg Precision",
-            "Feature Set", "Horizon", "Class Imbalance"
+            "Feature Set", "Horizon", "Class Imbalance", "Tuned", "CV", "Iterations", "CV Folds"
         ])
         # Set Select column to fixed width (just for checkbox)
         self.models_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.models_table.setColumnWidth(0, 50)
         # All other columns stretch to fill available space
-        for col in range(1, 12):
+        for col in range(1, 16):
             self.models_table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
         self.models_table.setAlternatingRowColors(True)
         self.models_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -299,6 +299,38 @@ class ModelComparisonTab(QWidget):
                 imbalance_item = QTableWidgetItem("N/A")
                 imbalance_item.setData(Qt.ItemDataRole.EditRole, 0.0)
             self.models_table.setItem(row_idx, 11, imbalance_item)
+            
+            # Tuned (Yes/No)
+            tuned = model.get("parameters", {}).get("tune", False)
+            tuned_item = QTableWidgetItem("Yes" if tuned else "No")
+            tuned_item.setData(Qt.ItemDataRole.EditRole, 1 if tuned else 0)  # For sorting
+            self.models_table.setItem(row_idx, 12, tuned_item)
+            
+            # CV (Yes/No)
+            cv = model.get("parameters", {}).get("cv", False)
+            cv_item = QTableWidgetItem("Yes" if cv else "No")
+            cv_item.setData(Qt.ItemDataRole.EditRole, 1 if cv else 0)  # For sorting
+            self.models_table.setItem(row_idx, 13, cv_item)
+            
+            # Iterations (if tuned)
+            n_iter = model.get("parameters", {}).get("n_iter")
+            if n_iter is not None and tuned:
+                iter_item = QTableWidgetItem(str(n_iter))
+                iter_item.setData(Qt.ItemDataRole.EditRole, int(n_iter))  # For sorting
+            else:
+                iter_item = QTableWidgetItem("N/A")
+                iter_item.setData(Qt.ItemDataRole.EditRole, 0)  # For sorting
+            self.models_table.setItem(row_idx, 14, iter_item)
+            
+            # CV Folds (if CV)
+            cv_folds = model.get("parameters", {}).get("cv_folds")
+            if cv_folds is not None and cv:
+                folds_item = QTableWidgetItem(str(cv_folds))
+                folds_item.setData(Qt.ItemDataRole.EditRole, int(cv_folds))  # For sorting
+            else:
+                folds_item = QTableWidgetItem("N/A")
+                folds_item.setData(Qt.ItemDataRole.EditRole, 0)  # For sorting
+            self.models_table.setItem(row_idx, 15, folds_item)
         
         self.models_table.setSortingEnabled(True)
         # Sort by date descending by default
