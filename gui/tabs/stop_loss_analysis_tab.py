@@ -256,6 +256,106 @@ class StopLossAnalysisTab(QWidget):
         self.weak_section = None
         self.selected_filters = []  # List of selected filter dictionaries
         
+        # Immediate Stop-Loss Analysis Section (collapsible)
+        immediate_group = QGroupBox("Immediate Stop-Loss Analysis")
+        immediate_group.setCheckable(True)
+        immediate_group.setChecked(False)
+        immediate_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #ff9800;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+            }
+        """)
+        
+        immediate_layout = QVBoxLayout()
+        
+        # Summary label
+        self.immediate_summary_label = QLabel("Immediate stops (≤1 day) will be analyzed after running main analysis")
+        self.immediate_summary_label.setStyleSheet("color: #b0b0b0; font-style: italic;")
+        self.immediate_summary_label.setWordWrap(True)
+        immediate_layout.addWidget(self.immediate_summary_label)
+        
+        # Analyze button
+        analyze_immediate_btn = QPushButton("Analyze Immediate Stops")
+        analyze_immediate_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff9800;
+                color: #000000;
+                font-weight: bold;
+                padding: 8px 15px;
+            }
+            QPushButton:hover {
+                background-color: #f57c00;
+            }
+            QPushButton:disabled {
+                background-color: #2d2d2d;
+                color: #808080;
+            }
+        """)
+        analyze_immediate_btn.clicked.connect(self.analyze_immediate_stops)
+        immediate_layout.addWidget(analyze_immediate_btn)
+        
+        # Special recommendations container
+        self.immediate_recommendations_container = QWidget()
+        self.immediate_recommendations_layout = QVBoxLayout()
+        self.immediate_recommendations_layout.setSpacing(5)
+        self.immediate_recommendations_container.setLayout(self.immediate_recommendations_layout)
+        immediate_layout.addWidget(self.immediate_recommendations_container)
+        
+        # Action buttons for immediate stops
+        immediate_action_row = QHBoxLayout()
+        
+        include_in_main_btn = QPushButton("Include in Main Recommendations")
+        include_in_main_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                border: 1px solid #555;
+                padding: 5px 10px;
+            }
+            QPushButton:hover {
+                background-color: #00d4aa;
+                color: #000000;
+            }
+        """)
+        include_in_main_btn.clicked.connect(self.include_immediate_in_main)
+        immediate_action_row.addWidget(include_in_main_btn)
+        
+        exclude_immediate_btn = QPushButton("Exclude")
+        exclude_immediate_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                border: 1px solid #555;
+                padding: 5px 10px;
+            }
+            QPushButton:hover {
+                background-color: #f44336;
+                color: #ffffff;
+            }
+        """)
+        exclude_immediate_btn.clicked.connect(self.exclude_immediate_recommendations)
+        immediate_action_row.addWidget(exclude_immediate_btn)
+        
+        immediate_action_widget = QWidget()
+        immediate_action_widget.setLayout(immediate_action_row)
+        immediate_layout.addWidget(immediate_action_widget)
+        
+        immediate_group.setLayout(immediate_layout)
+        immediate_group.toggled.connect(lambda checked: immediate_group.setVisible(checked))
+        immediate_group.setVisible(False)
+        layout.addWidget(immediate_group)
+        
+        self.immediate_group = immediate_group
+        self.analyze_immediate_btn = analyze_immediate_btn
+        self.immediate_stop_recommendations = []  # Store immediate stop recommendations
+        
         # Progress bar (hidden by default)
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
@@ -435,12 +535,35 @@ class StopLossAnalysisTab(QWidget):
             self.update_summary_cards()
             self.update_feature_comparison_table()
             self.update_recommendations_display()
+            self.update_immediate_stop_summary()
             self.status_label.setText(f"✓ {message}")
             self.status_label.setStyleSheet("color: #4caf50;")
         else:
             self.status_label.setText(f"✗ {message}")
             self.status_label.setStyleSheet("color: #f44336;")
             QMessageBox.warning(self, "Analysis Failed", message)
+    
+    def update_immediate_stop_summary(self):
+        """Update immediate stop summary label."""
+        if not self.analysis_results:
+            return
+        
+        immediate_count = self.analysis_results.get('immediate_stop_count', 0)
+        immediate_rate = self.analysis_results.get('immediate_stop_rate', 0.0) * 100
+        stop_loss_count = self.analysis_results.get('stop_loss_count', 0)
+        
+        if immediate_count > 0:
+            self.immediate_summary_label.setText(
+                f"Immediate Stops (≤1 day): {immediate_count} ({immediate_rate:.1f}% of stop-losses, "
+                f"{immediate_count}/{stop_loss_count} total stop-losses)"
+            )
+            self.immediate_summary_label.setStyleSheet("color: #ff9800; font-weight: bold;")
+            self.immediate_group.setVisible(True)
+            self.analyze_immediate_btn.setEnabled(True)
+        else:
+            self.immediate_summary_label.setText("No immediate stops (≤1 day) found")
+            self.immediate_summary_label.setStyleSheet("color: #b0b0b0; font-style: italic;")
+            self.immediate_group.setVisible(False)
     
     def update_summary_cards(self):
         """Update summary cards with analysis results."""
@@ -888,4 +1011,199 @@ class StopLossAnalysisTab(QWidget):
         # This will be implemented in Unit 4.1
         QMessageBox.information(self, "Save Preset", 
                                "Preset saving will be implemented in Unit 4.1.")
+    
+    def analyze_immediate_stops(self):
+        """Analyze immediate stops (≤1 day) separately."""
+        if self.current_features_df is None or self.current_features_df.empty:
+            QMessageBox.warning(self, "No Data", "Please run main analysis first.")
+            return
+        
+        # Filter for immediate stops
+        immediate_mask = self.current_features_df.get('holding_days', pd.Series([999] * len(self.current_features_df))) <= 1
+        immediate_stops = self.current_features_df[immediate_mask].copy()
+        
+        if immediate_stops.empty:
+            QMessageBox.information(self, "No Immediate Stops", "No immediate stops found to analyze.")
+            return
+        
+        # Get winners for comparison
+        if 'exit_reason' in self.current_features_df.columns:
+            winners = self.current_features_df[
+                (self.current_features_df['exit_reason'] != 'stop_loss') & 
+                (self.current_features_df.get('return', 0) > 0)
+            ].copy()
+        else:
+            winners = self.current_features_df[self.current_features_df.get('return', 0) > 0].copy()
+        
+        if winners.empty:
+            QMessageBox.warning(self, "No Winners", "No winning trades found for comparison.")
+            return
+        
+        # Compare features
+        exclude_cols = {'ticker', 'entry_date', 'exit_reason', 'return', 'pnl', 'holding_days'}
+        feature_cols = [col for col in self.current_features_df.columns if col not in exclude_cols]
+        
+        recommendations = []
+        for feat in feature_cols:
+            try:
+                immediate_values = immediate_stops[feat].dropna()
+                winner_values = winners[feat].dropna()
+                
+                if len(immediate_values) > 0 and len(winner_values) > 0:
+                    immediate_mean = immediate_values.mean()
+                    winner_mean = winner_values.mean()
+                    immediate_std = immediate_values.std()
+                    winner_std = winner_values.std()
+                    
+                    if pd.notna(immediate_mean) and pd.notna(winner_mean) and immediate_std > 0:
+                        pooled_std = np.sqrt((immediate_std**2 + winner_std**2) / 2)
+                        if pooled_std > 0:
+                            cohens_d = (immediate_mean - winner_mean) / pooled_std
+                            abs_effect = abs(cohens_d)
+                            
+                            # Only include if effect size is significant (≥0.2 for immediate stops)
+                            if abs_effect >= 0.2:
+                                # Determine operator and value
+                                if immediate_mean > winner_mean:
+                                    operator = "<"
+                                    threshold_value = winner_mean + (immediate_mean - winner_mean) * 0.3
+                                else:
+                                    operator = ">"
+                                    threshold_value = immediate_mean + (winner_mean - immediate_mean) * 0.3
+                                
+                                # Categorize
+                                if abs_effect > 0.5:
+                                    category = "strong"
+                                elif abs_effect >= 0.3:
+                                    category = "moderate"
+                                else:
+                                    category = "weak"
+                                
+                                recommendations.append({
+                                    'feature': feat,
+                                    'operator': operator,
+                                    'value': float(threshold_value),
+                                    'effect_size': float(abs_effect),
+                                    'cohens_d': float(cohens_d),
+                                    'category': category,
+                                    'description': f"Filter: {feat} {operator} {threshold_value:.4f} (effect size: {abs_effect:.3f})"
+                                })
+            except Exception:
+                continue
+        
+        # Sort by effect size
+        recommendations.sort(key=lambda x: x['effect_size'], reverse=True)
+        self.immediate_stop_recommendations = recommendations
+        
+        # Display recommendations
+        self.display_immediate_recommendations()
+    
+    def display_immediate_recommendations(self):
+        """Display immediate stop recommendations."""
+        # Clear existing
+        while self.immediate_recommendations_layout.count():
+            child = self.immediate_recommendations_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        
+        if not self.immediate_stop_recommendations:
+            no_recs_label = QLabel("No significant patterns found in immediate stops")
+            no_recs_label.setStyleSheet("color: #b0b0b0; font-style: italic;")
+            self.immediate_recommendations_layout.addWidget(no_recs_label)
+            return
+        
+        # Group by category
+        strong_recs = [r for r in self.immediate_stop_recommendations if r.get('category') == 'strong']
+        moderate_recs = [r for r in self.immediate_stop_recommendations if r.get('category') == 'moderate']
+        weak_recs = [r for r in self.immediate_stop_recommendations if r.get('category') == 'weak']
+        
+        # Display recommendations
+        if strong_recs:
+            strong_label = QLabel(f"<b>Strong Recommendations ({len(strong_recs)}):</b>")
+            strong_label.setStyleSheet("color: #4caf50; font-weight: bold;")
+            self.immediate_recommendations_layout.addWidget(strong_label)
+            for rec in strong_recs:
+                rec_widget = self.create_immediate_recommendation_item(rec)
+                self.immediate_recommendations_layout.addWidget(rec_widget)
+        
+        if moderate_recs:
+            moderate_label = QLabel(f"<b>Moderate Recommendations ({len(moderate_recs)}):</b>")
+            moderate_label.setStyleSheet("color: #ff9800; font-weight: bold;")
+            self.immediate_recommendations_layout.addWidget(moderate_label)
+            for rec in moderate_recs:
+                rec_widget = self.create_immediate_recommendation_item(rec)
+                self.immediate_recommendations_layout.addWidget(rec_widget)
+        
+        if weak_recs:
+            weak_label = QLabel(f"<b>Weak Recommendations ({len(weak_recs)}):</b>")
+            weak_label.setStyleSheet("color: #b0b0b0; font-weight: bold;")
+            self.immediate_recommendations_layout.addWidget(weak_label)
+            for rec in weak_recs:
+                rec_widget = self.create_immediate_recommendation_item(rec)
+                self.immediate_recommendations_layout.addWidget(rec_widget)
+        
+        self.immediate_recommendations_layout.addStretch()
+    
+    def create_immediate_recommendation_item(self, recommendation: dict) -> QWidget:
+        """Create a widget for a single immediate stop recommendation."""
+        item_widget = QWidget()
+        item_layout = QHBoxLayout()
+        item_layout.setContentsMargins(10, 5, 10, 5)
+        
+        # Description label
+        desc_label = QLabel(recommendation.get('description', ''))
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet("color: #ffffff;")
+        item_layout.addWidget(desc_label, 1)
+        
+        item_widget.setLayout(item_layout)
+        return item_widget
+    
+    def include_immediate_in_main(self):
+        """Include immediate stop recommendations in main recommendations."""
+        if not self.immediate_stop_recommendations:
+            QMessageBox.information(self, "No Recommendations", "No immediate stop recommendations to include.")
+            return
+        
+        # Add to main recommendations
+        if not self.analysis_results:
+            self.analysis_results = {}
+        
+        if 'recommendations' not in self.analysis_results:
+            self.analysis_results['recommendations'] = []
+        
+        # Add immediate recommendations (mark them as from immediate stops)
+        for rec in self.immediate_stop_recommendations:
+            rec_copy = rec.copy()
+            rec_copy['from_immediate'] = True
+            if rec_copy not in self.analysis_results['recommendations']:
+                self.analysis_results['recommendations'].append(rec_copy)
+        
+        # Re-display main recommendations
+        self.update_recommendations_display()
+        
+        QMessageBox.information(self, "Included", 
+                               f"{len(self.immediate_stop_recommendations)} immediate stop recommendation(s) added to main recommendations.")
+    
+    def exclude_immediate_recommendations(self):
+        """Exclude immediate stop recommendations from main recommendations."""
+        if not self.analysis_results or 'recommendations' not in self.analysis_results:
+            return
+        
+        # Remove recommendations marked as from immediate stops
+        original_count = len(self.analysis_results['recommendations'])
+        self.analysis_results['recommendations'] = [
+            rec for rec in self.analysis_results['recommendations'] 
+            if not rec.get('from_immediate', False)
+        ]
+        
+        removed_count = original_count - len(self.analysis_results['recommendations'])
+        
+        if removed_count > 0:
+            # Re-display main recommendations
+            self.update_recommendations_display()
+            QMessageBox.information(self, "Excluded", 
+                                   f"{removed_count} immediate stop recommendation(s) removed from main recommendations.")
+        else:
+            QMessageBox.information(self, "No Change", "No immediate stop recommendations found in main recommendations.")
 
