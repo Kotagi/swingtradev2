@@ -556,6 +556,36 @@ class StopLossAnalysisTab(QWidget):
             )
             self.recommendations_layout.addWidget(self.weak_section)
         
+        # Impact Preview Panel (expandable)
+        self.impact_preview_group = QGroupBox("Impact Preview")
+        self.impact_preview_group.setCheckable(True)
+        self.impact_preview_group.setChecked(False)
+        self.impact_preview_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #00d4aa;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+            }
+        """)
+        
+        impact_layout = QVBoxLayout()
+        self.impact_preview_label = QLabel("Select filters to see impact preview")
+        self.impact_preview_label.setStyleSheet("color: #b0b0b0; font-style: italic;")
+        self.impact_preview_label.setWordWrap(True)
+        impact_layout.addWidget(self.impact_preview_label)
+        
+        self.impact_preview_group.setLayout(impact_layout)
+        self.impact_preview_group.toggled.connect(lambda checked: self.impact_preview_group.setVisible(checked))
+        self.impact_preview_group.setVisible(False)
+        self.recommendations_layout.addWidget(self.impact_preview_group)
+        
         # Action buttons
         action_row = QHBoxLayout()
         
@@ -721,11 +751,18 @@ class StopLossAnalysisTab(QWidget):
         else:
             if recommendation in self.selected_filters:
                 self.selected_filters.remove(recommendation)
+        
+        # Update impact preview
+        self.update_impact_preview()
     
     def select_all_recommendations(self):
         """Select all recommendation checkboxes."""
         if not self.analysis_results or not self.analysis_results.get('recommendations'):
             return
+        
+        # Clear and rebuild selected_filters
+        self.selected_filters.clear()
+        self.selected_filters = self.analysis_results['recommendations'].copy()
         
         # Find all checkboxes in recommendations container
         for i in range(self.recommendations_layout.count()):
@@ -735,6 +772,9 @@ class StopLossAnalysisTab(QWidget):
                 if isinstance(widget, QGroupBox):
                     # Find checkboxes in this group
                     self._set_checkboxes_in_widget(widget, True)
+        
+        # Update impact preview
+        self.update_impact_preview()
     
     def deselect_all_recommendations(self):
         """Deselect all recommendation checkboxes."""
@@ -748,6 +788,9 @@ class StopLossAnalysisTab(QWidget):
                     self._set_checkboxes_in_widget(widget, False)
         
         self.selected_filters.clear()
+        
+        # Update impact preview
+        self.update_impact_preview()
     
     def _set_checkboxes_in_widget(self, widget: QWidget, checked: bool):
         """Recursively set all checkboxes in a widget."""
@@ -768,15 +811,73 @@ class StopLossAnalysisTab(QWidget):
                     if item and item.widget():
                         self._set_checkboxes_in_widget(item.widget(), checked)
     
+    def update_impact_preview(self):
+        """Update the impact preview panel based on selected filters."""
+        if not self.selected_filters:
+            self.impact_preview_group.setVisible(False)
+            return
+        
+        if self.current_trades_df is None or self.current_features_df is None:
+            return
+        
+        # Convert selected filters to (feature, operator, value) tuples
+        filter_tuples = [
+            (f['feature'], f['operator'], f['value'])
+            for f in self.selected_filters
+        ]
+        
+        # Calculate impact
+        try:
+            impact = self.service.calculate_impact(
+                filter_tuples,
+                self.current_trades_df,
+                self.current_features_df
+            )
+            
+            # Build preview text
+            preview_text = f"<b>Selected filters would:</b><br><br>"
+            preview_text += f"• Exclude ~{impact['stop_loss_excluded_pct']:.1f}% of stop-loss trades ({impact.get('stop_loss_count_before', 0) - impact.get('stop_loss_count_after', 0)} trades)<br>"
+            preview_text += f"• Exclude ~{impact['winner_excluded_pct']:.1f}% of winning trades<br>"
+            preview_text += f"• Estimated new stop-loss rate: <b>{impact['estimated_new_sl_rate']:.1f}%</b> "
+            
+            # Calculate improvement
+            if self.analysis_results:
+                original_sl_rate = self.analysis_results.get('stop_loss_rate', 0.0) * 100
+                improvement = original_sl_rate - impact['estimated_new_sl_rate']
+                if improvement > 0:
+                    preview_text += f"(<span style='color: #4caf50;'>↓ {improvement:.1f}%</span>)<br>"
+                else:
+                    preview_text += f"(<span style='color: #f44336;'>↑ {abs(improvement):.1f}%</span>)<br>"
+            else:
+                preview_text += "<br>"
+            
+            preview_text += f"• Estimated total trades: <b>{impact['estimated_total_trades']}</b> (down from {impact.get('total_trades_before', 0)})<br>"
+            
+            # Add warnings
+            if impact['warnings']:
+                preview_text += "<br>"
+                for warning in impact['warnings']:
+                    preview_text += f"<span style='color: #ff9800;'>{warning}</span><br>"
+            
+            self.impact_preview_label.setText(preview_text)
+            self.impact_preview_label.setStyleSheet("color: #ffffff;")
+            self.impact_preview_group.setVisible(True)
+            self.impact_preview_group.setChecked(True)
+            
+        except Exception as e:
+            self.impact_preview_label.setText(f"Error calculating impact: {str(e)}")
+            self.impact_preview_label.setStyleSheet("color: #f44336;")
+            self.impact_preview_group.setVisible(True)
+    
     def apply_selected_filters(self):
-        """Apply selected filters (will be implemented in Unit 2.3 with impact preview)."""
+        """Apply selected filters - shows impact preview."""
         if not self.selected_filters:
             QMessageBox.information(self, "No Filters Selected", "Please select at least one filter to apply.")
             return
         
-        # This will show impact preview in Unit 2.3
-        QMessageBox.information(self, "Filters Selected", 
-                               f"{len(self.selected_filters)} filter(s) selected. Impact preview will be implemented in Unit 2.3.")
+        # Impact preview is already shown, just ensure it's visible
+        self.impact_preview_group.setChecked(True)
+        self.impact_preview_group.setVisible(True)
     
     def save_selected_as_preset(self):
         """Save selected filters as a preset (will be implemented in Unit 4.1)."""

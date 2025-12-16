@@ -2206,8 +2206,114 @@ class StopLossAnalysisService:
             - estimated_total_trades: Estimated total trades remaining
             - warnings: List of warning messages
         """
-        # This will be implemented in Unit 2.3
-        pass
+        if filters is None or len(filters) == 0:
+            return {
+                'stop_loss_excluded_pct': 0.0,
+                'winner_excluded_pct': 0.0,
+                'estimated_new_sl_rate': 0.0,
+                'estimated_total_trades': len(trades_df),
+                'warnings': []
+            }
+        
+        if features_df.empty:
+            return {
+                'stop_loss_excluded_pct': 0.0,
+                'winner_excluded_pct': 0.0,
+                'estimated_new_sl_rate': 0.0,
+                'estimated_total_trades': len(trades_df),
+                'warnings': ['No feature data available for impact calculation']
+            }
+        
+        # Start with all trades
+        filtered_features = features_df.copy()
+        
+        # Apply each filter
+        for feature, operator, value in filters:
+            if feature not in filtered_features.columns:
+                continue
+            
+            try:
+                if operator == ">":
+                    mask = filtered_features[feature] > value
+                elif operator == ">=":
+                    mask = filtered_features[feature] >= value
+                elif operator == "<":
+                    mask = filtered_features[feature] < value
+                elif operator == "<=":
+                    mask = filtered_features[feature] <= value
+                else:
+                    continue
+                
+                filtered_features = filtered_features[mask]
+            except Exception:
+                # Skip invalid filter
+                continue
+        
+        # Count original trades by category
+        total_original = len(features_df)
+        
+        # Identify stop-loss and winner trades
+        if 'exit_reason' in features_df.columns:
+            stop_loss_mask = features_df['exit_reason'] == 'stop_loss'
+            winner_mask = features_df.get('return', pd.Series([0] * len(features_df))) > 0
+        else:
+            return_mask = features_df.get('return', pd.Series([0] * len(features_df)))
+            stop_loss_mask = return_mask < 0
+            winner_mask = return_mask > 0
+        
+        original_stop_loss_count = stop_loss_mask.sum() if hasattr(stop_loss_mask, 'sum') else len([x for x in stop_loss_mask if x])
+        original_winner_count = winner_mask.sum() if hasattr(winner_mask, 'sum') else len([x for x in winner_mask if x])
+        
+        # Count filtered trades by category
+        total_filtered = len(filtered_features)
+        
+        if 'exit_reason' in filtered_features.columns:
+            filtered_stop_loss_mask = filtered_features['exit_reason'] == 'stop_loss'
+            filtered_winner_mask = filtered_features.get('return', pd.Series([0] * len(filtered_features))) > 0
+        else:
+            filtered_return_mask = filtered_features.get('return', pd.Series([0] * len(filtered_features)))
+            filtered_stop_loss_mask = filtered_return_mask < 0
+            filtered_winner_mask = filtered_return_mask > 0
+        
+        filtered_stop_loss_count = filtered_stop_loss_mask.sum() if hasattr(filtered_stop_loss_mask, 'sum') else len([x for x in filtered_stop_loss_mask if x])
+        filtered_winner_count = filtered_winner_mask.sum() if hasattr(filtered_winner_mask, 'sum') else len([x for x in filtered_winner_mask if x])
+        
+        # Calculate percentages
+        stop_loss_excluded = original_stop_loss_count - filtered_stop_loss_count
+        winner_excluded = original_winner_count - filtered_winner_count
+        
+        stop_loss_excluded_pct = (stop_loss_excluded / original_stop_loss_count * 100) if original_stop_loss_count > 0 else 0.0
+        winner_excluded_pct = (winner_excluded / original_winner_count * 100) if original_winner_count > 0 else 0.0
+        
+        # Calculate new stop-loss rate
+        estimated_new_sl_rate = (filtered_stop_loss_count / total_filtered * 100) if total_filtered > 0 else 0.0
+        
+        # Generate warnings
+        warnings = []
+        
+        # Warning threshold: 50% of total trades excluded
+        total_excluded_pct = ((total_original - total_filtered) / total_original * 100) if total_original > 0 else 0.0
+        if total_excluded_pct >= 50.0:
+            warnings.append(f"⚠️ Excluding {total_excluded_pct:.1f}% of total trades may significantly reduce trading opportunities")
+        
+        # Warning threshold: 20% of winners excluded
+        if winner_excluded_pct >= 20.0:
+            warnings.append(f"⚠️ Excluding {winner_excluded_pct:.1f}% of winning trades may reduce overall profitability")
+        
+        # Warning if no trades remain
+        if total_filtered == 0:
+            warnings.append("⚠️ All trades would be excluded by these filters")
+        
+        return {
+            'stop_loss_excluded_pct': float(stop_loss_excluded_pct),
+            'winner_excluded_pct': float(winner_excluded_pct),
+            'estimated_new_sl_rate': float(estimated_new_sl_rate),
+            'estimated_total_trades': int(total_filtered),
+            'total_trades_before': int(total_original),
+            'stop_loss_count_before': int(original_stop_loss_count),
+            'stop_loss_count_after': int(filtered_stop_loss_count),
+            'warnings': warnings
+        }
     
     def save_preset(
         self,
