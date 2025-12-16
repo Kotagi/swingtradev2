@@ -19,6 +19,19 @@ from datetime import datetime
 
 from gui.services import StopLossAnalysisService, DataService
 
+try:
+    import matplotlib
+    matplotlib.use('QtAgg')
+    from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+    from matplotlib.figure import Figure
+    import matplotlib.pyplot as plt
+    HAS_MATPLOTLIB = True
+except ImportError:
+    HAS_MATPLOTLIB = False
+    FigureCanvas = None
+    Figure = None
+    plt = None
+
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 
@@ -356,6 +369,44 @@ class StopLossAnalysisTab(QWidget):
         self.analyze_immediate_btn = analyze_immediate_btn
         self.immediate_stop_recommendations = []  # Store immediate stop recommendations
         
+        # Charts Section
+        charts_group = QGroupBox("Charts")
+        charts_layout = QVBoxLayout()
+        
+        # Tab widget for different chart types
+        charts_tabs = QTabWidget()
+        
+        # Timing Tab
+        timing_tab = QWidget()
+        timing_layout = QVBoxLayout()
+        self.timing_chart_widget = QWidget()  # Will be populated with matplotlib chart
+        self.timing_chart_widget.setMinimumHeight(300)
+        timing_layout.addWidget(self.timing_chart_widget)
+        timing_tab.setLayout(timing_layout)
+        charts_tabs.addTab(timing_tab, "Timing")
+        
+        # Holding Period Tab
+        holding_tab = QWidget()
+        holding_layout = QVBoxLayout()
+        self.holding_chart_widget = QWidget()  # Will be populated with matplotlib chart
+        self.holding_chart_widget.setMinimumHeight(300)
+        holding_layout.addWidget(self.holding_chart_widget)
+        holding_tab.setLayout(holding_layout)
+        charts_tabs.addTab(holding_tab, "Holding Period")
+        
+        # Returns Tab
+        returns_tab = QWidget()
+        returns_layout = QVBoxLayout()
+        self.returns_chart_widget = QWidget()  # Will be populated with matplotlib chart
+        self.returns_chart_widget.setMinimumHeight(300)
+        returns_layout.addWidget(self.returns_chart_widget)
+        returns_tab.setLayout(returns_layout)
+        charts_tabs.addTab(returns_tab, "Returns")
+        
+        charts_layout.addWidget(charts_tabs)
+        charts_group.setLayout(charts_layout)
+        layout.addWidget(charts_group)
+        
         # Progress bar (hidden by default)
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
@@ -536,6 +587,7 @@ class StopLossAnalysisTab(QWidget):
             self.update_feature_comparison_table()
             self.update_recommendations_display()
             self.update_immediate_stop_summary()
+            self.update_charts()
             self.status_label.setText(f"✓ {message}")
             self.status_label.setStyleSheet("color: #4caf50;")
         else:
@@ -1262,4 +1314,234 @@ class StopLossAnalysisTab(QWidget):
                                    f"{removed_count} immediate stop recommendation(s) removed from main recommendations.")
         else:
             QMessageBox.information(self, "No Change", "No immediate stop recommendations found in main recommendations.")
+    
+    def update_charts(self):
+        """Update all charts with analysis results."""
+        if not self.analysis_results:
+            return
+        
+        self.update_timing_chart()
+        self.update_holding_period_chart()
+        self.update_returns_chart()
+    
+    def update_timing_chart(self):
+        """Update timing charts (day of week and month distributions)."""
+        if not HAS_MATPLOTLIB:
+            return
+        
+        # Clear existing layout
+        layout = self.timing_chart_widget.layout()
+        if layout:
+            while layout.count():
+                child = layout.takeAt(0)
+                if child.widget():
+                    child.widget().deleteLater()
+        else:
+            layout = QVBoxLayout()
+            self.timing_chart_widget.setLayout(layout)
+        
+        timing_analysis = self.analysis_results.get('timing_analysis', {})
+        if not timing_analysis:
+            label = QLabel("No timing data available")
+            label.setStyleSheet("color: #b0b0b0; font-style: italic;")
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(label)
+            return
+        
+        # Create figure with two subplots
+        fig = Figure(figsize=(10, 6), facecolor='#1e1e1e')
+        canvas = FigureCanvas(fig)
+        
+        # Day of week chart
+        ax1 = fig.add_subplot(121)
+        dow_data = timing_analysis.get('day_of_week', {})
+        if dow_data:
+            days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+            values = [dow_data.get(i, 0) for i in range(7)]
+            ax1.bar(days, values, color='#00d4aa', alpha=0.7)
+            ax1.set_title('Stop-Loss Trades by Day of Week', color='white', fontsize=12)
+            ax1.set_xlabel('Day of Week', color='white')
+            ax1.set_ylabel('Count', color='white')
+            ax1.tick_params(colors='white')
+            ax1.set_facecolor('#2d2d2d')
+        else:
+            ax1.text(0.5, 0.5, 'No data', ha='center', va='center', color='white', transform=ax1.transAxes)
+            ax1.set_facecolor('#2d2d2d')
+        
+        # Month chart
+        ax2 = fig.add_subplot(122)
+        month_data = timing_analysis.get('month', {})
+        if month_data:
+            months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+            values = [month_data.get(i, 0) for i in range(1, 13)]
+            ax2.bar(months, values, color='#ff9800', alpha=0.7)
+            ax2.set_title('Stop-Loss Trades by Month', color='white', fontsize=12)
+            ax2.set_xlabel('Month', color='white')
+            ax2.set_ylabel('Count', color='white')
+            ax2.tick_params(colors='white')
+            ax2.set_facecolor('#2d2d2d')
+        else:
+            ax2.text(0.5, 0.5, 'No data', ha='center', va='center', color='white', transform=ax2.transAxes)
+            ax2.set_facecolor('#2d2d2d')
+        
+        fig.tight_layout()
+        layout.addWidget(canvas)
+    
+    def update_holding_period_chart(self):
+        """Update holding period histogram."""
+        if not HAS_MATPLOTLIB:
+            return
+        
+        # Clear existing layout
+        layout = self.holding_chart_widget.layout()
+        if layout:
+            while layout.count():
+                child = layout.takeAt(0)
+                if child.widget():
+                    child.widget().deleteLater()
+        else:
+            layout = QVBoxLayout()
+            self.holding_chart_widget.setLayout(layout)
+        
+        if self.current_features_df is None or self.current_features_df.empty:
+            label = QLabel("No data available")
+            label.setStyleSheet("color: #b0b0b0; font-style: italic;")
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(label)
+            return
+        
+        # Filter for stop-loss trades
+        if 'exit_reason' in self.current_features_df.columns:
+            stop_loss_df = self.current_features_df[self.current_features_df['exit_reason'] == 'stop_loss'].copy()
+        else:
+            stop_loss_df = self.current_features_df[self.current_features_df.get('return', 0) < 0].copy()
+        
+        if stop_loss_df.empty or 'holding_days' not in stop_loss_df.columns:
+            label = QLabel("No holding period data available")
+            label.setStyleSheet("color: #b0b0b0; font-style: italic;")
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(label)
+            return
+        
+        holding_days = stop_loss_df['holding_days'].dropna()
+        if holding_days.empty:
+            label = QLabel("No holding period data available")
+            label.setStyleSheet("color: #b0b0b0; font-style: italic;")
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(label)
+            return
+        
+        # Create figure
+        fig = Figure(figsize=(10, 6), facecolor='#1e1e1e')
+        canvas = FigureCanvas(fig)
+        ax = fig.add_subplot(111)
+        
+        # Create histogram
+        bins = range(0, int(holding_days.max()) + 2)
+        n, bins, patches = ax.hist(holding_days, bins=bins, color='#00d4aa', alpha=0.7, edgecolor='white')
+        
+        # Highlight immediate stops (≤1 day)
+        for i, patch in enumerate(patches):
+            if bins[i] <= 1:
+                patch.set_facecolor('#f44336')
+                patch.set_alpha(0.9)
+        
+        # Add statistics text
+        stats_text = f"Mean: {holding_days.mean():.1f} days\n"
+        stats_text += f"Median: {holding_days.median():.1f} days\n"
+        stats_text += f"Min: {holding_days.min():.0f} days\n"
+        stats_text += f"Max: {holding_days.max():.0f} days"
+        
+        ax.text(0.98, 0.98, stats_text, transform=ax.transAxes,
+                verticalalignment='top', horizontalalignment='right',
+                bbox=dict(boxstyle='round', facecolor='#2d2d2d', alpha=0.8),
+                color='white', fontsize=10)
+        
+        ax.set_title('Days to Stop-Loss Distribution', color='white', fontsize=14, fontweight='bold')
+        ax.set_xlabel('Holding Days', color='white')
+        ax.set_ylabel('Count', color='white')
+        ax.tick_params(colors='white')
+        ax.set_facecolor('#2d2d2d')
+        ax.grid(True, alpha=0.3, color='gray')
+        
+        fig.tight_layout()
+        layout.addWidget(canvas)
+    
+    def update_returns_chart(self):
+        """Update returns distribution chart."""
+        if not HAS_MATPLOTLIB:
+            return
+        
+        # Clear existing layout
+        layout = self.returns_chart_widget.layout()
+        if layout:
+            while layout.count():
+                child = layout.takeAt(0)
+                if child.widget():
+                    child.widget().deleteLater()
+        else:
+            layout = QVBoxLayout()
+            self.returns_chart_widget.setLayout(layout)
+        
+        if self.current_features_df is None or self.current_features_df.empty:
+            label = QLabel("No data available")
+            label.setStyleSheet("color: #b0b0b0; font-style: italic;")
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(label)
+            return
+        
+        # Filter for stop-loss trades
+        if 'exit_reason' in self.current_features_df.columns:
+            stop_loss_df = self.current_features_df[self.current_features_df['exit_reason'] == 'stop_loss'].copy()
+        else:
+            stop_loss_df = self.current_features_df[self.current_features_df.get('return', 0) < 0].copy()
+        
+        if stop_loss_df.empty or 'return' not in stop_loss_df.columns:
+            label = QLabel("No return data available")
+            label.setStyleSheet("color: #b0b0b0; font-style: italic;")
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(label)
+            return
+        
+        returns = stop_loss_df['return'].dropna() * 100  # Convert to percentage
+        if returns.empty:
+            label = QLabel("No return data available")
+            label.setStyleSheet("color: #b0b0b0; font-style: italic;")
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(label)
+            return
+        
+        # Create figure
+        fig = Figure(figsize=(10, 6), facecolor='#1e1e1e')
+        canvas = FigureCanvas(fig)
+        ax = fig.add_subplot(111)
+        
+        # Create histogram
+        ax.hist(returns, bins=30, color='#f44336', alpha=0.7, edgecolor='white')
+        
+        # Add vertical line at typical stop-loss threshold (e.g., -7%)
+        ax.axvline(x=-7.0, color='#ff9800', linestyle='--', linewidth=2, label='Typical Stop-Loss (-7%)')
+        
+        # Add statistics text
+        stats_text = f"Mean: {returns.mean():.2f}%\n"
+        stats_text += f"Median: {returns.median():.2f}%\n"
+        stats_text += f"Min: {returns.min():.2f}%\n"
+        stats_text += f"Max: {returns.max():.2f}%\n"
+        stats_text += f"Std Dev: {returns.std():.2f}%"
+        
+        ax.text(0.98, 0.98, stats_text, transform=ax.transAxes,
+                verticalalignment='top', horizontalalignment='right',
+                bbox=dict(boxstyle='round', facecolor='#2d2d2d', alpha=0.8),
+                color='white', fontsize=10)
+        
+        ax.set_title('Stop-Loss Return Distribution', color='white', fontsize=14, fontweight='bold')
+        ax.set_xlabel('Return (%)', color='white')
+        ax.set_ylabel('Count', color='white')
+        ax.tick_params(colors='white')
+        ax.set_facecolor('#2d2d2d')
+        ax.grid(True, alpha=0.3, color='gray')
+        ax.legend(loc='upper left', facecolor='#2d2d2d', edgecolor='white', labelcolor='white')
+        
+        fig.tight_layout()
+        layout.addWidget(canvas)
 
