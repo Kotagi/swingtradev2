@@ -1841,8 +1841,110 @@ class StopLossAnalysisService:
         Returns:
             DataFrame with trades + feature values at entry time
         """
-        # This will be implemented in Unit 1.3
-        pass
+        if data_dir is None:
+            data_dir = self.data_dir
+        
+        if not data_dir.exists():
+            return pd.DataFrame()
+        
+        all_features = []
+        total_trades = len(trades)
+        skipped_count = 0
+        
+        for idx, (trade_idx, trade) in enumerate(trades.iterrows(), 1):
+            # Get ticker
+            ticker = trade.get('ticker', 'UNKNOWN') if 'ticker' in trade.index else 'UNKNOWN'
+            if ticker == 'UNKNOWN':
+                skipped_count += 1
+                if progress_callback:
+                    progress_callback(idx, total_trades, f"Skipping trade {idx}/{total_trades} (no ticker)")
+                continue
+            
+            # Get entry_date - check index first, then column
+            if isinstance(trade_idx, pd.Timestamp):
+                entry_date = trade_idx
+            elif 'entry_date' in trade.index:
+                entry_date = trade['entry_date']
+            else:
+                skipped_count += 1
+                if progress_callback:
+                    progress_callback(idx, total_trades, f"Skipping trade {idx}/{total_trades} (no entry date)")
+                continue
+            
+            if pd.isna(entry_date):
+                skipped_count += 1
+                if progress_callback:
+                    progress_callback(idx, total_trades, f"Skipping trade {idx}/{total_trades} (invalid entry date)")
+                continue
+            
+            # Load feature data for this ticker
+            ticker_file = data_dir / f"{ticker}.parquet"
+            if not ticker_file.exists():
+                skipped_count += 1
+                if progress_callback:
+                    progress_callback(idx, total_trades, f"Skipping {ticker} (feature file not found)")
+                continue
+            
+            try:
+                df = pd.read_parquet(ticker_file).sort_index()
+                
+                # Find the row closest to entry date
+                if isinstance(df.index, pd.DatetimeIndex):
+                    entry_date_dt = pd.to_datetime(entry_date)
+                    if entry_date_dt in df.index:
+                        entry_row = df.loc[entry_date_dt]
+                    else:
+                        # Get closest date before entry
+                        before_dates = df.index[df.index <= entry_date_dt]
+                        if len(before_dates) > 0:
+                            entry_row = df.loc[before_dates[-1]]
+                        else:
+                            skipped_count += 1
+                            if progress_callback:
+                                progress_callback(idx, total_trades, f"Skipping {ticker} (no data before entry date)")
+                            continue
+                else:
+                    skipped_count += 1
+                    if progress_callback:
+                        progress_callback(idx, total_trades, f"Skipping {ticker} (invalid index type)")
+                    continue
+                
+                # Extract features (exclude OHLCV, volume, labels)
+                exclude_cols = {'open', 'high', 'low', 'close', 'volume', 'adj close', 
+                               'Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close'}
+                exclude_cols.update([col for col in df.columns if col.startswith('label_')])
+                
+                features = {col: entry_row[col] for col in df.columns if col not in exclude_cols}
+                features['ticker'] = ticker
+                features['entry_date'] = entry_date
+                
+                # Get trade info
+                features['exit_reason'] = trade.get('exit_reason', 'unknown')
+                features['return'] = trade.get('return', 0)
+                features['pnl'] = trade.get('pnl', 0)
+                features['holding_days'] = trade.get('holding_days', 0)
+                
+                all_features.append(features)
+                
+                if progress_callback:
+                    progress_callback(idx, total_trades, f"Processing {ticker} ({idx}/{total_trades})")
+            
+            except Exception as e:
+                skipped_count += 1
+                if progress_callback:
+                    progress_callback(idx, total_trades, f"Error processing {ticker}: {str(e)[:50]}")
+                continue
+        
+        if not all_features:
+            return pd.DataFrame()
+        
+        result_df = pd.DataFrame(all_features)
+        
+        if progress_callback and skipped_count > 0:
+            progress_callback(total_trades, total_trades, 
+                            f"Completed: {len(all_features)} trades processed, {skipped_count} skipped")
+        
+        return result_df
     
     def calculate_impact(
         self,

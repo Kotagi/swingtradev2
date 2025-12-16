@@ -21,6 +21,43 @@ from gui.services import StopLossAnalysisService, DataService
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 
+class FeatureExtractionWorker(QThread):
+    """Worker thread for extracting features at entry time."""
+    
+    finished = pyqtSignal(bool, pd.DataFrame, str)  # success, features_df, message
+    progress = pyqtSignal(int, int)  # completed, total
+    progress_message = pyqtSignal(str)  # message
+    
+    def __init__(self, service: StopLossAnalysisService, trades_df: pd.DataFrame, data_dir: Path):
+        super().__init__()
+        self.service = service
+        self.trades_df = trades_df
+        self.data_dir = data_dir
+    
+    def run(self):
+        """Extract features in background thread."""
+        try:
+            def progress_callback(completed, total, message=None):
+                self.progress.emit(completed, total)
+                if message:
+                    self.progress_message.emit(message)
+            
+            features_df = self.service.get_entry_features(
+                self.trades_df,
+                self.data_dir,
+                progress_callback=progress_callback
+            )
+            
+            if features_df.empty:
+                self.finished.emit(False, pd.DataFrame(), 
+                                 "No features extracted. Check that feature files exist.")
+            else:
+                self.finished.emit(True, features_df, 
+                                 f"Extracted features for {len(features_df)} trades")
+        except Exception as e:
+            self.finished.emit(False, pd.DataFrame(), f"Error: {str(e)}")
+
+
 class StopLossAnalysisTab(QWidget):
     """Tab for analyzing stop-loss trades and generating filter recommendations."""
     
@@ -32,6 +69,7 @@ class StopLossAnalysisTab(QWidget):
         self.current_trades_df = None
         self.current_features_df = None
         self.analysis_results = None
+        self.feature_worker = None
         self.init_ui()
     
     def init_ui(self):
@@ -73,8 +111,8 @@ class StopLossAnalysisTab(QWidget):
         csv_row.addWidget(change_csv_btn)
         input_layout.addLayout(csv_row)
         
-        analyze_btn = QPushButton("Analyze Stop-Losses")
-        analyze_btn.setStyleSheet("""
+        self.analyze_btn = QPushButton("Analyze Stop-Losses")
+        self.analyze_btn.setStyleSheet("""
             QPushButton {
                 background-color: #00d4aa;
                 color: #000000;
@@ -89,8 +127,8 @@ class StopLossAnalysisTab(QWidget):
                 color: #808080;
             }
         """)
-        analyze_btn.clicked.connect(self.run_analysis)
-        input_layout.addWidget(analyze_btn)
+        self.analyze_btn.clicked.connect(self.run_analysis)
+        input_layout.addWidget(self.analyze_btn)
         
         input_group.setLayout(input_layout)
         layout.addWidget(input_group)
@@ -232,7 +270,74 @@ class StopLossAnalysisTab(QWidget):
             QMessageBox.warning(self, "No CSV Loaded", "Please load a backtest CSV file first.")
             return
         
-        # This will be implemented in Unit 1.4
-        self.status_label.setText("Analysis not yet implemented - Unit 1.4")
+        # Disable analyze button
+        self.analyze_btn.setEnabled(False)
+        
+        # Show progress bar
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.status_label.setText("Loading backtest CSV...")
         self.status_label.setStyleSheet("color: #ff9800;")
+        
+        try:
+            # Load trades from CSV
+            self.current_trades_df = pd.read_csv(self.current_csv_path)
+            
+            # Handle entry_date column (convert to datetime if needed)
+            if 'entry_date' in self.current_trades_df.columns:
+                self.current_trades_df['entry_date'] = pd.to_datetime(
+                    self.current_trades_df['entry_date'], errors='coerce'
+                )
+                # Set entry_date as index for easier lookup
+                self.current_trades_df = self.current_trades_df.set_index('entry_date')
+            
+            self.status_label.setText(f"Loaded {len(self.current_trades_df)} trades. Extracting features...")
+            
+            # Get data directory for features
+            data_dir = PROJECT_ROOT / "data" / "features_labeled"
+            
+            # Start feature extraction in background thread
+            self.feature_worker = FeatureExtractionWorker(
+                self.service,
+                self.current_trades_df,
+                data_dir
+            )
+            self.feature_worker.finished.connect(self.on_feature_extraction_finished)
+            self.feature_worker.progress.connect(self.on_feature_extraction_progress)
+            self.feature_worker.progress_message.connect(self.on_feature_extraction_message)
+            self.feature_worker.start()
+            
+        except Exception as e:
+            self.status_label.setText(f"Error loading CSV: {str(e)}")
+            self.status_label.setStyleSheet("color: #f44336;")
+            self.progress_bar.setVisible(False)
+            QMessageBox.critical(self, "Error", f"Failed to load CSV: {str(e)}")
+            self.analyze_btn.setEnabled(True)
+    
+    def on_feature_extraction_progress(self, completed: int, total: int):
+        """Handle feature extraction progress updates."""
+        if total > 0:
+            self.progress_bar.setMaximum(total)
+            self.progress_bar.setValue(completed)
+    
+    def on_feature_extraction_message(self, message: str):
+        """Handle feature extraction progress messages."""
+        self.status_label.setText(message)
+    
+    def on_feature_extraction_finished(self, success: bool, features_df: pd.DataFrame, message: str):
+        """Handle completion of feature extraction."""
+        self.progress_bar.setVisible(False)
+        
+        # Re-enable analyze button
+        self.analyze_btn.setEnabled(True)
+        
+        if success:
+            self.current_features_df = features_df
+            self.status_label.setText(f"✓ {message} - Analysis will be implemented in Unit 1.4")
+            self.status_label.setStyleSheet("color: #4caf50;")
+        else:
+            self.status_label.setText(f"✗ {message}")
+            self.status_label.setStyleSheet("color: #f44336;")
+            QMessageBox.warning(self, "Feature Extraction Failed", message)
 
