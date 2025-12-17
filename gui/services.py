@@ -1136,6 +1136,7 @@ class TrainingService:
         fast: bool = False,
         cv_folds: Optional[int] = None,
         diagnostics: bool = False,
+        shap: bool = False,
         imbalance_multiplier: float = 1.0,
         train_start: Optional[str] = None,
         train_end: Optional[str] = None,
