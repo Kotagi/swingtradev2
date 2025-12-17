@@ -14,6 +14,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon, QPalette
 from pathlib import Path
 from datetime import datetime
+from typing import Dict
 import joblib
 import yaml
 import os
@@ -230,6 +231,9 @@ class ModelComparisonTab(QWidget):
         # Reload registry from disk to get latest models
         self.registry._registry = self.registry._load_registry()
         
+        # Clean up models with missing files (orphaned registry entries)
+        self._cleanup_missing_models()
+        
         # Get filter criteria
         name_filter = self.search_edit.text().strip()
         min_auc_text = self.min_auc_combo.currentText()
@@ -240,6 +244,9 @@ class ModelComparisonTab(QWidget):
             name_filter=name_filter if name_filter else None,
             min_roc_auc=min_auc
         )
+        
+        # Filter out models with missing files
+        models = [m for m in models if self._model_file_exists(m)]
         
         # Populate table
         self.models_table.setRowCount(len(models))
@@ -609,6 +616,29 @@ class ModelComparisonTab(QWidget):
         self.update_selected_label()
         self.comparison_table.setRowCount(0)
         self.comparison_table.setColumnCount(0)
+    
+    def _cleanup_missing_models(self):
+        """Remove registry entries for models whose files no longer exist."""
+        models = self.registry._registry.get("models", [])
+        models_to_remove = []
+        
+        for model in models:
+            file_path = model.get("file_path")
+            if file_path:
+                if not Path(file_path).exists():
+                    models_to_remove.append(model.get("id"))
+        
+        # Remove missing models from registry
+        if models_to_remove:
+            for model_id in models_to_remove:
+                self.registry.delete_model(model_id)
+    
+    def _model_file_exists(self, model: Dict) -> bool:
+        """Check if a model's file exists."""
+        file_path = model.get("file_path")
+        if not file_path:
+            return False
+        return Path(file_path).exists()
     
     def show_metrics_help(self):
         """Show help dialog explaining model metrics."""
