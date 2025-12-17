@@ -31,6 +31,9 @@ try:
     import matplotlib
     matplotlib.use('Agg')  # Non-interactive backend
     import matplotlib.pyplot as plt
+    import warnings
+    # Suppress warning about using matplotlib in non-main thread (safe with Agg backend)
+    warnings.filterwarnings('ignore', category=UserWarning, message='.*Matplotlib.*main thread.*')
     HAS_MATPLOTLIB = True
 except ImportError:
     HAS_MATPLOTLIB = False
