@@ -6,7 +6,7 @@ This provides a clean interface between the GUI and the existing CLI code.
 import sys
 import re
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional, Callable
+from typing import List, Dict, Tuple, Optional, Callable, Any
 import pandas as pd
 import numpy as np
 import joblib
@@ -23,6 +23,14 @@ from src.identify_trades import (
     apply_entry_filters as _apply_entry_filters
 )
 from utils.stop_loss_policy import StopLossConfig
+
+# Import SHAP service (optional - may not be available)
+try:
+    from src.shap_service import SHAPService
+    HAS_SHAP_SERVICE = True
+except ImportError:
+    HAS_SHAP_SERVICE = False
+    SHAPService = None
 
 
 class TradeIdentificationService:
@@ -1178,6 +1186,8 @@ class TrainingService:
             cmd.extend(["--cv-folds", str(cv_folds)])
         if diagnostics:
             cmd.append("--diagnostics")
+        if shap:
+            cmd.append("--shap")
         if imbalance_multiplier != 1.0:
             cmd.extend(["--imbalance-multiplier", str(imbalance_multiplier)])
         if train_end is not None:
@@ -1523,8 +1533,8 @@ class TrainingService:
         if shap_section_match:
             shap_section = shap_section_match.group(1)
             
-            # Extract SHAP artifacts path
-            shap_path_match = re.search(r'Artifacts saved to\s*(.+)', shap_section, re.IGNORECASE)
+            # Extract SHAP artifacts path (matches "Artifacts saved to <path>")
+            shap_path_match = re.search(r'Artifacts saved to\s+(.+)', shap_section, re.IGNORECASE)
             if shap_path_match:
                 shap_path = shap_path_match.group(1).strip()
                 metrics_dict['shap_artifacts_path'] = shap_path
@@ -1533,12 +1543,13 @@ class TrainingService:
             data_split_match = re.search(r'Data split used:\s*(\w+)', shap_section, re.IGNORECASE)
             sample_size_match = re.search(r'Samples computed:\s*(\d+)', shap_section, re.IGNORECASE)
             
-            if data_split_match or sample_size_match:
-                shap_metadata = {}
-                if data_split_match:
-                    shap_metadata['data_split'] = data_split_match.group(1).strip()
-                if sample_size_match:
-                    shap_metadata['sample_size'] = int(sample_size_match.group(1))
+            shap_metadata = {}
+            if data_split_match:
+                shap_metadata['data_split'] = data_split_match.group(1).strip()
+            if sample_size_match:
+                shap_metadata['sample_size'] = int(sample_size_match.group(1))
+            
+            if shap_metadata:
                 metrics_dict['shap_metadata'] = shap_metadata
         
         # Build message
@@ -2563,4 +2574,56 @@ class StopLossAnalysisService:
             return True
         except Exception:
             return False
+
+
+class SHAPService:
+    """Service for SHAP explainability operations."""
+    
+    def __init__(self):
+        """Initialize SHAP service."""
+        try:
+            from src.shap_service import SHAPService as _SHAPService
+            self._shap_service = _SHAPService()
+            self._available = True
+        except ImportError:
+            self._shap_service = None
+            self._available = False
+    
+    def is_available(self) -> bool:
+        """Check if SHAP service is available."""
+        return self._available
+    
+    def load_artifacts(self, model_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Load SHAP artifacts for a model.
+        
+        Args:
+            model_id: Model identifier (typically the model filename without extension)
+        
+        Returns:
+            Dictionary with SHAP artifacts, or None if not found
+        """
+        if not self._available:
+            return None
+        
+        return self._shap_service.load_artifacts(model_id)
+    
+    def artifact_exists(self, model_id: str) -> bool:
+        """Check if SHAP artifacts exist for a model."""
+        if not self._available:
+            return False
+        
+        return self._shap_service.artifact_exists(model_id)
+    
+    def get_model_id_from_path(self, model_path: str) -> str:
+        """
+        Extract model ID from model file path.
+        
+        Args:
+            model_path: Path to model file
+        
+        Returns:
+            Model ID (filename without extension)
+        """
+        return Path(model_path).stem
 

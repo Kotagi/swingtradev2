@@ -1,9 +1,9 @@
 {
-  "training_date": "2025-12-15T17:07:25.508029",
+  "training_date": "2025-12-17T14:14:43.117557",
   "train_samples": 1676193,
   "val_samples": 122263,
   "test_samples": 241573,
-  "n_features": 55,
+  "n_features": 58,
   "features": [
     "price",
     "price_log",
@@ -38,7 +38,6 @@
     "candle_lower_wick_pct",
     "higher_high_10d",
     "higher_low_10d",
-    "swing_low_10d",
     "trend_residual",
     "macd_histogram_normalized",
     "ppo_histogram",
@@ -59,7 +58,11 @@
     "aroon_oscillator",
     "cci20",
     "williams_r14",
-    "kama_slope"
+    "kama_slope",
+    "fractal_dimension_index",
+    "hurst_exponent",
+    "price_curvature",
+    "volatility_of_volatility"
   ],
   "hyperparameters": {
     "objective": "binary:logistic",
@@ -97,7 +100,7 @@
     "reg_alpha": 0.1,
     "reg_lambda": 1.5,
     "sampling_method": null,
-    "scale_pos_weight": 0.17750452577531783,
+    "scale_pos_weight": 0.06357086430563355,
     "subsample": 0.9,
     "tree_method": null,
     "validate_parameters": null,
@@ -105,106 +108,109 @@
   },
   "metrics": {
     "validation": {
-      "roc_auc": 0.6993161790116608,
-      "average_precision": 0.8200955431839262,
-      "f1_score": 0.7299810173168558,
-      "precision": 0.7945492367807044,
-      "recall": 0.6751182343667893,
-      "specificity": 0.6206431185279385,
-      "accuracy": 0.6579504837931345,
+      "roc_auc": 0.6696332055524605,
+      "average_precision": 0.9331124477476799,
+      "f1_score": 0.7333509172638656,
+      "precision": 0.92482661004954,
+      "recall": 0.6075616265121858,
+      "specificity": 0.6391983695652174,
+      "accuracy": 0.6113705700007361,
       "confusion_matrix": [
         [
-          23914,
-          14617
+          9409,
+          5311
         ],
         [
-          27203,
-          56529
+          42204,
+          65339
         ]
       ]
     },
     "test": {
-      "roc_auc": 0.5619720779616185,
-      "average_precision": 0.4575546151578279,
-      "f1_score": 0.5455774801158642,
-      "precision": 0.45680997460789635,
-      "recall": 0.6771643377131563,
-      "specificity": 0.4245194628204764,
-      "accuracy": 0.5298232832311558,
+      "roc_auc": 0.5224074799197929,
+      "average_precision": 0.7498990178436603,
+      "f1_score": 0.6841466657294013,
+      "precision": 0.7562074766734006,
+      "recall": 0.6246246916611788,
+      "specificity": 0.42162630035103466,
+      "accuracy": 0.5721997077487965,
       "confusion_matrix": [
         [
-          59808,
-          81076
+          26304,
+          36083
         ],
         [
-          32506,
-          68183
+          67262,
+          111924
         ]
       ]
     }
   },
   "feature_importances": {
-    "dist_52w_low": 0.15779688954353333,
-    "log_volume": 0.07768385857343674,
-    "atr14_normalized": 0.07503682374954224,
-    "beta_spy_252d": 0.05951996147632599,
-    "price_log": 0.057562749832868576,
-    "ytd_return": 0.050772592425346375,
-    "price": 0.04953179508447647,
-    "log_avg_volume_20d": 0.042390450835227966,
-    "relative_volume": 0.03928803652524948,
-    "volatility_21d": 0.036401595920324326,
-    "sma50_ratio": 0.03552286699414253,
-    "price_vs_ma200": 0.03241904079914093,
-    "swing_low_10d": 0.03175554797053337,
-    "sma200_slope": 0.028196832165122032,
-    "sma20_sma50_ratio": 0.02740137092769146,
-    "obv_momentum": 0.02576756663620472,
-    "dist_52w_high": 0.024783242493867874,
-    "sma50_slope": 0.024387717247009277,
-    "sma200_ratio": 0.024154415354132652,
-    "roc10": 0.02369491010904312,
-    "quarterly_return_63d": 0.022822478786110878,
-    "volatility_5d": 0.00898884329944849,
-    "volatility_ratio": 0.008869101293385029,
-    "aroon_oscillator": 0.006306572817265987,
-    "sma50_sma200_ratio": 0.005861703306436539,
-    "bollinger_band_width": 0.005621323827654123,
-    "adx14": 0.003621999640017748,
-    "chaikin_money_flow": 0.0032059792429208755,
-    "rsi14": 0.0028686688747256994,
-    "trend_residual": 0.0027564491610974073,
-    "dpo": 0.002546533476561308,
-    "pos_52w": 0.0014609172940254211,
-    "aroon_down": 0.0008004577830433846,
-    "roc20": 0.00020072696497663856,
-    "daily_return": 0.0,
-    "gap_pct": 0.0,
-    "weekly_return_5d": 0.0,
+    "dist_52w_low": 0.10370976477861404,
+    "price_log": 0.0750797912478447,
+    "log_volume": 0.06704211980104446,
+    "atr14_normalized": 0.06191861256957054,
+    "beta_spy_252d": 0.06137150526046753,
+    "sma200_ratio": 0.05982852354645729,
+    "sma50_ratio": 0.051613304764032364,
+    "price": 0.04855114966630936,
+    "log_avg_volume_20d": 0.04461219534277916,
+    "ytd_return": 0.036984432488679886,
+    "relative_volume": 0.03256024420261383,
+    "volatility_21d": 0.0280771367251873,
+    "obv_momentum": 0.02736053057014942,
+    "dist_52w_high": 0.02730240672826767,
+    "sma200_slope": 0.026486100628972054,
+    "roc10": 0.01902547851204872,
+    "sma20_sma50_ratio": 0.01724768616259098,
+    "price_vs_ma200": 0.016049092635512352,
+    "volatility_of_volatility": 0.015766315162181854,
+    "aroon_oscillator": 0.015222020447254181,
+    "pos_52w": 0.015212323516607285,
+    "quarterly_return_63d": 0.014506708830595016,
+    "sma20_ratio": 0.01402471773326397,
+    "bollinger_band_width": 0.013029659166932106,
+    "sma50_slope": 0.012357579544186592,
+    "adx14": 0.012101462110877037,
+    "sma50_sma200_ratio": 0.009220465086400509,
+    "volatility_ratio": 0.008137904107570648,
+    "weekly_return_5d": 0.007288373075425625,
+    "fractal_dimension_index": 0.006600307300686836,
+    "volatility_5d": 0.0061416542157530785,
+    "chaikin_money_flow": 0.0052657159976661205,
+    "hurst_exponent": 0.005153831094503403,
+    "aroon_down": 0.00510749826207757,
+    "rsi14": 0.004359170328825712,
+    "dpo": 0.003541434183716774,
+    "trend_residual": 0.0034462600015103817,
+    "ttm_squeeze_momentum": 0.0034331923816353083,
+    "macd_histogram_normalized": 0.0030492646619677544,
+    "ppo_histogram": 0.002372336108237505,
+    "williams_r14": 0.0023111365735530853,
+    "gap_pct": 0.0018654923187568784,
+    "roc20": 0.0015652204165235162,
+    "cci20": 0.0013638187665492296,
+    "daily_return": 0.001091582584194839,
+    "aroon_up": 0.0010448792017996311,
+    "donchian_position": 0.0005996463005430996,
     "monthly_return_21d": 0.0,
-    "sma20_ratio": 0.0,
     "candle_body_pct": 0.0,
     "candle_upper_wick_pct": 0.0,
     "candle_lower_wick_pct": 0.0,
     "higher_high_10d": 0.0,
     "higher_low_10d": 0.0,
-    "macd_histogram_normalized": 0.0,
-    "ppo_histogram": 0.0,
     "stochastic_k14": 0.0,
-    "donchian_position": 0.0,
     "donchian_breakout": 0.0,
     "ttm_squeeze_on": 0.0,
-    "ttm_squeeze_momentum": 0.0,
-    "aroon_up": 0.0,
-    "cci20": 0.0,
-    "williams_r14": 0.0,
-    "kama_slope": 0.0
+    "kama_slope": 0.0,
+    "price_curvature": 0.0
   },
   "baseline_auc": {
     "dummy": 0.5,
-    "logistic_regression": 0.5746306853392065
+    "logistic_regression": 0.5298452437160919
   },
-  "class_imbalance_ratio": 0.17750452577531783,
+  "class_imbalance_ratio": 0.06357086430563355,
   "train_date_range": [
     "2008-05-27 00:00:00",
     "2022-12-30 00:00:00"
@@ -215,10 +221,25 @@
   ],
   "plot_files": null,
   "return_threshold": 0.05,
-  "horizon": 5,
+  "horizon": 30,
   "label_col": "training_label",
   "early_stopping": {
-    "best_iteration": 49,
-    "best_score": 0.6160855838237068
+    "best_iteration": 44,
+    "best_score": 0.6351718091167299
+  },
+  "shap_artifacts_path": "C:\\Users\\brand\\Documents\\Stocks\\SwingTradeApp\\SwingTradeV2\\models\\shap_artifacts\\xgb_classifier_selected_features",
+  "shap_metadata": {
+    "model_id": "xgb_classifier_selected_features",
+    "computation_date": "2025-12-17T14:14:46.672558",
+    "data_split": "validation",
+    "sample_size": 1000,
+    "total_samples_available": 122263,
+    "n_features": 58,
+    "feature_list_hash": "2fe7532eda92f8f7faa0cc297ffe1452",
+    "top_n_concentration": {
+      "n": 10,
+      "percentage": 90.21997261047363
+    },
+    "shap_version": "0.50.0"
   }
 }

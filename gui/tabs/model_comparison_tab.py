@@ -22,6 +22,8 @@ import re
 
 from gui.utils.model_registry import ModelRegistry
 from gui.tabs.metrics_help_dialog import MetricsHelpDialog
+from gui.tabs.shap_view_dialog import SHAPViewDialog, SHAPComparisonDialog
+from gui.services import SHAPService
 
 
 class ModelComparisonTab(QWidget):
@@ -157,6 +159,29 @@ class ModelComparisonTab(QWidget):
         self.models_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.models_table.setMinimumHeight(400)
         layout.addWidget(self.models_table)
+        
+        # SHAP actions section
+        shap_group = QGroupBox("SHAP Explainability")
+        shap_layout = QHBoxLayout()
+        
+        self.view_shap_btn = QPushButton("View SHAP")
+        self.view_shap_btn.setToolTip("View SHAP explanations for selected model(s)")
+        self.view_shap_btn.clicked.connect(self.view_shap)
+        shap_layout.addWidget(self.view_shap_btn)
+        
+        self.compare_shap_btn = QPushButton("Compare SHAP")
+        self.compare_shap_btn.setToolTip("Compare SHAP explanations between 2 selected models")
+        self.compare_shap_btn.clicked.connect(self.compare_shap)
+        shap_layout.addWidget(self.compare_shap_btn)
+        
+        self.recompute_shap_btn = QPushButton("Recompute SHAP")
+        self.recompute_shap_btn.setToolTip("Recompute SHAP explanations for selected model")
+        self.recompute_shap_btn.clicked.connect(self.recompute_shap)
+        shap_layout.addWidget(self.recompute_shap_btn)
+        
+        shap_layout.addStretch()
+        shap_group.setLayout(shap_layout)
+        layout.addWidget(shap_group)
         
         # Comparison section
         comparison_group = QGroupBox("Comparison")
@@ -644,6 +669,149 @@ class ModelComparisonTab(QWidget):
         """Show help dialog explaining model metrics."""
         dialog = MetricsHelpDialog(self)
         dialog.exec()
+    
+    def view_shap(self):
+        """View SHAP explanations for selected model(s)."""
+        if not self.selected_models:
+            QMessageBox.warning(self, "No Selection", "Please select a model to view SHAP explanations.")
+            return
+        
+        if len(self.selected_models) > 1:
+            QMessageBox.information(
+                self,
+                "Multiple Models",
+                "Multiple models selected. Use 'Compare SHAP' to compare two models, or select only one model to view its SHAP."
+            )
+            return
+        
+        # Get selected model
+        model_id = self.selected_models[0]
+        model = self.registry.get_model(model_id)
+        if not model:
+            QMessageBox.warning(self, "Error", "Could not find selected model.")
+            return
+        
+        # Get model ID from file path
+        model_path = model.get("file_path")
+        if not model_path:
+            QMessageBox.warning(self, "Error", "Model file path not found.")
+            return
+        
+        from gui.services import SHAPService
+        shap_service = SHAPService()
+        
+        if not shap_service.is_available():
+            QMessageBox.warning(
+                self,
+                "SHAP Not Available",
+                "SHAP service is not available. Ensure shap library is installed."
+            )
+            return
+        
+        # Extract model ID from path
+        model_file_id = shap_service.get_model_id_from_path(model_path)
+        
+        # Load SHAP artifacts
+        artifacts = shap_service.load_artifacts(model_file_id)
+        
+        if not artifacts:
+            QMessageBox.information(
+                self,
+                "SHAP Not Available",
+                f"SHAP explanations are not available for this model.\n\n"
+                f"Model: {model.get('name', 'Unknown')}\n\n"
+                f"Click 'Recompute SHAP' to generate SHAP explanations for this model."
+            )
+            return
+        
+        # Show SHAP dialog
+        from gui.tabs.shap_dialog import SHAPDialog
+        dialog = SHAPDialog(model, artifacts, self)
+        dialog.exec()
+    
+    def compare_shap(self):
+        """Compare SHAP explanations between two selected models."""
+        if len(self.selected_models) != 2:
+            QMessageBox.warning(
+                self,
+                "Invalid Selection",
+                "Please select exactly 2 models to compare SHAP explanations."
+            )
+            return
+        
+        # Get both models
+        model1_id = self.selected_models[0]
+        model2_id = self.selected_models[1]
+        model1 = self.registry.get_model(model1_id)
+        model2 = self.registry.get_model(model2_id)
+        
+        if not model1 or not model2:
+            QMessageBox.warning(self, "Error", "Could not find one or both selected models.")
+            return
+        
+        from gui.services import SHAPService
+        shap_service = SHAPService()
+        
+        if not shap_service.is_available():
+            QMessageBox.warning(
+                self,
+                "SHAP Not Available",
+                "SHAP service is not available. Ensure shap library is installed."
+            )
+            return
+        
+        # Load SHAP artifacts for both models
+        model1_file_id = shap_service.get_model_id_from_path(model1.get("file_path", ""))
+        model2_file_id = shap_service.get_model_id_from_path(model2.get("file_path", ""))
+        
+        artifacts1 = shap_service.load_artifacts(model1_file_id)
+        artifacts2 = shap_service.load_artifacts(model2_file_id)
+        
+        if not artifacts1 or not artifacts2:
+            missing = []
+            if not artifacts1:
+                missing.append(model1.get("name", "Model 1"))
+            if not artifacts2:
+                missing.append(model2.get("name", "Model 2"))
+            
+            QMessageBox.warning(
+                self,
+                "SHAP Not Available",
+                f"SHAP explanations are not available for:\n" + "\n".join(f"- {m}" for m in missing) +
+                f"\n\nUse 'Recompute SHAP' to generate SHAP explanations."
+            )
+            return
+        
+        # Show comparison dialog
+        from gui.tabs.shap_dialog import SHAPComparisonDialog
+        dialog = SHAPComparisonDialog(model1, artifacts1, model2, artifacts2, self)
+        dialog.exec()
+    
+    def recompute_shap(self):
+        """Recompute SHAP explanations for selected model."""
+        if not self.selected_models:
+            QMessageBox.warning(self, "No Selection", "Please select a model to recompute SHAP.")
+            return
+        
+        if len(self.selected_models) > 1:
+            QMessageBox.warning(self, "Multiple Selection", "Please select only one model to recompute SHAP.")
+            return
+        
+        # Get selected model
+        model_id = self.selected_models[0]
+        model = self.registry.get_model(model_id)
+        if not model:
+            QMessageBox.warning(self, "Error", "Could not find selected model.")
+            return
+        
+        # TODO: Implement recompute SHAP functionality
+        # This will require loading the model, loading validation data, and calling SHAP service
+        QMessageBox.information(
+            self,
+            "Not Yet Implemented",
+            "SHAP recomputation will be implemented in the next phase.\n\n"
+            "For now, retrain the model with --shap flag to generate SHAP explanations."
+        )
     
     def _get_feature_count_display(self, model: dict) -> str:
         """
