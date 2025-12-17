@@ -53,7 +53,7 @@ class BacktestComparisonTab(QWidget):
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         
         # Content widget
         content_widget = QWidget()
@@ -156,17 +156,33 @@ class BacktestComparisonTab(QWidget):
         
         self.backtests_table = QTableWidget()
         self.backtests_table.setColumnCount(15)  # 15 columns including Filters Used
+        # Abbreviated headers (tooltips not supported per-section in QHeaderView)
         self.backtests_table.setHorizontalHeaderLabels([
-            "Select", "Filename", "Date", "Total Trades", "Win Rate", 
-            "Avg Return", "Total P&L", "Avg P&L", "Max Drawdown", 
-            "Sharpe Ratio", "Profit Factor", "Avg Hold Days", "Annual Return", "Date Range", "Filters Used"
+            "Select", "Filename", "Date", "Trades", "Win Rate", 
+            "Avg Ret", "Total P&L", "Avg P&L", "Max DD", 
+            "Sharpe", "Profit F", "Avg Days", "Ann Ret", "Date Range", "Filters"
         ])
+        
         # Set Select column to fixed width
         self.backtests_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.backtests_table.setColumnWidth(0, 50)
-        # All other columns stretch to fill available space
-        for col in range(1, 15):  # Include column 14 (Filters Used)
-            self.backtests_table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
+        # Use ResizeToContents for better column sizing, with minimum widths
+        for col in range(1, 15):
+            self.backtests_table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+            # Set minimum widths for important columns
+            if col == 1:  # Filename
+                self.backtests_table.setColumnWidth(col, 200)
+            elif col == 2:  # Date
+                self.backtests_table.setColumnWidth(col, 120)
+            elif col == 13:  # Date Range
+                self.backtests_table.setColumnWidth(col, 150)
+            elif col == 14:  # Filters
+                self.backtests_table.setColumnWidth(col, 100)
+            else:
+                self.backtests_table.setColumnWidth(col, 80)
+        
+        # Enable horizontal scrolling
+        self.backtests_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.backtests_table.setAlternatingRowColors(True)
         self.backtests_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.backtests_table.setMinimumHeight(400)
@@ -326,6 +342,7 @@ class BacktestComparisonTab(QWidget):
         
         # Populate table
         self.backtests_table.setRowCount(len(self.backtest_data))
+        # Disable sorting during population to avoid display issues
         self.backtests_table.setSortingEnabled(False)
         
         for row_idx, backtest in enumerate(self.backtest_data):
@@ -365,14 +382,19 @@ class BacktestComparisonTab(QWidget):
             trades_item.setData(Qt.ItemDataRole.EditRole, n_trades)
             self.backtests_table.setItem(row_idx, 3, trades_item)
             
-            # Win Rate
+            # Win Rate (percentage with 2 decimal places)
             win_rate = metrics.get("win_rate", 0.0)
             if win_rate is not None and not pd.isna(win_rate):
-                winrate_item = QTableWidgetItem(f"{win_rate:.2%}")
-                winrate_item.setData(Qt.ItemDataRole.EditRole, float(win_rate))
+                winrate_text = f"{win_rate * 100:.2f}%"
+                winrate_item = QTableWidgetItem(winrate_text)
+                # Set EditRole to formatted string so Qt displays it correctly
+                # Store numeric in UserRole for potential custom sorting
+                winrate_item.setData(Qt.ItemDataRole.EditRole, winrate_text)
+                winrate_item.setData(Qt.ItemDataRole.UserRole, float(win_rate))
             else:
                 winrate_item = QTableWidgetItem("N/A")
-                winrate_item.setData(Qt.ItemDataRole.EditRole, 0.0)
+                winrate_item.setData(Qt.ItemDataRole.EditRole, "N/A")
+                winrate_item.setData(Qt.ItemDataRole.UserRole, 0.0)
             self.backtests_table.setItem(row_idx, 4, winrate_item)
             
             # Avg Return
@@ -385,14 +407,19 @@ class BacktestComparisonTab(QWidget):
                 avgret_item.setData(Qt.ItemDataRole.EditRole, 0.0)
             self.backtests_table.setItem(row_idx, 5, avgret_item)
             
-            # Total P&L
+            # Total P&L (money format with dollar sign and commas)
             total_pnl = metrics.get("total_pnl", 0.0)
             if total_pnl is not None and not pd.isna(total_pnl):
-                pnl_item = QTableWidgetItem(f"${total_pnl:,.2f}")
-                pnl_item.setData(Qt.ItemDataRole.EditRole, float(total_pnl))
+                pnl_text = f"${total_pnl:,.2f}"
+                pnl_item = QTableWidgetItem(pnl_text)
+                # Set EditRole to formatted string so Qt displays it correctly
+                # Store numeric in UserRole for potential custom sorting
+                pnl_item.setData(Qt.ItemDataRole.EditRole, pnl_text)
+                pnl_item.setData(Qt.ItemDataRole.UserRole, float(total_pnl))
             else:
                 pnl_item = QTableWidgetItem("N/A")
-                pnl_item.setData(Qt.ItemDataRole.EditRole, 0.0)
+                pnl_item.setData(Qt.ItemDataRole.EditRole, "N/A")
+                pnl_item.setData(Qt.ItemDataRole.UserRole, 0.0)
             self.backtests_table.setItem(row_idx, 6, pnl_item)
             
             # Avg P&L
@@ -445,14 +472,19 @@ class BacktestComparisonTab(QWidget):
                 holding_item.setData(Qt.ItemDataRole.EditRole, 0.0)
             self.backtests_table.setItem(row_idx, 11, holding_item)
             
-            # Annual Return
+            # Annual Return (percentage with 2 decimal places)
             annual_ret = metrics.get("annual_return", 0.0)
             if annual_ret is not None and not pd.isna(annual_ret):
-                annual_item = QTableWidgetItem(f"{annual_ret:.2%}")
-                annual_item.setData(Qt.ItemDataRole.EditRole, float(annual_ret))
+                annual_text = f"{annual_ret * 100:.2f}%"
+                annual_item = QTableWidgetItem(annual_text)
+                # Set EditRole to formatted string so Qt displays it correctly
+                # Store numeric in UserRole for potential custom sorting
+                annual_item.setData(Qt.ItemDataRole.EditRole, annual_text)
+                annual_item.setData(Qt.ItemDataRole.UserRole, float(annual_ret))
             else:
                 annual_item = QTableWidgetItem("N/A")
-                annual_item.setData(Qt.ItemDataRole.EditRole, 0.0)
+                annual_item.setData(Qt.ItemDataRole.EditRole, "N/A")
+                annual_item.setData(Qt.ItemDataRole.UserRole, 0.0)
             self.backtests_table.setItem(row_idx, 12, annual_item)
             
             # Date Range
@@ -551,9 +583,17 @@ class BacktestComparisonTab(QWidget):
                 
                 # Format the value based on type
                 if isinstance(value, float):
-                    if "rate" in metric_key or "return" in metric_key:
+                    if metric_key == "win_rate":
+                        # Win rate: percentage with 2 decimal places
+                        display_value = f"{value * 100:.2f}%"
+                    elif metric_key == "annual_return":
+                        # Annual return: percentage with 2 decimal places
+                        display_value = f"{value * 100:.2f}%"
+                    elif "return" in metric_key:
+                        # Other returns: percentage format
                         display_value = f"{value:.2%}"
                     elif "pnl" in metric_key or "drawdown" in metric_key:
+                        # P&L and drawdown: dollar format
                         display_value = f"${value:,.2f}"
                     elif "ratio" in metric_key or "factor" in metric_key:
                         display_value = f"{value:.2f}"

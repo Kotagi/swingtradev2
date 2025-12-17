@@ -745,12 +745,16 @@ class AnalysisTab(QWidget):
     def display_metrics(self, metrics: dict):
         """Display performance metrics in table."""
         # Format metrics for display
+        win_rate_val = metrics.get('win_rate', 0)
+        annual_return_val = metrics.get('annual_return', 0)
+        total_pnl_val = metrics.get('total_pnl', 0)
+        
         display_metrics = {
             "Total Trades": f"{metrics.get('n_trades', 0):,}",
-            "Win Rate": f"{metrics.get('win_rate', 0):.2%}",
+            "Win Rate": f"{win_rate_val * 100:.2f}%" if isinstance(win_rate_val, (int, float)) else "N/A",
             "Average Return": f"{metrics.get('avg_return', 0):.2%}",
-            "Annual Return": f"{metrics.get('annual_return', 0):.2%}",
-            "Total P&L": f"${metrics.get('total_pnl', 0):,.2f}",
+            "Annual Return": f"{annual_return_val * 100:.2f}%" if isinstance(annual_return_val, (int, float)) else "N/A",
+            "Total P&L": f"${total_pnl_val:,.2f}" if isinstance(total_pnl_val, (int, float)) else "N/A",
             "Average P&L": f"${metrics.get('avg_pnl', 0):,.2f}",
             "Maximum Drawdown": f"${metrics.get('max_drawdown', 0):,.2f}",
             "Sharpe Ratio": f"{metrics.get('sharpe_ratio', 0):.2f}",
@@ -796,9 +800,9 @@ class AnalysisTab(QWidget):
             # Display comparison
             comparison_metrics = [
                 ("Total Trades", metrics1.get('n_trades', 0), metrics2.get('n_trades', 0)),
-                ("Win Rate", f"{metrics1.get('win_rate', 0):.2%}", f"{metrics2.get('win_rate', 0):.2%}"),
+                ("Win Rate", f"{metrics1.get('win_rate', 0) * 100:.2f}%", f"{metrics2.get('win_rate', 0) * 100:.2f}%"),
                 ("Average Return", f"{metrics1.get('avg_return', 0):.2%}", f"{metrics2.get('avg_return', 0):.2%}"),
-                ("Annual Return", f"{metrics1.get('annual_return', 0):.2%}", f"{metrics2.get('annual_return', 0):.2%}"),
+                ("Annual Return", f"{metrics1.get('annual_return', 0) * 100:.2f}%", f"{metrics2.get('annual_return', 0) * 100:.2f}%"),
                 ("Total P&L", f"${metrics1.get('total_pnl', 0):,.2f}", f"${metrics2.get('total_pnl', 0):,.2f}"),
                 ("Sharpe Ratio", f"{metrics1.get('sharpe_ratio', 0):.2f}", f"{metrics2.get('sharpe_ratio', 0):.2f}"),
                 ("Profit Factor", f"{metrics1.get('profit_factor', 0):.2f}", f"{metrics2.get('profit_factor', 0):.2f}"),

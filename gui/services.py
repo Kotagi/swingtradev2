@@ -1421,6 +1421,11 @@ class TrainingService:
         if training_time:
             metrics_dict['training_time'] = float(training_time)
         
+        # Look for feature count
+        feature_count_match = re.search(r'Number of features:\s*(\d+)', output, re.IGNORECASE)
+        if feature_count_match:
+            metrics_dict['feature_count'] = int(feature_count_match.group(1))
+        
         # Look for label column (used to extract horizon)
         # Patterns: "Using specified label column: label_30d"
         #           "Using label column from horizon: label_30d"

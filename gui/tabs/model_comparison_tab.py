@@ -14,6 +14,8 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon, QPalette
 from pathlib import Path
 from datetime import datetime
+import joblib
+import yaml
 
 from gui.utils.model_registry import ModelRegistry
 from gui.tabs.metrics_help_dialog import MetricsHelpDialog
@@ -40,7 +42,7 @@ class ModelComparisonTab(QWidget):
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         
         # Content widget
         content_widget = QWidget()
@@ -120,18 +122,34 @@ class ModelComparisonTab(QWidget):
         layout.addWidget(list_label)
         
         self.models_table = QTableWidget()
-        self.models_table.setColumnCount(16)
+        self.models_table.setColumnCount(17)  # Added Features column
+        # Abbreviated headers (tooltips not supported per-section in QHeaderView)
         self.models_table.setHorizontalHeaderLabels([
-            "Select", "Name", "Date", "Test ROC AUC", "Test Accuracy", 
-            "Test Precision", "Test Recall", "Test F1", "Test Avg Precision",
-            "Feature Set", "Horizon", "Class Imbalance", "Tuned", "CV", "Iterations", "CV Folds"
+            "Select", "Name", "Date", "ROC AUC", "Accuracy", 
+            "Precision", "Recall", "F1", "Avg Prec",
+            "Feature Set", "Features", "Horizon", "Imbalance", "Tuned", "CV", "Iterations", "CV Folds"
         ])
+        
         # Set Select column to fixed width (just for checkbox)
         self.models_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.models_table.setColumnWidth(0, 50)
-        # All other columns stretch to fill available space
-        for col in range(1, 16):
-            self.models_table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
+        # Use ResizeToContents for better column sizing, with minimum widths
+        for col in range(1, 17):
+            self.models_table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+            # Set minimum widths for important columns
+            if col == 1:  # Name
+                self.models_table.setColumnWidth(col, 150)
+            elif col == 2:  # Date
+                self.models_table.setColumnWidth(col, 120)
+            elif col in [3, 4, 5, 6, 7, 8]:  # Metrics
+                self.models_table.setColumnWidth(col, 80)
+            elif col == 10:  # Features
+                self.models_table.setColumnWidth(col, 80)
+            else:
+                self.models_table.setColumnWidth(col, 70)
+        
+        # Enable horizontal scrolling
+        self.models_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.models_table.setAlternatingRowColors(True)
         self.models_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.models_table.setMinimumHeight(400)
@@ -285,10 +303,15 @@ class ModelComparisonTab(QWidget):
             feature_item = QTableWidgetItem(feature_set or "default")
             self.models_table.setItem(row_idx, 9, feature_item)
             
+            # Features (enabled/total)
+            feature_count_str = self._get_feature_count_display(model)
+            features_item = QTableWidgetItem(feature_count_str)
+            self.models_table.setItem(row_idx, 10, features_item)
+            
             # Horizon (extract from parameters or label_col)
             horizon = model.get("parameters", {}).get("horizon", "N/A")
             horizon_item = QTableWidgetItem(str(horizon) if horizon else "N/A")
-            self.models_table.setItem(row_idx, 10, horizon_item)
+            self.models_table.setItem(row_idx, 11, horizon_item)
             
             # Class Imbalance Multiplier
             imbalance = model.get("parameters", {}).get("imbalance_multiplier", "N/A")
@@ -298,19 +321,19 @@ class ModelComparisonTab(QWidget):
             else:
                 imbalance_item = QTableWidgetItem("N/A")
                 imbalance_item.setData(Qt.ItemDataRole.EditRole, 0.0)
-            self.models_table.setItem(row_idx, 11, imbalance_item)
+            self.models_table.setItem(row_idx, 12, imbalance_item)
             
             # Tuned (Yes/No)
             tuned = model.get("parameters", {}).get("tune", False)
             tuned_item = QTableWidgetItem("Yes" if tuned else "No")
             tuned_item.setData(Qt.ItemDataRole.EditRole, 1 if tuned else 0)  # For sorting
-            self.models_table.setItem(row_idx, 12, tuned_item)
+            self.models_table.setItem(row_idx, 13, tuned_item)
             
             # CV (Yes/No)
             cv = model.get("parameters", {}).get("cv", False)
             cv_item = QTableWidgetItem("Yes" if cv else "No")
             cv_item.setData(Qt.ItemDataRole.EditRole, 1 if cv else 0)  # For sorting
-            self.models_table.setItem(row_idx, 13, cv_item)
+            self.models_table.setItem(row_idx, 14, cv_item)
             
             # Iterations (if tuned)
             n_iter = model.get("parameters", {}).get("n_iter")
@@ -320,7 +343,7 @@ class ModelComparisonTab(QWidget):
             else:
                 iter_item = QTableWidgetItem("N/A")
                 iter_item.setData(Qt.ItemDataRole.EditRole, 0)  # For sorting
-            self.models_table.setItem(row_idx, 14, iter_item)
+            self.models_table.setItem(row_idx, 15, iter_item)
             
             # CV Folds (if CV)
             cv_folds = model.get("parameters", {}).get("cv_folds")
@@ -330,7 +353,7 @@ class ModelComparisonTab(QWidget):
             else:
                 folds_item = QTableWidgetItem("N/A")
                 folds_item.setData(Qt.ItemDataRole.EditRole, 0)  # For sorting
-            self.models_table.setItem(row_idx, 15, folds_item)
+            self.models_table.setItem(row_idx, 16, folds_item)
         
         self.models_table.setSortingEnabled(True)
         # Sort by date descending by default
@@ -474,4 +497,66 @@ class ModelComparisonTab(QWidget):
         """Show help dialog explaining model metrics."""
         dialog = MetricsHelpDialog(self)
         dialog.exec()
+    
+    def _get_feature_count_display(self, model: dict) -> str:
+        """
+        Get feature count display string (enabled/total).
+        Tries to extract from registry, then from model file, then shows N/A.
+        """
+        # Try to get from training_info first
+        training_info = model.get("training_info", {})
+        feature_count = training_info.get("feature_count")
+        total_features = training_info.get("total_features")
+        
+        # If we have both, return formatted string
+        if feature_count is not None and total_features is not None:
+            return f"{feature_count}/{total_features}"
+        
+        # Fallback: try to extract from model file
+        model_path = model.get("file_path")
+        if model_path:
+            try:
+                model_path_obj = Path(model_path)
+                if model_path_obj.exists():
+                    # Load the model pickle
+                    model_data = joblib.load(model_path_obj)
+                    # Model is saved as dict with "features" list and "metadata" dict
+                    if isinstance(model_data, dict):
+                        # Try to get from features list
+                        features_list = model_data.get("features", [])
+                        if features_list:
+                            enabled_count = len(features_list)
+                            # Get total from config/features.yaml
+                            total = self._count_total_features()
+                            return f"{enabled_count}/{total}"
+                        # Try to get from metadata
+                        metadata = model_data.get("metadata", {})
+                        n_features = metadata.get("n_features")
+                        if n_features is not None:
+                            total = self._count_total_features()
+                            return f"{n_features}/{total}"
+                    # Fallback: try XGBoost model directly (if model_data is the model itself)
+                    elif hasattr(model_data, 'feature_names_in_'):
+                        enabled_count = len(model_data.feature_names_in_)
+                        total = self._count_total_features()
+                        return f"{enabled_count}/{total}"
+            except Exception:
+                pass  # Fall through to N/A
+        
+        # If all else fails, return N/A
+        return "N/A"
+    
+    def _count_total_features(self) -> int:
+        """Count total available features from config/features.yaml."""
+        try:
+            config_path = Path(__file__).parent.parent.parent / "config" / "features.yaml"
+            if config_path.exists():
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    cfg = yaml.safe_load(f) or {}
+                features = cfg.get("features", {})
+                # Count all features (enabled or disabled, excluding comments)
+                return len([k for k in features.keys() if not k.startswith('#')])
+            return 57  # Default fallback (current total)
+        except Exception:
+            return 57  # Default fallback
 

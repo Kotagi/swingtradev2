@@ -17,6 +17,7 @@ from datetime import datetime
 from gui.services import TrainingService, DataService
 from gui.widgets import PresetManagerWidget
 from gui.utils.model_registry import ModelRegistry
+import yaml
 
 
 class TrainingWorker(QThread):
@@ -465,10 +466,17 @@ class TrainingTab(QWidget):
                         'cv_folds': self.cv_folds_spin.value() if self.cv_check.isChecked() else None,
                     }
                     
+                    # Get feature count from metrics_dict (parsed from training output)
+                    feature_count = metrics_dict.get('feature_count')
+                    
+                    # Count total features from config/features.yaml
+                    total_features = self._count_total_features()
+                    
                     # Extract training info
                     training_info = {
                         'training_time': metrics_dict.get('training_time'),
-                        'feature_count': None,  # Could be extracted from model if needed
+                        'feature_count': feature_count,
+                        'total_features': total_features,
                     }
                     
                     # Prepare metrics for registry
@@ -497,4 +505,18 @@ class TrainingTab(QWidget):
             if len(error_details) > 500:
                 error_details = error_details[:500] + "..."
             QMessageBox.critical(self, "Training Failed", error_details)
+    
+    def _count_total_features(self) -> int:
+        """Count total available features from config/features.yaml."""
+        try:
+            config_path = Path(__file__).parent.parent.parent / "config" / "features.yaml"
+            if config_path.exists():
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    cfg = yaml.safe_load(f) or {}
+                features = cfg.get("features", {})
+                # Count all features (enabled or disabled)
+                return len([k for k in features.keys() if not k.startswith('#')])
+            return 57  # Default fallback (current total)
+        except Exception:
+            return 57  # Default fallback
 
