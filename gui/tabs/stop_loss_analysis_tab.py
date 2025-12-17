@@ -1655,7 +1655,7 @@ class StopLossAnalysisTab(QWidget):
         format_choice, ok = QInputDialog.getItem(
             self,
             "Export Format",
-            "Select export format:",
+            "Select export format:\n\nNote: PDF requires GTK+ libraries (may not work on Windows).\nHTML can be printed to PDF in your browser.",
             ["HTML", "PDF"],
             0,
             False
@@ -1805,7 +1805,7 @@ class StopLossAnalysisTab(QWidget):
             import weasyprint
             # Export HTML first, then convert to PDF
             import tempfile
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as tmp:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as tmp:
                 html_path = tmp.name
                 self._export_html_report(html_path)
             
@@ -1814,7 +1814,10 @@ class StopLossAnalysisTab(QWidget):
             
             # Clean up temp file
             import os
-            os.unlink(html_path)
+            try:
+                os.unlink(html_path)
+            except Exception:
+                pass  # Ignore cleanup errors
             
         except ImportError:
             # Fallback: Export as HTML and provide instructions
@@ -1824,21 +1827,38 @@ class StopLossAnalysisTab(QWidget):
                 self,
                 "PDF Export",
                 f"PDF export requires the 'weasyprint' library.\n\n"
-                f"Install with: pip install weasyprint\n\n"
-                f"For now, HTML report saved to: {html_path}\n\n"
-                f"You can open this in a browser and print to PDF."
+                f"Note: WeasyPrint requires GTK+ libraries which can be difficult to install on Windows.\n\n"
+                f"HTML report saved to: {html_path}\n\n"
+                f"Recommended: Open the HTML file in your browser and use 'Print to PDF' for best results."
             )
         except Exception as e:
-            # If conversion fails, fall back to HTML
+            # If conversion fails (e.g., missing GTK+ libraries on Windows), fall back to HTML
             html_path = file_path.replace('.pdf', '.html')
             self._export_html_report(html_path)
-            QMessageBox.warning(
-                self,
-                "PDF Export Failed",
-                f"Failed to generate PDF: {str(e)}\n\n"
-                f"HTML report saved to: {html_path}\n\n"
-                f"You can open this in a browser and print to PDF."
-            )
+            
+            # Check if it's a library loading error
+            error_msg = str(e)
+            if 'libgobject' in error_msg.lower() or 'gtk' in error_msg.lower() or 'library' in error_msg.lower():
+                QMessageBox.information(
+                    self,
+                    "PDF Export - Using HTML Alternative",
+                    f"PDF generation requires GTK+ libraries which are not easily available on Windows.\n\n"
+                    f"HTML report saved to: {html_path}\n\n"
+                    f"Recommended Solution:\n"
+                    f"1. Open the HTML file in your web browser\n"
+                    f"2. Press Ctrl+P (or File → Print)\n"
+                    f"3. Select 'Save as PDF' or 'Microsoft Print to PDF' as the printer\n"
+                    f"4. Save the PDF file\n\n"
+                    f"This method produces high-quality PDFs and works on all systems."
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    "PDF Export Failed",
+                    f"Failed to generate PDF: {str(e)}\n\n"
+                    f"HTML report saved to: {html_path}\n\n"
+                    f"You can open this in a browser and print to PDF."
+                )
     
     def show_feature_info(self, feature_name: str):
         """Show feature information dialog."""
