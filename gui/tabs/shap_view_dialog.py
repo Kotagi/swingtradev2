@@ -59,6 +59,8 @@ class SHAPViewDialog(QDialog):
         self.importance_table.setAlternatingRowColors(True)
         self.importance_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.importance_table.horizontalHeader().setStretchLastSection(True)
+        # Show more rows without scrolling (set minimum height based on row count)
+        self.importance_table.setMinimumHeight(600)  # Show ~20-25 rows
         importance_layout.addWidget(self.importance_table)
         
         importance_group.setLayout(importance_layout)
@@ -77,6 +79,31 @@ class SHAPViewDialog(QDialog):
         # SHAP plot (if available)
         plot_group = QGroupBox("SHAP Summary Plot")
         plot_layout = QVBoxLayout()
+        
+        # Header with info button
+        plot_header_layout = QHBoxLayout()
+        plot_header_layout.addStretch()
+        info_btn = QPushButton("ℹ")
+        info_btn.setFixedSize(30, 30)
+        info_btn.setToolTip("Click for information on interpreting SHAP plots")
+        info_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                border: 2px solid #00d4aa;
+                border-radius: 15px;
+                color: #00d4aa;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #3d3d3d;
+                border-color: #00ffcc;
+            }
+        """)
+        info_btn.clicked.connect(self.show_plot_info)
+        plot_header_layout.addWidget(info_btn)
+        plot_layout.addLayout(plot_header_layout)
+        
         self.plot_label = QLabel("SHAP plot not available")
         self.plot_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.plot_label.setMinimumHeight(400)
@@ -155,6 +182,52 @@ class SHAPViewDialog(QDialog):
                 self.plot_label.setText("Failed to load SHAP plot image")
         else:
             self.plot_label.setText("SHAP plot not available")
+    
+    def show_plot_info(self):
+        """Show information dialog about interpreting SHAP plots."""
+        info_text = """
+<h3>How to Interpret SHAP Summary Plots</h3>
+
+<p><b>What is SHAP?</b><br>
+SHAP (SHapley Additive exPlanations) values show how much each feature contributes to a model's prediction for each sample.</p>
+
+<p><b>Understanding the Plot:</b></p>
+<ul>
+<li><b>Y-axis (Features):</b> Features are ranked by importance (most important at top)</li>
+<li><b>X-axis (SHAP Value):</b> Impact on prediction
+  <ul>
+    <li>Positive values (right) = increases probability of positive class</li>
+    <li>Negative values (left) = decreases probability of positive class</li>
+  </ul>
+</li>
+<li><b>Color (Feature Value):</b> 
+  <ul>
+    <li>Red = high feature value</li>
+    <li>Blue = low feature value</li>
+  </ul>
+</li>
+<li><b>Dot Position:</b> Each dot represents one sample. Horizontal position shows SHAP value impact.</li>
+</ul>
+
+<p><b>Key Insights:</b></p>
+<ul>
+<li>Features with wider spread (more dots spread out) have more variable impact</li>
+<li>If red dots are on the right and blue dots on the left, high values of that feature increase predictions</li>
+<li>If red dots are on the left and blue dots on the right, high values decrease predictions</li>
+<li>Features with dots clustered near zero have minimal impact</li>
+</ul>
+
+<p><b>Example:</b><br>
+If "RSI" shows red dots on the right and blue dots on the left, it means:
+- High RSI values → model predicts more trades (positive class)
+- Low RSI values → model predicts fewer trades</p>
+"""
+        msg = QMessageBox(self)
+        msg.setWindowTitle("SHAP Plot Interpretation Guide")
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        msg.setText(info_text)
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg.exec()
 
 
 class SHAPComparisonDialog(QDialog):
