@@ -143,9 +143,9 @@ class SHAPViewDialog(QDialog):
         if plot_path and Path(plot_path).exists():
             pixmap = QPixmap(plot_path)
             if not pixmap.isNull():
-                # Scale to fit while maintaining aspect ratio
+                # Scale to fit label size (400px height as set in init_ui)
                 scaled_pixmap = pixmap.scaled(
-                    self.plot_label.size(),
+                    800, 400,  # Width x Height
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation
                 )

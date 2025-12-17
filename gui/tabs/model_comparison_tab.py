@@ -725,8 +725,8 @@ class ModelComparisonTab(QWidget):
             return
         
         # Show SHAP dialog
-        from gui.tabs.shap_dialog import SHAPDialog
-        dialog = SHAPDialog(model, artifacts, self)
+        model_name = model.get("name", "Unknown")
+        dialog = SHAPViewDialog(model_file_id, model_name, shap_service, self)
         dialog.exec()
     
     def compare_shap(self):
@@ -782,9 +782,14 @@ class ModelComparisonTab(QWidget):
             )
             return
         
-        # Show comparison dialog
-        from gui.tabs.shap_dialog import SHAPComparisonDialog
-        dialog = SHAPComparisonDialog(model1, artifacts1, model2, artifacts2, self)
+        # Show SHAP comparison dialog
+        model1_name = model1.get("name", "Unknown")
+        model2_name = model2.get("name", "Unknown")
+        dialog = SHAPComparisonDialog(
+            model1_file_id, model1_name,
+            model2_file_id, model2_name,
+            shap_service, self
+        )
         dialog.exec()
     
     def recompute_shap(self):
