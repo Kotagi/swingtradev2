@@ -16,6 +16,8 @@ from pathlib import Path
 from datetime import datetime
 import joblib
 import yaml
+import os
+import re
 
 from gui.utils.model_registry import ModelRegistry
 from gui.tabs.metrics_help_dialog import MetricsHelpDialog
@@ -258,8 +260,16 @@ class ModelComparisonTab(QWidget):
             checkbox_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.models_table.setCellWidget(row_idx, 0, checkbox_widget)
             
-            # Name
-            name_item = QTableWidgetItem(model.get("name", "Unknown"))
+            # Name (with tooltip showing filename)
+            model_name = model.get("name", "Unknown")
+            name_item = QTableWidgetItem(model_name)
+            # Add tooltip with filename
+            file_path = model.get("file_path", "")
+            if file_path:
+                filename = Path(file_path).name
+                name_item.setToolTip(f"Filename: {filename}\nFull path: {file_path}")
+            else:
+                name_item.setToolTip("No file path available")
             self.models_table.setItem(row_idx, 1, name_item)
             
             # Date
@@ -485,7 +495,7 @@ class ModelComparisonTab(QWidget):
                     best_item.setForeground(Qt.GlobalColor.white)
     
     def rename_selected_model(self):
-        """Rename a selected model."""
+        """Rename a selected model (registry only)."""
         if not self.selected_models:
             QMessageBox.warning(self, "No Selection", "Please select a model to rename.")
             return
@@ -517,10 +527,7 @@ class ModelComparisonTab(QWidget):
         
         new_name = new_name.strip()
         
-        # Check if name already exists (optional - could allow duplicates)
-        # For now, we'll allow duplicates
-        
-        # Update model name
+        # Update model name in registry only
         if self.registry.update_model(model_id, {"name": new_name}):
             QMessageBox.information(self, "Success", f"Model renamed to '{new_name}'.")
             self.refresh_model_list()
@@ -529,31 +536,79 @@ class ModelComparisonTab(QWidget):
             QMessageBox.warning(self, "Error", "Failed to rename model.")
     
     def delete_selected_models(self):
-        """Delete selected models from registry."""
+        """Delete selected models from registry and delete model files."""
         if not self.selected_models:
             QMessageBox.warning(self, "No Selection", "Please select models to delete.")
             return
         
+        # Get model details before deletion
+        models_to_delete = []
+        for model_id in self.selected_models:
+            model = self.registry.get_model(model_id)
+            if model:
+                models_to_delete.append(model)
+        
+        if not models_to_delete:
+            QMessageBox.warning(self, "Error", "Could not find selected models.")
+            return
+        
+        # Show confirmation with file count
+        file_count = sum(1 for m in models_to_delete if m.get("file_path"))
         reply = QMessageBox.question(
             self,
             "Confirm Delete",
-            f"Are you sure you want to delete {len(self.selected_models)} model(s)?\n\n"
-            "Note: This only removes them from the registry, not the model files.",
+            f"Are you sure you want to delete {len(models_to_delete)} model(s)?\n\n"
+            f"This will:\n"
+            f"- Remove {len(models_to_delete)} model(s) from the registry\n"
+            f"- Delete {file_count} model file(s) from disk\n\n"
+            "This action cannot be undone!",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         
-        if reply == QMessageBox.StandardButton.Yes:
-            deleted_count = 0
-            for model_id in self.selected_models[:]:  # Copy list to avoid modification during iteration
-                if self.registry.delete_model(model_id):
-                    deleted_count += 1
-                    self.selected_models.remove(model_id)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        # Delete files and registry entries
+        deleted_registry_count = 0
+        deleted_file_count = 0
+        file_errors = []
+        
+        for model in models_to_delete:
+            model_id = model.get("id")
+            file_path = model.get("file_path")
             
-            QMessageBox.information(self, "Deleted", f"Deleted {deleted_count} model(s) from registry.")
-            self.refresh_model_list()
-            self.update_selected_label()
-            self.comparison_table.setRowCount(0)
-            self.comparison_table.setColumnCount(0)
+            # Delete the file first
+            if file_path:
+                try:
+                    file_path_obj = Path(file_path)
+                    if file_path_obj.exists():
+                        file_path_obj.unlink()
+                        deleted_file_count += 1
+                except Exception as e:
+                    file_errors.append(f"{Path(file_path).name}: {str(e)}")
+            
+            # Delete from registry
+            if self.registry.delete_model(model_id):
+                deleted_registry_count += 1
+                if model_id in self.selected_models:
+                    self.selected_models.remove(model_id)
+        
+        # Show results
+        message = f"Deleted {deleted_registry_count} model(s) from registry."
+        if deleted_file_count > 0:
+            message += f"\nDeleted {deleted_file_count} model file(s) from disk."
+        if file_errors:
+            message += f"\n\nFile deletion errors:\n" + "\n".join(file_errors)
+        
+        if file_errors:
+            QMessageBox.warning(self, "Delete Complete (with errors)", message)
+        else:
+            QMessageBox.information(self, "Deleted", message)
+        
+        self.refresh_model_list()
+        self.update_selected_label()
+        self.comparison_table.setRowCount(0)
+        self.comparison_table.setColumnCount(0)
     
     def show_metrics_help(self):
         """Show help dialog explaining model metrics."""

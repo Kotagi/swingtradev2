@@ -202,12 +202,16 @@ class TrainingTab(QWidget):
         output_row = QHBoxLayout()
         output_row.addWidget(QLabel("Model Output Path:"))
         self.model_output_edit = QLineEdit()
-        self.model_output_edit.setPlaceholderText("Leave empty for default naming")
+        self.model_output_edit.setPlaceholderText("Auto-generated based on parameters")
         output_row.addWidget(self.model_output_edit)
         browse_output_btn = QPushButton("Browse...")
         browse_output_btn.clicked.connect(self.browse_model_output)
         output_row.addWidget(browse_output_btn)
         advanced_layout.addLayout(output_row)
+        
+        # Auto-naming flags
+        self.model_output_manually_edited = False
+        self._updating_auto_name = False
         
         advanced_group.setLayout(advanced_layout)
         layout.addWidget(advanced_group)
@@ -284,6 +288,97 @@ class TrainingTab(QWidget):
         
         # Set main layout
         self.setLayout(main_layout)
+        
+        # Connect parameter changes to auto-name generation
+        self.horizon_spin.valueChanged.connect(self.update_auto_name)
+        self.return_threshold_spin.valueChanged.connect(self.update_auto_name)
+        self.featureset_combo.currentTextChanged.connect(self.update_auto_name)
+        self.tune_check.toggled.connect(self.update_auto_name)
+        self.cv_check.toggled.connect(self.update_auto_name)
+        self.cv_folds_spin.valueChanged.connect(self.update_auto_name)
+        
+        # Connect text changed to detect manual edits
+        def on_output_text_changed(text):
+            # Don't mark as manual if we're programmatically updating
+            if self._updating_auto_name:
+                return
+            # Reset flag if field is cleared
+            if not text.strip():
+                self.model_output_manually_edited = False
+            else:
+                # Only mark as manually edited if the filename doesn't start with "model_"
+                # This allows auto-generated names to continue updating
+                filename = Path(text).name if text.strip() else ""
+                if filename and not filename.startswith("model_"):
+                    self.model_output_manually_edited = True
+        
+        self.model_output_edit.textChanged.connect(on_output_text_changed)
+        
+        # Generate initial auto-name
+        self.update_auto_name()
+    
+    def generate_auto_name(self) -> str:
+        """
+        Generate an auto-name for the model based on current parameters.
+        Format: model_{horizon}d_{threshold}pct_{feature_set}_{featcount}feat_{tuned}_{cv}_{timestamp}.pkl
+        """
+        horizon = self.horizon_spin.value()
+        threshold = self.return_threshold_spin.value()
+        feature_set = self.featureset_combo.currentText().strip()
+        tuned = "tuned" if self.tune_check.isChecked() else "notuned"
+        cv = f"cv{self.cv_folds_spin.value()}" if self.cv_check.isChecked() else "nocv"
+        
+        # Get enabled feature count
+        enabled_features = self._count_enabled_features()
+        
+        # Build feature set part
+        if feature_set:
+            feature_set_str = feature_set
+        else:
+            feature_set_str = "default"
+        
+        # Generate timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        
+        # Construct filename
+        filename = f"model_{horizon}d_{threshold}pct_{feature_set_str}_{enabled_features}feat_{tuned}_{cv}_{timestamp}.pkl"
+        
+        return filename
+    
+    def update_auto_name(self):
+        """
+        Update the output field with auto-generated name, but only if:
+        - The field is empty, OR
+        - The field contains a previously auto-generated name (filename starts with "model_")
+        - The field has not been manually edited
+        """
+        # Don't update if manually edited
+        if self.model_output_manually_edited:
+            return
+        
+        current_text = self.model_output_edit.text().strip()
+        
+        # Check if filename (not full path) starts with "model_"
+        is_auto_generated = False
+        if current_text:
+            # Extract just the filename from the path
+            filename = Path(current_text).name
+            is_auto_generated = filename.startswith("model_")
+        
+        # Update if empty or contains auto-generated name
+        # This matches the backtest tab behavior - always update if not manually edited
+        if not current_text or is_auto_generated:
+            auto_name = self.generate_auto_name()
+            # Prepend models directory to make it a full path
+            models_dir = Path(self.data_service.get_models_dir())
+            models_dir.mkdir(parents=True, exist_ok=True)
+            full_path = str(models_dir / auto_name)
+            # Only update if different to avoid unnecessary signals
+            if current_text != full_path:
+                self._updating_auto_name = True
+                self.model_output_edit.setText(full_path)
+                self.model_output_manually_edited = False
+                self._updating_auto_name = False
     
     def browse_model_output(self):
         """Browse for model output file."""
@@ -295,7 +390,10 @@ class TrainingTab(QWidget):
             "Pickle Files (*.pkl);;All Files (*)"
         )
         if file_path:
+            self._updating_auto_name = True
             self.model_output_edit.setText(file_path)
+            self.model_output_manually_edited = True
+            self._updating_auto_name = False
     
     def save_config(self):
         """Save current configuration as a dictionary."""
@@ -400,10 +498,21 @@ class TrainingTab(QWidget):
         if feature_set:
             kwargs["feature_set"] = feature_set
         
-        # Model output
+        # Model output (use auto-generated name if empty)
         model_output = self.model_output_edit.text().strip()
-        if model_output:
-            kwargs["model_output"] = model_output
+        if not model_output:
+            # Generate auto-name if field is empty
+            auto_name = self.generate_auto_name()
+            models_dir = Path(self.data_service.get_models_dir())
+            models_dir.mkdir(parents=True, exist_ok=True)
+            model_output = str(models_dir / auto_name)
+            # Update UI to show the generated name
+            self._updating_auto_name = True
+            self.model_output_edit.setText(model_output)
+            self.model_output_manually_edited = False
+            self._updating_auto_name = False
+        
+        kwargs["model_output"] = model_output
         
         # Log the command being run (for debugging)
         import sys
@@ -556,5 +665,6 @@ class TrainingTab(QWidget):
         """Open the feature selection dialog."""
         dialog = FeatureSelectionDialog(self)
         dialog.features_saved.connect(self._update_feature_button_text)
+        dialog.features_saved.connect(self.update_auto_name)  # Also update auto-name when features change
         dialog.exec()
 
