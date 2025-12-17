@@ -6,7 +6,7 @@ This provides a clean interface between the GUI and the existing CLI code.
 import sys
 import re
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional, Callable
+from typing import List, Dict, Tuple, Optional, Callable, Any
 import pandas as pd
 import numpy as np
 import joblib
@@ -23,6 +23,14 @@ from src.identify_trades import (
     apply_entry_filters as _apply_entry_filters
 )
 from utils.stop_loss_policy import StopLossConfig
+
+# Import SHAP service (optional - may not be available)
+try:
+    from src.shap_service import SHAPService
+    HAS_SHAP_SERVICE = True
+except ImportError:
+    HAS_SHAP_SERVICE = False
+    SHAPService = None
 
 
 class TradeIdentificationService:
@@ -1128,6 +1136,7 @@ class TrainingService:
         fast: bool = False,
         cv_folds: Optional[int] = None,
         diagnostics: bool = False,
+        shap: bool = False,
         imbalance_multiplier: float = 1.0,
         train_start: Optional[str] = None,
         train_end: Optional[str] = None,
@@ -1178,6 +1187,8 @@ class TrainingService:
             cmd.extend(["--cv-folds", str(cv_folds)])
         if diagnostics:
             cmd.append("--diagnostics")
+        if shap:
+            cmd.append("--shap")
         if imbalance_multiplier != 1.0:
             cmd.extend(["--imbalance-multiplier", str(imbalance_multiplier)])
         if train_end is not None:
@@ -1518,6 +1529,30 @@ class TrainingService:
         if val_metrics:
             metrics_dict['validation_metrics'] = val_metrics
         
+        # Parse SHAP artifacts path if SHAP was computed
+        shap_section_match = re.search(r'=== COMPUTING SHAP EXPLANATIONS ===(.*?)(?===|$)', output, re.IGNORECASE | re.DOTALL)
+        if shap_section_match:
+            shap_section = shap_section_match.group(1)
+            
+            # Extract SHAP artifacts path (matches "Artifacts saved to <path>")
+            shap_path_match = re.search(r'Artifacts saved to\s+(.+)', shap_section, re.IGNORECASE)
+            if shap_path_match:
+                shap_path = shap_path_match.group(1).strip()
+                metrics_dict['shap_artifacts_path'] = shap_path
+            
+            # Extract SHAP metadata
+            data_split_match = re.search(r'Data split used:\s*(\w+)', shap_section, re.IGNORECASE)
+            sample_size_match = re.search(r'Samples computed:\s*(\d+)', shap_section, re.IGNORECASE)
+            
+            shap_metadata = {}
+            if data_split_match:
+                shap_metadata['data_split'] = data_split_match.group(1).strip()
+            if sample_size_match:
+                shap_metadata['sample_size'] = int(sample_size_match.group(1))
+            
+            if shap_metadata:
+                metrics_dict['shap_metadata'] = shap_metadata
+        
         # Build message
         message = "Model training completed successfully"
         if model_path:
@@ -1527,6 +1562,8 @@ class TrainingService:
             message += f" ({minutes:.1f} minutes)"
         if test_metrics.get('roc_auc'):
             message += f" - Test ROC AUC: {test_metrics['roc_auc']:.4f}"
+        if metrics_dict.get('shap_artifacts_path'):
+            message += " - SHAP explanations computed"
         
         return message, metrics_dict
 
@@ -2538,4 +2575,286 @@ class StopLossAnalysisService:
             return True
         except Exception:
             return False
+
+
+class SHAPService:
+    """Service for SHAP explainability operations."""
+    
+    def __init__(self):
+        """Initialize SHAP service."""
+        try:
+            from src.shap_service import SHAPService as _SHAPService
+            self._shap_service = _SHAPService()
+            self._available = True
+        except ImportError:
+            self._shap_service = None
+            self._available = False
+    
+    def is_available(self) -> bool:
+        """Check if SHAP service is available."""
+        return self._available
+    
+    def load_artifacts(self, model_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Load SHAP artifacts for a model.
+        
+        Args:
+            model_id: Model identifier (typically the model filename without extension)
+        
+        Returns:
+            Dictionary with SHAP artifacts, or None if not found
+        """
+        if not self._available:
+            return None
+        
+        return self._shap_service.load_artifacts(model_id)
+    
+    def artifact_exists(self, model_id: str) -> bool:
+        """Check if SHAP artifacts exist for a model."""
+        if not self._available:
+            return False
+        
+        return self._shap_service.artifact_exists(model_id)
+    
+    def get_model_id_from_path(self, model_path: str) -> str:
+        """
+        Extract model ID from model file path.
+        
+        Args:
+            model_path: Path to model file
+        
+        Returns:
+            Model ID (filename without extension)
+        """
+        return Path(model_path).stem
+    
+    def recompute_shap(
+        self,
+        model_path: str,
+        model_registry_entry: Dict[str, Any],
+        progress_callback=None
+    ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+        """
+        Recompute SHAP explanations for an existing model.
+        
+        Args:
+            model_path: Path to the model .pkl file
+            model_registry_entry: Model registry entry with parameters (horizon, return_threshold, feature_set, etc.)
+            progress_callback: Optional function(stage, message) to call for progress updates
+        
+        Returns:
+            Tuple of (success: bool, message: str, metadata: Optional[Dict])
+        """
+        if not self._available:
+            return False, "SHAP library not available. Install with: pip install shap", {}
+        
+        try:
+            import joblib
+            import pandas as pd
+            import numpy as np
+            import yaml
+            from pathlib import Path
+            
+            # Import utilities needed for data loading and preparation
+            import sys
+            PROJECT_ROOT = Path(__file__).parent.parent
+            SRC_DIR = PROJECT_ROOT / "src"
+            sys.path.insert(0, str(SRC_DIR))
+            
+            from utils.labeling import label_future_return
+            
+            # Try to import feature set manager
+            try:
+                from feature_set_manager import (
+                    get_feature_set_data_path,
+                    get_train_features_config_path,
+                    DEFAULT_FEATURE_SET
+                )
+                HAS_FEATURE_SET_MANAGER = True
+            except ImportError:
+                HAS_FEATURE_SET_MANAGER = False
+                DEFAULT_FEATURE_SET = "v1"
+            
+            if progress_callback:
+                progress_callback(1, "Loading model...")
+            
+            # Load model
+            model_data = joblib.load(model_path)
+            model_id = Path(model_path).stem
+            
+            # Extract model from dict (models are saved as dict with "model", "features", "metadata")
+            if isinstance(model_data, dict):
+                model = model_data.get("model")
+                if model is None:
+                    # Fallback: maybe the whole thing is the model (old format)
+                    model = model_data
+            else:
+                model = model_data
+            
+            if model is None:
+                return False, "Could not extract model from file. Model file may be corrupted.", {}
+            
+            # Get parameters from registry
+            params = model_registry_entry.get("parameters", {})
+            training_info = model_registry_entry.get("training_info", {})
+            
+            # Get feature set, handling None case
+            feature_set = params.get("feature_set") or training_info.get("feature_set")
+            if not feature_set or feature_set == "None" or str(feature_set).lower() == "none":
+                feature_set = DEFAULT_FEATURE_SET
+            
+            horizon = params.get("horizon") or training_info.get("horizon") or 30
+            return_threshold = params.get("return_threshold") or training_info.get("return_threshold") or 0.05
+            
+            if progress_callback:
+                progress_callback(2, f"Loading feature data (feature set: {feature_set})...")
+            
+            # Determine data directory based on feature set
+            if HAS_FEATURE_SET_MANAGER:
+                data_dir = get_feature_set_data_path(feature_set)
+                train_cfg_path = get_train_features_config_path(feature_set)
+            else:
+                data_dir = PROJECT_ROOT / "data" / "features_labeled"
+                train_cfg_path = PROJECT_ROOT / "config" / "train_features.yaml"
+            
+            if not data_dir.exists():
+                return False, f"Feature data directory not found: {data_dir}", {}
+            
+            # Load feature data
+            parts = []
+            parquet_files = list(data_dir.glob("*.parquet"))
+            if not parquet_files:
+                return False, f"No feature files found in {data_dir}", {}
+            
+            for f in parquet_files:
+                df = pd.read_parquet(f)
+                df.index.name = "date"
+                df["ticker"] = f.stem
+                parts.append(df)
+            
+            df_all = pd.concat(parts, axis=0)
+            
+            if progress_callback:
+                progress_callback(3, f"Calculating labels (horizon={horizon}d, threshold={return_threshold:.2%})...")
+            
+            # Find close and high columns (case-insensitive)
+            close_col = None
+            high_col = None
+            for col in df_all.columns:
+                if col.lower() in ['close', 'adj close']:
+                    close_col = col
+                if col.lower() == 'high':
+                    high_col = col
+            
+            if not close_col:
+                return False, "Could not find 'close' or 'adj close' column in data", {}
+            if not high_col:
+                return False, "Could not find 'high' column in data", {}
+            
+            # Ensure columns are numeric
+            if df_all[close_col].dtype == 'object':
+                df_all[close_col] = pd.to_numeric(df_all[close_col], errors='coerce')
+            if df_all[high_col].dtype == 'object':
+                df_all[high_col] = pd.to_numeric(df_all[high_col], errors='coerce')
+            
+            # Calculate labels
+            label_col = "training_label"
+            df_all = label_future_return(
+                df_all,
+                close_col=close_col,
+                high_col=high_col,
+                horizon=horizon,
+                threshold=return_threshold,
+                label_name=label_col
+            )
+            
+            if progress_callback:
+                progress_callback(4, "Preparing data...")
+            
+            # Prepare data (clean, drop NaNs, exclude raw prices and forward returns)
+            df_clean = df_all.replace([np.inf, -np.inf], np.nan).dropna().copy()
+            
+            # Get feature names (exclude label, ticker, raw prices, forward returns)
+            forward_return_cols = {"5d_return", "10d_return"}
+            raw_price_cols = {"open", "high", "low", "close", "adj close"}
+            all_feats = [c for c in df_clean.columns 
+                        if c not in [label_col, "ticker"] 
+                        and c.lower() not in forward_return_cols
+                        and c.lower() not in raw_price_cols]
+            
+            # Load training config to get enabled features
+            if not train_cfg_path.exists():
+                return False, f"Training config not found: {train_cfg_path}", {}
+            
+            train_cfg = yaml.safe_load(train_cfg_path.read_text(encoding="utf-8")) or {}
+            flags = train_cfg.get("features", {})
+            enabled_feats = {name for name, flag in flags.items() if flag == 1}
+            feats = [f for f in all_feats if f in enabled_feats]
+            
+            if not feats:
+                return False, "No features selected; check train_features.yaml", {}
+            
+            # Extract X and y
+            X_all = df_clean[feats]
+            y_all = df_clean[label_col]
+            
+            # Split data by date (use same logic as training)
+            dates = pd.to_datetime(X_all.index)
+            train_cutoff = pd.to_datetime("2022-12-31")
+            val_cutoff = pd.to_datetime("2023-12-31")
+            
+            train_mask = dates <= train_cutoff
+            val_mask = (dates > train_cutoff) & (dates <= val_cutoff)
+            test_mask = dates > val_cutoff
+            
+            X_val = X_all[val_mask]
+            y_val = y_all[val_mask]
+            
+            # Use validation set if available, otherwise test set
+            if len(X_val) >= 100:
+                shap_data = X_val
+                shap_labels = y_val
+                data_split_name = "validation"
+            elif len(X_all[test_mask]) >= 100:
+                shap_data = X_all[test_mask]
+                shap_labels = y_all[test_mask]
+                data_split_name = "test"
+            else:
+                # Fall back to training set if validation/test are too small
+                shap_data = X_all[train_mask]
+                shap_labels = y_all[train_mask]
+                data_split_name = "training"
+            
+            if progress_callback:
+                progress_callback(5, f"Computing SHAP values ({len(shap_data)} samples)...")
+            
+            # Compute SHAP
+            result = self._shap_service.compute_shap(
+                model=model,
+                X_data=shap_data,
+                y_data=shap_labels,
+                features=feats,
+                model_id=model_id,
+                sample_size=1000,
+                use_stratified=True,
+                data_split=data_split_name
+            )
+            
+            if result["success"]:
+                if progress_callback:
+                    progress_callback(6, "SHAP computation complete!")
+                # Return metadata dict with artifacts_path included
+                metadata = result.get("metadata", {})
+                if not isinstance(metadata, dict):
+                    metadata = {}
+                if result.get("artifacts_path"):
+                    metadata["artifacts_path"] = str(result["artifacts_path"])
+                return True, result["message"], metadata
+            else:
+                return False, result["message"], {}
+                
+        except Exception as e:
+            import traceback
+            error_msg = f"Error recomputing SHAP: {str(e)}\n{traceback.format_exc()}"
+            return False, error_msg, {}
 

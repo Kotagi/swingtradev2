@@ -134,9 +134,14 @@ class TrainingTab(QWidget):
         # Other options
         other_row = QHBoxLayout()
         self.plots_check = QCheckBox("Generate Plots")
-        self.diagnostics_check = QCheckBox("SHAP Diagnostics")
+        self.shap_check = QCheckBox("Compute SHAP Explanations")
+        self.shap_check.setChecked(True)  # Default: enabled
+        self.shap_check.setToolTip("Compute and save SHAP explanations for model interpretability (adds ~30-60 seconds)")
+        self.diagnostics_check = QCheckBox("SHAP Diagnostics (Legacy)")
+        self.diagnostics_check.setToolTip("Legacy SHAP diagnostics - use 'Compute SHAP Explanations' instead")
         self.no_early_stop_check = QCheckBox("Disable Early Stopping")
         other_row.addWidget(self.plots_check)
+        other_row.addWidget(self.shap_check)
         other_row.addWidget(self.diagnostics_check)
         other_row.addWidget(self.no_early_stop_check)
         other_row.addStretch()
@@ -404,6 +409,7 @@ class TrainingTab(QWidget):
             "cv_folds": self.cv_folds_spin.value(),
             "fast": self.fast_check.isChecked(),
             "plots": self.plots_check.isChecked(),
+            "shap": self.shap_check.isChecked(),
             "diagnostics": self.diagnostics_check.isChecked(),
             "no_early_stop": self.no_early_stop_check.isChecked(),
             "imbalance_multiplier": self.imbalance_spin.value(),
@@ -479,6 +485,7 @@ class TrainingTab(QWidget):
             "fast": self.fast_check.isChecked(),
             "plots": self.plots_check.isChecked(),
             "diagnostics": self.diagnostics_check.isChecked(),
+            "shap": self.shap_check.isChecked(),
             "no_early_stop": self.no_early_stop_check.isChecked(),
             "imbalance_multiplier": self.imbalance_spin.value()
         }
@@ -592,12 +599,18 @@ class TrainingTab(QWidget):
                     # Count total features from config/features.yaml
                     total_features = self._count_total_features()
                     
-                    # Extract training info
+                    # Extract training info (including SHAP if available)
                     training_info = {
                         'training_time': metrics_dict.get('training_time'),
                         'feature_count': feature_count,
                         'total_features': total_features,
                     }
+                    
+                    # Add SHAP info if available (from training metadata)
+                    if 'shap_artifacts_path' in metrics_dict:
+                        training_info['shap_artifacts_path'] = metrics_dict['shap_artifacts_path']
+                    if 'shap_metadata' in metrics_dict:
+                        training_info['shap_metadata'] = metrics_dict['shap_metadata']
                     
                     # Prepare metrics for registry
                     registry_metrics = {

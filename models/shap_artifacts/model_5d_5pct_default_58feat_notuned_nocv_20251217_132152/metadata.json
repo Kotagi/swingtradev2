@@ -1,0 +1,14 @@
+{
+  "model_id": "model_5d_5pct_default_58feat_notuned_nocv_20251217_132152",
+  "computation_date": "2025-12-17T16:18:17.862318",
+  "data_split": "validation",
+  "sample_size": 1000,
+  "total_samples_available": 122263,
+  "n_features": 58,
+  "feature_list_hash": "2fe7532eda92f8f7faa0cc297ffe1452",
+  "top_n_concentration": {
+    "n": 10,
+    "percentage": 93.3120756149292
+  },
+  "shap_version": "0.50.0"
+}
