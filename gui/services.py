@@ -2686,7 +2686,11 @@ class SHAPService:
             params = model_registry_entry.get("parameters", {})
             training_info = model_registry_entry.get("training_info", {})
             
-            feature_set = params.get("feature_set", DEFAULT_FEATURE_SET)
+            # Get feature set, handling None case
+            feature_set = params.get("feature_set") or training_info.get("feature_set")
+            if not feature_set or feature_set == "None":
+                feature_set = DEFAULT_FEATURE_SET
+            
             horizon = params.get("horizon") or training_info.get("horizon") or 30
             return_threshold = params.get("return_threshold") or training_info.get("return_threshold") or 0.05
             
