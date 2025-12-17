@@ -36,7 +36,37 @@
       "training_info": {
         "training_time": 353.39,
         "feature_count": 58,
-        "total_features": 59
+        "total_features": 59,
+        "shap_metadata": {
+          "model_id": "model_20d_15pct_default_58feat_notuned_nocv_20251217_130901",
+          "computation_date": "2025-12-17T16:19:42.167039",
+          "data_split": "validation",
+          "sample_size": 1000,
+          "total_samples_available": 122263,
+          "n_features": 58,
+          "feature_list_hash": "2fe7532eda92f8f7faa0cc297ffe1452",
+          "top_n_concentration": {
+            "n": 10,
+            "percentage": 97.89547687768936
+          },
+          "shap_version": "0.50.0"
+        },
+        "shap_artifacts_path": "C:\\Users\\brand\\Documents\\Stocks\\SwingTradeApp\\SwingTradeV2\\models\\shap_artifacts\\model_20d_15pct_default_58feat_notuned_nocv_20251217_130901"
+      },
+      "shap_artifacts_path": "C:\\Users\\brand\\Documents\\Stocks\\SwingTradeApp\\SwingTradeV2\\models\\shap_artifacts\\model_20d_15pct_default_58feat_notuned_nocv_20251217_130901",
+      "shap_metadata": {
+        "model_id": "model_20d_15pct_default_58feat_notuned_nocv_20251217_130901",
+        "computation_date": "2025-12-17T16:19:42.167039",
+        "data_split": "validation",
+        "sample_size": 1000,
+        "total_samples_available": 122263,
+        "n_features": 58,
+        "feature_list_hash": "2fe7532eda92f8f7faa0cc297ffe1452",
+        "top_n_concentration": {
+          "n": 10,
+          "percentage": 97.89547687768936
+        },
+        "shap_version": "0.50.0"
       }
     },
     {
@@ -75,8 +105,79 @@
       "training_info": {
         "training_time": 374.09,
         "feature_count": 58,
-        "total_features": 59
+        "total_features": 59,
+        "shap_metadata": {
+          "model_id": "model_5d_5pct_default_58feat_notuned_nocv_20251217_132152",
+          "computation_date": "2025-12-17T16:18:17.862318",
+          "data_split": "validation",
+          "sample_size": 1000,
+          "total_samples_available": 122263,
+          "n_features": 58,
+          "feature_list_hash": "2fe7532eda92f8f7faa0cc297ffe1452",
+          "top_n_concentration": {
+            "n": 10,
+            "percentage": 93.3120756149292
+          },
+          "shap_version": "0.50.0"
+        },
+        "shap_artifacts_path": "C:\\Users\\brand\\Documents\\Stocks\\SwingTradeApp\\SwingTradeV2\\models\\shap_artifacts\\model_5d_5pct_default_58feat_notuned_nocv_20251217_132152"
+      },
+      "shap_artifacts_path": "C:\\Users\\brand\\Documents\\Stocks\\SwingTradeApp\\SwingTradeV2\\models\\shap_artifacts\\model_5d_5pct_default_58feat_notuned_nocv_20251217_132152",
+      "shap_metadata": {
+        "model_id": "model_5d_5pct_default_58feat_notuned_nocv_20251217_132152",
+        "computation_date": "2025-12-17T16:18:17.862318",
+        "data_split": "validation",
+        "sample_size": 1000,
+        "total_samples_available": 122263,
+        "n_features": 58,
+        "feature_list_hash": "2fe7532eda92f8f7faa0cc297ffe1452",
+        "top_n_concentration": {
+          "n": 10,
+          "percentage": 93.3120756149292
+        },
+        "shap_version": "0.50.0"
       }
+    },
+    {
+      "id": "model_20251217_151102",
+      "name": "XGBoost_30d_5%",
+      "file_path": "C:\\Users\\brand\\Documents\\Stocks\\SwingTradeApp\\SwingTradeV2\\models\\Test.pkl",
+      "training_date": "2025-12-17T15:11:02.761683",
+      "metrics": {
+        "test": {
+          "roc_auc": 0.5224,
+          "average_precision": 0.7499,
+          "f1_score": 0.6841,
+          "precision": 0.7562,
+          "recall": 0.6246,
+          "accuracy": 0.5722
+        },
+        "validation": {
+          "roc_auc": 0.6696,
+          "average_precision": 0.9331,
+          "f1_score": 0.7334,
+          "precision": 0.9248,
+          "recall": 0.6076,
+          "accuracy": 0.6114
+        }
+      },
+      "parameters": {
+        "horizon": 30,
+        "return_threshold": 0.05,
+        "feature_set": null,
+        "tune": false,
+        "cv": false,
+        "imbalance_multiplier": 1.0,
+        "n_iter": null,
+        "cv_folds": null
+      },
+      "training_info": {
+        "training_time": 268.42,
+        "feature_count": 58,
+        "total_features": 59
+      },
+      "shap_artifacts_path": null,
+      "shap_metadata": null
     }
   ],
   "version": "1.0"
