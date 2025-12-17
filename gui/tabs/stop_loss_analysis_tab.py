@@ -413,7 +413,7 @@ class StopLossAnalysisTab(QWidget):
         export_group = QGroupBox("Export")
         export_layout = QHBoxLayout()
         
-        export_report_btn = QPushButton("Export Full Report")
+        export_report_btn = QPushButton("Export HTML Report")
         export_report_btn.setStyleSheet("""
             QPushButton {
                 background-color: #2d2d2d;
@@ -1646,52 +1646,37 @@ class StopLossAnalysisTab(QWidget):
         layout.addWidget(canvas)
     
     def export_full_report(self):
-        """Export full analysis report (PDF/HTML)."""
+        """Export full analysis report as HTML (can be printed to PDF in browser)."""
         if not self.analysis_results:
             QMessageBox.warning(self, "No Analysis", "Please run analysis first before exporting.")
             return
         
-        # Get export format
-        format_choice, ok = QInputDialog.getItem(
-            self,
-            "Export Format",
-            "Select export format:\n\nNote: PDF requires GTK+ libraries (may not work on Windows).\nHTML can be printed to PDF in your browser.",
-            ["HTML", "PDF"],
-            0,
-            False
-        )
-        
-        if not ok:
-            return
-        
         # Get output file
-        if format_choice == "HTML":
-            ext = "html"
-            filter_str = "HTML Files (*.html);;All Files (*)"
-        else:
-            ext = "pdf"
-            filter_str = "PDF Files (*.pdf);;All Files (*)"
-        
-        default_name = f"stop_loss_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
+        default_name = f"stop_loss_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
         default_path = PROJECT_ROOT / "data" / "backtest_results" / default_name
         
         file_path, _ = QFileDialog.getSaveFileName(
             self,
-            f"Export {format_choice} Report",
+            "Export HTML Report",
             str(default_path),
-            filter_str
+            "HTML Files (*.html);;All Files (*)"
         )
         
         if not file_path:
             return
         
         try:
-            if format_choice == "HTML":
-                self._export_html_report(file_path)
-            else:
-                self._export_pdf_report(file_path)
-            
-            QMessageBox.information(self, "Export Successful", f"Report exported to:\n{file_path}")
+            self._export_html_report(file_path)
+            QMessageBox.information(
+                self, 
+                "Export Successful", 
+                f"HTML report exported to:\n{file_path}\n\n"
+                f"To create a PDF:\n"
+                f"1. Open the HTML file in your browser\n"
+                f"2. Press Ctrl+P (or File → Print)\n"
+                f"3. Select 'Save as PDF' or 'Microsoft Print to PDF'\n"
+                f"4. Save the PDF file"
+            )
         except Exception as e:
             QMessageBox.critical(self, "Export Failed", f"Failed to export report: {str(e)}")
     
@@ -1797,68 +1782,6 @@ class StopLossAnalysisTab(QWidget):
         
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(html)
-    
-    def _export_pdf_report(self, file_path: str):
-        """Export analysis report as PDF."""
-        # Try to use weasyprint if available, otherwise fall back to HTML
-        try:
-            import weasyprint
-            # Export HTML first, then convert to PDF
-            import tempfile
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as tmp:
-                html_path = tmp.name
-                self._export_html_report(html_path)
-            
-            # Convert HTML to PDF
-            weasyprint.HTML(filename=html_path).write_pdf(file_path)
-            
-            # Clean up temp file
-            import os
-            try:
-                os.unlink(html_path)
-            except Exception:
-                pass  # Ignore cleanup errors
-            
-        except ImportError:
-            # Fallback: Export as HTML and provide instructions
-            html_path = file_path.replace('.pdf', '.html')
-            self._export_html_report(html_path)
-            QMessageBox.information(
-                self,
-                "PDF Export",
-                f"PDF export requires the 'weasyprint' library.\n\n"
-                f"Note: WeasyPrint requires GTK+ libraries which can be difficult to install on Windows.\n\n"
-                f"HTML report saved to: {html_path}\n\n"
-                f"Recommended: Open the HTML file in your browser and use 'Print to PDF' for best results."
-            )
-        except Exception as e:
-            # If conversion fails (e.g., missing GTK+ libraries on Windows), fall back to HTML
-            html_path = file_path.replace('.pdf', '.html')
-            self._export_html_report(html_path)
-            
-            # Check if it's a library loading error
-            error_msg = str(e)
-            if 'libgobject' in error_msg.lower() or 'gtk' in error_msg.lower() or 'library' in error_msg.lower():
-                QMessageBox.information(
-                    self,
-                    "PDF Export - Using HTML Alternative",
-                    f"PDF generation requires GTK+ libraries which are not easily available on Windows.\n\n"
-                    f"HTML report saved to: {html_path}\n\n"
-                    f"Recommended Solution:\n"
-                    f"1. Open the HTML file in your web browser\n"
-                    f"2. Press Ctrl+P (or File → Print)\n"
-                    f"3. Select 'Save as PDF' or 'Microsoft Print to PDF' as the printer\n"
-                    f"4. Save the PDF file\n\n"
-                    f"This method produces high-quality PDFs and works on all systems."
-                )
-            else:
-                QMessageBox.warning(
-                    self,
-                    "PDF Export Failed",
-                    f"Failed to generate PDF: {str(e)}\n\n"
-                    f"HTML report saved to: {html_path}\n\n"
-                    f"You can open this in a browser and print to PDF."
-                )
     
     def show_feature_info(self, feature_name: str):
         """Show feature information dialog."""
