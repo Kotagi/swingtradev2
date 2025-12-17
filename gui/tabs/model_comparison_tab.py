@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QScrollArea, QCheckBox, QLineEdit, QComboBox,
     QDialog, QTextEdit, QInputDialog
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QIcon, QPalette
 from pathlib import Path
 from datetime import datetime
@@ -26,6 +26,31 @@ from gui.tabs.shap_view_dialog import SHAPViewDialog, SHAPComparisonDialog
 from gui.services import SHAPService
 
 
+class RecomputeSHAPWorker(QThread):
+    """Worker thread for recomputing SHAP explanations."""
+    
+    finished = pyqtSignal(bool, str, dict)  # success, message, metadata
+    progress = pyqtSignal(int, str)  # stage, message
+    
+    def __init__(self, shap_service: SHAPService, model_path: str, model_registry_entry: Dict):
+        super().__init__()
+        self.shap_service = shap_service
+        self.model_path = model_path
+        self.model_registry_entry = model_registry_entry
+    
+    def run(self):
+        """Recompute SHAP in background thread."""
+        def progress_callback(stage: int, message: str):
+            self.progress.emit(stage, message)
+        
+        success, message, metadata = self.shap_service.recompute_shap(
+            model_path=self.model_path,
+            model_registry_entry=self.model_registry_entry,
+            progress_callback=progress_callback
+        )
+        self.finished.emit(success, message, metadata)
+
+
 class ModelComparisonTab(QWidget):
     """Tab for comparing trained models."""
     
@@ -33,6 +58,8 @@ class ModelComparisonTab(QWidget):
         super().__init__(parent)
         self.registry = ModelRegistry()
         self.selected_models = []  # List of model IDs for comparison
+        self.shap_service = SHAPService()
+        self.recompute_worker = None  # Track current worker
         self.init_ui()
         self.refresh_model_list()
     
@@ -802,6 +829,15 @@ class ModelComparisonTab(QWidget):
             QMessageBox.warning(self, "Multiple Selection", "Please select only one model to recompute SHAP.")
             return
         
+        # Check if SHAP is available
+        if not self.shap_service.is_available():
+            QMessageBox.warning(
+                self,
+                "SHAP Not Available",
+                "SHAP library is not installed. Install with: pip install shap"
+            )
+            return
+        
         # Get selected model
         model_id = self.selected_models[0]
         model = self.registry.get_model(model_id)
@@ -809,14 +845,87 @@ class ModelComparisonTab(QWidget):
             QMessageBox.warning(self, "Error", "Could not find selected model.")
             return
         
-        # TODO: Implement recompute SHAP functionality
-        # This will require loading the model, loading validation data, and calling SHAP service
-        QMessageBox.information(
+        model_path = model.get("file_path")
+        if not model_path or not Path(model_path).exists():
+            QMessageBox.warning(self, "Error", f"Model file not found: {model_path}")
+            return
+        
+        # Confirm with user
+        reply = QMessageBox.question(
             self,
-            "Not Yet Implemented",
-            "SHAP recomputation will be implemented in the next phase.\n\n"
-            "For now, retrain the model with --shap flag to generate SHAP explanations."
+            "Recompute SHAP",
+            f"Recompute SHAP explanations for model:\n{model.get('name', 'Unknown')}\n\n"
+            f"This may take several minutes. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        # Disable button during computation
+        self.recompute_shap_btn.setEnabled(False)
+        
+        # Create and start worker
+        self.recompute_worker = RecomputeSHAPWorker(
+            shap_service=self.shap_service,
+            model_path=model_path,
+            model_registry_entry=model
+        )
+        self.recompute_worker.progress.connect(self.on_recompute_progress)
+        self.recompute_worker.finished.connect(self.on_recompute_finished)
+        self.recompute_worker.start()
+    
+    def on_recompute_progress(self, stage: int, message: str):
+        """Handle progress updates from recompute worker."""
+        # Could add a progress bar here if needed
+        pass
+    
+    def on_recompute_finished(self, success: bool, message: str, metadata: dict):
+        """Handle completion of SHAP recomputation."""
+        self.recompute_shap_btn.setEnabled(True)
+        
+        if success:
+            # Update model registry with new SHAP artifacts path
+            model_id = self.selected_models[0]
+            model = self.registry.get_model(model_id)
+            if model and metadata:
+                # Update training_info with SHAP metadata
+                training_info = model.get("training_info", {}).copy()
+                
+                # Extract artifacts path from metadata
+                artifacts_path = None
+                if isinstance(metadata, dict):
+                    artifacts_path = metadata.get("artifacts_path")
+                    # Store metadata (excluding artifacts_path which goes in separate field)
+                    shap_metadata = {k: v for k, v in metadata.items() if k != "artifacts_path"}
+                    if shap_metadata:
+                        training_info["shap_metadata"] = shap_metadata
+                
+                if artifacts_path:
+                    training_info["shap_artifacts_path"] = str(artifacts_path)
+                
+                # Update registry
+                updates = {
+                    "training_info": training_info,
+                    "shap_artifacts_path": str(artifacts_path) if artifacts_path else None,
+                    "shap_metadata": training_info.get("shap_metadata")
+                }
+                self.registry.update_model(model_id, updates)
+            
+            QMessageBox.information(
+                self,
+                "SHAP Recomputation Complete",
+                f"SHAP explanations have been successfully recomputed.\n\n{message}"
+            )
+            
+            # Refresh model list to show updated SHAP status
+            self.refresh_model_list()
+        else:
+            QMessageBox.warning(
+                self,
+                "SHAP Recomputation Failed",
+                f"Failed to recompute SHAP explanations:\n\n{message}"
+            )
     
     def _get_feature_count_display(self, model: dict) -> str:
         """
