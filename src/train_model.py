@@ -447,6 +447,11 @@ def main() -> None:
         help="Compute and print SHAP diagnostics (requires shap library)"
     )
     parser.add_argument(
+        "--shap",
+        action="store_true",
+        help="Compute and save SHAP explanations as artifacts (default: False, but recommended for model interpretability)"
+    )
+    parser.add_argument(
         "--no-early-stop",
         action="store_true",
         help="Disable early stopping (train for full n_estimators)"
@@ -977,7 +982,77 @@ def main() -> None:
     print(f"Metadata saved to: {metadata_file}")
     print(f"Total training time: {elapsed:.2f} seconds ({elapsed/60:.2f} minutes)")
 
-    # Step 14: Optional SHAP diagnostics
+    # Step 14: Optional SHAP explanations (using new SHAP service)
+    shap_artifacts_path = None
+    if args.shap:
+        print("\n=== COMPUTING SHAP EXPLANATIONS ===")
+        try:
+            # Import SHAP service (it's in the same src/ directory)
+            from shap_service import SHAPService
+            
+            # Generate model ID from model filename (without extension)
+            model_id = MODEL_OUT.stem
+            
+            # Initialize SHAP service
+            shap_service = SHAPService()
+            
+            # Use validation set for SHAP (out-of-sample, more realistic)
+            # Fall back to test set if validation is too small
+            if len(X_val) >= 100:
+                shap_data = X_val
+                shap_labels = y_val
+                data_split_name = "validation"
+            elif len(X_test) >= 100:
+                shap_data = X_test
+                shap_labels = y_test
+                data_split_name = "test"
+            else:
+                # Use training set if validation/test are too small (not ideal but better than nothing)
+                shap_data = X_train
+                shap_labels = y_train
+                data_split_name = "training"
+                print("Warning: Validation/test sets too small, using training set for SHAP (less ideal)")
+            
+            # Compute SHAP
+            result = shap_service.compute_shap(
+                model=model,
+                X_data=shap_data,
+                y_data=shap_labels,
+                features=feats,
+                model_id=model_id,
+                sample_size=1000,  # Default sample size
+                use_stratified=True,
+                data_split=data_split_name
+            )
+            
+            if result["success"]:
+                shap_artifacts_path = result["artifacts_path"]
+                print(f"✓ {result['message']}")
+                print(f"  Data split used: {data_split_name}")
+                print(f"  Samples computed: {result['metadata']['sample_size']}")
+                
+                # Store SHAP artifacts path in training metadata
+                training_metadata['shap_artifacts_path'] = str(shap_artifacts_path)
+                training_metadata['shap_metadata'] = result['metadata']
+                
+                # Update model data and save
+                model_data['metadata'] = training_metadata
+                joblib.dump(model_data, MODEL_OUT)
+                
+                # Update metadata JSON file
+                with open(metadata_file, 'w') as f:
+                    json.dump(training_metadata, f, indent=2)
+            else:
+                print(f"✗ SHAP computation failed: {result['message']}")
+                
+        except ImportError:
+            print("SHAP service not available. Ensure shap_service.py is in the src/ directory.")
+        except Exception as e:
+            print(f"Error computing SHAP: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    # Step 15: Optional SHAP diagnostics (legacy, for backward compatibility)
     if args.diagnostics:
         print("\n=== SHAP DIAGNOSTICS ===")
         try:
