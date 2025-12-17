@@ -2646,7 +2646,7 @@ class SHAPService:
             Tuple of (success: bool, message: str, metadata: Optional[Dict])
         """
         if not self._available:
-            return False, "SHAP library not available. Install with: pip install shap", None
+            return False, "SHAP library not available. Install with: pip install shap", {}
         
         try:
             import joblib
@@ -2702,13 +2702,13 @@ class SHAPService:
                 train_cfg_path = PROJECT_ROOT / "config" / "train_features.yaml"
             
             if not data_dir.exists():
-                return False, f"Feature data directory not found: {data_dir}", None
+                return False, f"Feature data directory not found: {data_dir}", {}
             
             # Load feature data
             parts = []
             parquet_files = list(data_dir.glob("*.parquet"))
             if not parquet_files:
-                return False, f"No feature files found in {data_dir}", None
+                return False, f"No feature files found in {data_dir}", {}
             
             for f in parquet_files:
                 df = pd.read_parquet(f)
@@ -2731,9 +2731,9 @@ class SHAPService:
                     high_col = col
             
             if not close_col:
-                return False, "Could not find 'close' or 'adj close' column in data", None
+                return False, "Could not find 'close' or 'adj close' column in data", {}
             if not high_col:
-                return False, "Could not find 'high' column in data", None
+                return False, "Could not find 'high' column in data", {}
             
             # Ensure columns are numeric
             if df_all[close_col].dtype == 'object':
@@ -2768,7 +2768,7 @@ class SHAPService:
             
             # Load training config to get enabled features
             if not train_cfg_path.exists():
-                return False, f"Training config not found: {train_cfg_path}", None
+                return False, f"Training config not found: {train_cfg_path}", {}
             
             train_cfg = yaml.safe_load(train_cfg_path.read_text(encoding="utf-8")) or {}
             flags = train_cfg.get("features", {})
@@ -2776,7 +2776,7 @@ class SHAPService:
             feats = [f for f in all_feats if f in enabled_feats]
             
             if not feats:
-                return False, "No features selected; check train_features.yaml", None
+                return False, "No features selected; check train_features.yaml", {}
             
             # Extract X and y
             X_all = df_clean[feats]
@@ -2829,14 +2829,16 @@ class SHAPService:
                     progress_callback(6, "SHAP computation complete!")
                 # Return metadata dict with artifacts_path included
                 metadata = result.get("metadata", {})
+                if not isinstance(metadata, dict):
+                    metadata = {}
                 if result.get("artifacts_path"):
                     metadata["artifacts_path"] = str(result["artifacts_path"])
                 return True, result["message"], metadata
             else:
-                return False, result["message"], None
+                return False, result["message"], {}
                 
         except Exception as e:
             import traceback
             error_msg = f"Error recomputing SHAP: {str(e)}\n{traceback.format_exc()}"
-            return False, error_msg, None
+            return False, error_msg, {}
 
