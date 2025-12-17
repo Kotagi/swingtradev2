@@ -2679,8 +2679,20 @@ class SHAPService:
                 progress_callback(1, "Loading model...")
             
             # Load model
-            model = joblib.load(model_path)
+            model_data = joblib.load(model_path)
             model_id = Path(model_path).stem
+            
+            # Extract model from dict (models are saved as dict with "model", "features", "metadata")
+            if isinstance(model_data, dict):
+                model = model_data.get("model")
+                if model is None:
+                    # Fallback: maybe the whole thing is the model (old format)
+                    model = model_data
+            else:
+                model = model_data
+            
+            if model is None:
+                return False, "Could not extract model from file. Model file may be corrupted.", {}
             
             # Get parameters from registry
             params = model_registry_entry.get("parameters", {})
@@ -2688,7 +2700,7 @@ class SHAPService:
             
             # Get feature set, handling None case
             feature_set = params.get("feature_set") or training_info.get("feature_set")
-            if not feature_set or feature_set == "None":
+            if not feature_set or feature_set == "None" or str(feature_set).lower() == "none":
                 feature_set = DEFAULT_FEATURE_SET
             
             horizon = params.get("horizon") or training_info.get("horizon") or 30
