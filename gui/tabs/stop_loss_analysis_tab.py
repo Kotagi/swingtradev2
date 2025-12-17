@@ -18,6 +18,7 @@ import numpy as np
 from datetime import datetime
 
 from gui.services import StopLossAnalysisService, DataService
+from gui.tabs.backtest_tab import FeatureInfoDialog
 
 try:
     import matplotlib
@@ -992,7 +993,7 @@ class StopLossAnalysisTab(QWidget):
             }
         """)
         info_btn.setToolTip("Show feature information")
-        # Will connect to feature info dialog in later phase
+        info_btn.clicked.connect(lambda checked=False, feat=recommendation['feature']: self.show_feature_info(feat))
         item_layout.addWidget(info_btn)
         
         # Preview Impact button (will be implemented in Unit 2.3)
@@ -1799,17 +1800,50 @@ class StopLossAnalysisTab(QWidget):
     
     def _export_pdf_report(self, file_path: str):
         """Export analysis report as PDF."""
-        # For PDF, we'll use HTML to PDF conversion or a simple approach
-        # For now, export as HTML and inform user they can convert it
-        html_path = file_path.replace('.pdf', '.html')
-        self._export_html_report(html_path)
-        QMessageBox.information(
-            self,
-            "PDF Export",
-            f"PDF export requires additional libraries.\n\n"
-            f"HTML report saved to: {html_path}\n\n"
-            f"You can open this in a browser and print to PDF."
-        )
+        # Try to use weasyprint if available, otherwise fall back to HTML
+        try:
+            import weasyprint
+            # Export HTML first, then convert to PDF
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as tmp:
+                html_path = tmp.name
+                self._export_html_report(html_path)
+            
+            # Convert HTML to PDF
+            weasyprint.HTML(filename=html_path).write_pdf(file_path)
+            
+            # Clean up temp file
+            import os
+            os.unlink(html_path)
+            
+        except ImportError:
+            # Fallback: Export as HTML and provide instructions
+            html_path = file_path.replace('.pdf', '.html')
+            self._export_html_report(html_path)
+            QMessageBox.information(
+                self,
+                "PDF Export",
+                f"PDF export requires the 'weasyprint' library.\n\n"
+                f"Install with: pip install weasyprint\n\n"
+                f"For now, HTML report saved to: {html_path}\n\n"
+                f"You can open this in a browser and print to PDF."
+            )
+        except Exception as e:
+            # If conversion fails, fall back to HTML
+            html_path = file_path.replace('.pdf', '.html')
+            self._export_html_report(html_path)
+            QMessageBox.warning(
+                self,
+                "PDF Export Failed",
+                f"Failed to generate PDF: {str(e)}\n\n"
+                f"HTML report saved to: {html_path}\n\n"
+                f"You can open this in a browser and print to PDF."
+            )
+    
+    def show_feature_info(self, feature_name: str):
+        """Show feature information dialog."""
+        dialog = FeatureInfoDialog(feature_name, parent=self)
+        dialog.exec()
     
     def export_recommendations_table(self):
         """Export recommendations table as CSV."""
