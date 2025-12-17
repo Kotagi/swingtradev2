@@ -133,6 +133,7 @@ class HelpDialog(QDialog):
             <li><b>Backtest Comparison</b>: Side-by-side comparison of backtest results</li>
             <li><b>Filter Presets</b>: Save and apply entry filters from stop-loss analysis</li>
             <li><b>Adaptive Stop-Losses</b>: ATR-based stops that adapt to volatility</li>
+            <li><b>SHAP Explainability</b>: Model interpretability with feature importance rankings and visualizations</li>
         </ul>
         
         <h3>Documentation</h3>
@@ -288,7 +289,8 @@ class HelpDialog(QDialog):
             <li><b>CV Folds</b>: Number of cross-validation folds (2-10, auto: 3 or 2 if fast mode)</li>
             <li><b>Fast Mode</b>: Faster training with reduced search space (~3-5x faster)</li>
             <li><b>Generate Plots</b>: Create training curves and feature importance charts</li>
-            <li><b>SHAP Diagnostics</b>: Compute SHAP values for model interpretation</li>
+            <li><b>Compute SHAP Explanations</b>: Generate SHAP values for model interpretability (recommended, adds ~30-60 seconds)</li>
+            <li><b>SHAP Diagnostics (Legacy)</b>: Legacy SHAP diagnostics - use 'Compute SHAP Explanations' instead</li>
             <li><b>Disable Early Stopping</b>: Train for full number of rounds (not recommended)</li>
         </ul>
         
@@ -304,6 +306,16 @@ class HelpDialog(QDialog):
         <h3>Model Registry</h3>
         <p>Models are automatically registered in the model registry with metrics, parameters, and training info. 
         View and compare models in the "Model Comparison" tab.</p>
+        
+        <h3>SHAP Explainability</h3>
+        <p>Enable "Compute SHAP Explanations" to generate model interpretability artifacts:</p>
+        <ul>
+            <li>Feature importance rankings based on SHAP values</li>
+            <li>Summary visualizations showing how features impact predictions</li>
+            <li>View SHAP explanations in the Model Comparison tab</li>
+            <li>Compare SHAP explanations between two models</li>
+            <li>Recompute SHAP for models trained without it</li>
+        </ul>
         
         <h3>Presets</h3>
         <p>Save your training configuration as a preset for easy reuse. Load presets to quickly restore settings.</p>
@@ -514,16 +526,17 @@ class HelpDialog(QDialog):
         """Create model comparison help tab."""
         content = """
         <h2>Model Comparison</h2>
-        <p>View and compare trained models side-by-side.</p>
+        <p>View and compare trained models side-by-side, including SHAP explainability.</p>
         
         <h3>Model List</h3>
         <p>The main table displays all registered models with key information:</p>
         <ul>
             <li><b>Select</b>: Checkbox to select models for comparison</li>
-            <li><b>Model Name</b>: Auto-generated or custom model name</li>
+            <li><b>Model Name</b>: Auto-generated or custom model name (hover to see full file path)</li>
             <li><b>Date</b>: Training date</li>
             <li><b>Metrics</b>: ROC AUC, Accuracy, Precision, Recall, F1 Score, Average Precision</li>
             <li><b>Feature Set</b>: Feature set version used</li>
+            <li><b>Features</b>: Number of enabled features (e.g., "45/57")</li>
             <li><b>Horizon</b>: Trading days used for label calculation</li>
             <li><b>Tuned</b>: Whether hyperparameter tuning was used</li>
             <li><b>CV</b>: Whether cross-validation was used</li>
@@ -547,8 +560,40 @@ class HelpDialog(QDialog):
             <li>Compare different hyperparameter configurations</li>
         </ul>
         
-        <h3>Delete Models</h3>
-        <p>Select models and click "Delete Selected" to remove them from the registry (model files are not deleted).</p>
+        <h3>SHAP Explainability</h3>
+        <p>View and compare SHAP (SHapley Additive exPlanations) values for model interpretability:</p>
+        <ul>
+            <li><b>View SHAP</b>: View SHAP explanations for a single selected model
+                <ul>
+                    <li>Feature importance ranking (top features by SHAP value)</li>
+                    <li>Summary statistics (data split, sample size, computation details)</li>
+                    <li>SHAP summary plot visualization (beeswarm plot showing feature impacts)</li>
+                    <li>Info button (ℹ) next to plot explains how to interpret SHAP plots</li>
+                </ul>
+            </li>
+            <li><b>Compare SHAP</b>: Compare SHAP explanations between exactly 2 selected models
+                <ul>
+                    <li>Side-by-side feature importance rankings</li>
+                    <li>Comparison summary highlighting differences</li>
+                    <li>Identify which features gained/lost importance between models</li>
+                </ul>
+            </li>
+            <li><b>Recompute SHAP</b>: Generate SHAP explanations for models trained without SHAP
+                <ul>
+                    <li>Select a single model without SHAP artifacts</li>
+                    <li>Recomputes SHAP using validation data</li>
+                    <li>Updates model registry with new SHAP artifacts</li>
+                    <li>Progress shown during computation (may take several minutes)</li>
+                </ul>
+            </li>
+        </ul>
+        <p><b>Note:</b> SHAP requires the <code>shap</code> library. Install with <code>pip install shap</code>.</p>
+        
+        <h3>Model Management</h3>
+        <ul>
+            <li><b>Rename Selected</b>: Rename a model in the registry (hover over name to see full file path)</li>
+            <li><b>Delete Selected</b>: Delete selected models from registry and remove model files from disk</li>
+        </ul>
         
         <h3>Help Button</h3>
         <p>Click the "?" button for detailed explanations of all metrics and how to interpret them.</p>

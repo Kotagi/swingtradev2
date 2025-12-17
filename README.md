@@ -13,6 +13,7 @@ A comprehensive machine learning application for identifying swing trading oppor
 - **🖥️ Modern GUI**: Full-featured PyQt6 interface with dark theme
 - **📊 Model Comparison**: Side-by-side comparison of trained models and backtest results
 - **🔍 Advanced Analytics**: Trade log analysis, performance metrics, and visualizations
+- **🧠 SHAP Explainability**: Model interpretability with SHAP values - view feature importance, compare models, and recompute explanations
 
 ## Quick Start
 
@@ -34,10 +35,11 @@ The GUI provides a complete interface for all operations:
 - **Dashboard**: System status and recent opportunities
 - **Data Management**: Download and clean stock data
 - **Feature Engineering**: Build technical indicators
-- **Model Training**: Train ML models with hyperparameter tuning
+- **Model Training**: Train ML models with hyperparameter tuning and optional SHAP explainability
 - **Backtesting**: Test strategies with comprehensive metrics
 - **Analysis**: Trade log viewer, performance metrics, model/backtest comparison
 - **Stop-Loss Analysis**: Analyze stop-loss patterns and generate filter recommendations
+- **Model Comparison**: Compare trained models, view SHAP explanations, and recompute SHAP for existing models
 - **Trade Identification**: Find current trading opportunities
 
 ### CLI Pipeline
@@ -90,6 +92,7 @@ SwingTradeV2/
 │   └── utils/       # GUI utilities
 ├── info/             # Documentation (see below)
 ├── models/           # Trained models and metadata
+│   └── shap_artifacts/  # SHAP explanation artifacts
 ├── scripts/          # Utility scripts
 ├── src/              # Main application code
 │   ├── swing_trade_app.py  # Main CLI entry point
@@ -99,7 +102,8 @@ SwingTradeV2/
 │   ├── train_model.py      # Model training
 │   ├── enhanced_backtest.py # Backtesting
 │   ├── identify_trades.py   # Trade identification
-│   └── analyze_stop_losses.py # Stop-loss analysis
+│   ├── analyze_stop_losses.py # Stop-loss analysis
+│   └── shap_service.py     # SHAP explainability service
 ├── tests/            # Test files
 ├── utils/             # Utility modules
 ├── README.md          # This file
@@ -160,6 +164,7 @@ The application computes 57 technical indicators across 11 categories:
 - **Feature Scaling**: Automatic identification and scaling of features
 - **Comprehensive Metrics**: ROC AUC, Precision, Recall, F1, Average Precision
 - **Model Registry**: Automatic registration and comparison of trained models
+- **SHAP Explainability**: Optional SHAP computation for model interpretability (view feature importance, understand predictions)
 
 ## Configuration
 
@@ -196,6 +201,7 @@ Key dependencies:
 - `PyQt6>=6.6.0` (for GUI)
 - `matplotlib>=3.4`
 - `pandas-ta-classic` (Python 3.11 compatible)
+- `shap>=0.41.0` (optional, for model explainability)
 
 ## Examples
 
