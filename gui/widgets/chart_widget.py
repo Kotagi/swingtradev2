@@ -417,7 +417,7 @@ class PerformanceMetricsWidget(ChartWidget):
         if not metrics:
             ax.text(0.5, 0.5, 'No metrics to display', 
                    horizontalalignment='center', verticalalignment='center',
-                   transform=ax.transAxes, fontsize=14)
+                   transform=ax.transAxes, fontsize=14, color='#b0b0b0')
             self.draw()
             return
         
@@ -432,7 +432,7 @@ class PerformanceMetricsWidget(ChartWidget):
         if not display_metrics:
             ax.text(0.5, 0.5, 'No valid metrics to display', 
                    horizontalalignment='center', verticalalignment='center',
-                   transform=ax.transAxes, fontsize=14)
+                   transform=ax.transAxes, fontsize=14, color='#b0b0b0')
             self.draw()
             return
         
@@ -440,23 +440,60 @@ class PerformanceMetricsWidget(ChartWidget):
         keys = list(display_metrics.keys())
         values = list(display_metrics.values())
         
+        # Calculate number of metrics to determine bar height and spacing
+        num_metrics = len(keys)
+        # Adjust bar height: smaller bars when more metrics, but not too small
+        # Target: ~0.6 height per bar, but scale down if too many metrics
+        if num_metrics <= 5:
+            bar_height = 0.6
+        elif num_metrics <= 10:
+            bar_height = 0.5
+        else:
+            bar_height = max(0.3, 5.0 / num_metrics)
+        
         colors = ['#00d4aa' if v >= 0 else '#f44336' for v in values]
-        bars = ax.barh(keys, values, color=colors, alpha=0.7)
+        bars = ax.barh(keys, values, height=bar_height, color=colors, alpha=0.7, edgecolor='#555', linewidth=0.5)
         
-        # Add value labels
+        # Add value labels on bars
+        value_range = max(values) - min(values) if len(values) > 1 else abs(max(values)) if values else 1
         for i, (key, value) in enumerate(display_metrics.items()):
-            ax.text(value, i, f' {value:.2f}', va='center', color='#b0b0b0')
+            # Position label at the end of the bar, with padding
+            # For positive values, put label to the right; for negative, to the left
+            if value >= 0:
+                label_x = value + value_range * 0.02  # Small padding
+                ha = 'left'
+            else:
+                label_x = value - value_range * 0.02  # Small padding
+                ha = 'right'
+            ax.text(label_x, i, f'{value:.2f}', va='center', ha=ha, 
+                   color='#ffffff', fontsize=9, fontweight='bold')
         
-        ax.set_xlabel('Value')
-        ax.set_title('Performance Metrics')
-        ax.grid(True, alpha=0.3, axis='x')
+        # Set labels and title
+        ax.set_xlabel('Value', color='#b0b0b0', fontsize=11)
+        ax.set_title('Performance Metrics', color='#00d4aa', fontsize=14, fontweight='bold', pad=15)
+        
+        # Style the axes
         ax.set_facecolor('#1e1e1e')
         self.figure.patch.set_facecolor('#1e1e1e')
-        ax.tick_params(colors='#b0b0b0')
+        ax.tick_params(colors='#b0b0b0', labelsize=10)
         ax.xaxis.label.set_color('#b0b0b0')
         ax.yaxis.label.set_color('#b0b0b0')
-        ax.title.set_color('#00d4aa')
         
-        self.figure.tight_layout()
+        # Grid styling
+        ax.grid(True, alpha=0.2, axis='x', linestyle='--', linewidth=0.5)
+        ax.set_axisbelow(True)
+        
+        # Adjust layout to center the chart and prevent label cutoff
+        # Use balanced margins to keep plot area centered
+        # Left margin: space for y-axis labels
+        max_label_len = max(len(str(k)) for k in keys) if keys else 10
+        left_margin = 0.24 if max_label_len < 25 else 0.26
+        
+        # Right margin: balance to center plot (if left=0.24, right=0.80 centers at 0.52)
+        # This keeps plot area visually centered while leaving room for value labels
+        right_margin = 0.80
+        
+        self.figure.subplots_adjust(left=left_margin, right=right_margin, top=0.90, bottom=0.15)
+        
         self.draw()
 

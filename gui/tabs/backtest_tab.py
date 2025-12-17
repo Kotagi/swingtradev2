@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QGroupBox, QSpinBox, QDoubleSpinBox, QComboBox, QCheckBox,
     QMessageBox, QProgressBar, QTextEdit, QLineEdit, QFileDialog,
-    QTableWidget, QTableWidgetItem, QHeaderView, QScrollArea, QDialog, QScrollArea as QDialogScrollArea, QFrame, QMenu
+    QTableWidget, QTableWidgetItem, QHeaderView, QScrollArea, QDialog, QScrollArea as QDialogScrollArea, QFrame, QMenu, QApplication
 )
 from PyQt6.QtGui import QIcon, QPalette, QColor
 from PyQt6.QtCore import QSize
@@ -101,13 +101,18 @@ class FeatureInfoDialog(QDialog):
         layout.addLayout(btn_row)
         
         self.setLayout(layout)
-        
-        # Center the dialog on parent
-        if self.parent():
-            parent_geometry = self.parent().geometry()
-            dialog_geometry = self.geometry()
-            x = parent_geometry.x() + (parent_geometry.width() - dialog_geometry.width()) // 2
-            y = parent_geometry.y() + (parent_geometry.height() - dialog_geometry.height()) // 2
+    
+    def showEvent(self, event):
+        """Override showEvent to center dialog on screen after it's shown."""
+        super().showEvent(event)
+        # Center on screen
+        screen = QApplication.primaryScreen()
+        if screen:
+            screen_geometry = screen.availableGeometry()
+            dialog_geometry = self.frameGeometry()
+            # Calculate center position
+            x = screen_geometry.x() + (screen_geometry.width() - dialog_geometry.width()) // 2
+            y = screen_geometry.y() + (screen_geometry.height() - dialog_geometry.height()) // 2
             self.move(x, y)
 
 

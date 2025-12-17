@@ -6,7 +6,7 @@ Analyzes stop-loss trades to identify patterns and generate filter recommendatio
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, QPushButton,
-    QFileDialog, QMessageBox, QScrollArea, QTableWidget, QTableWidgetItem,
+    QFileDialog, QMessageBox, QTableWidget, QTableWidgetItem,
     QHeaderView, QLineEdit, QSpinBox, QDoubleSpinBox, QCheckBox, QTextEdit,
     QProgressBar, QTabWidget, QInputDialog
 )
@@ -127,22 +127,13 @@ class StopLossAnalysisTab(QWidget):
     
     def init_ui(self):
         """Initialize the UI components."""
-        # Main layout
+        # Main layout (no scroll area - parent Analysis tab handles scrolling)
         main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(15)
         
-        # Create scroll area
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        
-        # Content widget
-        content_widget = QWidget()
-        layout = QVBoxLayout()
-        layout.setSpacing(15)
-        layout.setContentsMargins(20, 20, 20, 20)
+        # Content layout (directly in main layout, no scroll area wrapper)
+        layout = main_layout
         
         # Title
         title = QLabel("Stop-Loss Analysis")
@@ -247,20 +238,13 @@ class StopLossAnalysisTab(QWidget):
         self.recommendations_summary_label.setStyleSheet("color: #b0b0b0; font-style: italic;")
         recommendations_layout.addWidget(self.recommendations_summary_label)
         
-        # Scroll area for recommendations
-        recommendations_scroll = QScrollArea()
-        recommendations_scroll.setWidgetResizable(True)
-        recommendations_scroll.setMinimumHeight(300)
-        recommendations_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        
-        # Container widget for recommendations
+        # Container widget for recommendations (no scroll area to avoid nested scrollbars)
         self.recommendations_container = QWidget()
         self.recommendations_layout = QVBoxLayout()
         self.recommendations_layout.setSpacing(10)
         self.recommendations_container.setLayout(self.recommendations_layout)
         
-        recommendations_scroll.setWidget(self.recommendations_container)
-        recommendations_layout.addWidget(recommendations_scroll)
+        recommendations_layout.addWidget(self.recommendations_container)
         
         recommendations_group.setLayout(recommendations_layout)
         layout.addWidget(recommendations_group)
@@ -328,7 +312,7 @@ class StopLossAnalysisTab(QWidget):
         # Action buttons for immediate stops
         immediate_action_row = QHBoxLayout()
         
-        include_in_main_btn = QPushButton("Include in Main Recommendations")
+        include_in_main_btn = QPushButton("Include Selected in Main")
         include_in_main_btn.setStyleSheet("""
             QPushButton {
                 background-color: #2d2d2d;
@@ -343,7 +327,7 @@ class StopLossAnalysisTab(QWidget):
         include_in_main_btn.clicked.connect(self.include_immediate_in_main)
         immediate_action_row.addWidget(include_in_main_btn)
         
-        exclude_immediate_btn = QPushButton("Exclude")
+        exclude_immediate_btn = QPushButton("Remove Selected from Main")
         exclude_immediate_btn.setStyleSheet("""
             QPushButton {
                 background-color: #2d2d2d;
@@ -363,8 +347,9 @@ class StopLossAnalysisTab(QWidget):
         immediate_layout.addWidget(immediate_action_widget)
         
         immediate_group.setLayout(immediate_layout)
-        immediate_group.toggled.connect(lambda checked: immediate_group.setVisible(checked))
-        immediate_group.setVisible(False)
+        # Don't hide the group when unchecked - just collapse it (QGroupBox handles this automatically)
+        immediate_group.setVisible(True)  # Always visible, just collapsed when unchecked
+        immediate_group.setChecked(False)  # Start collapsed
         layout.addWidget(immediate_group)
         
         self.immediate_group = immediate_group
@@ -477,16 +462,7 @@ class StopLossAnalysisTab(QWidget):
         self.status_label.setStyleSheet("color: #b0b0b0; font-style: italic;")
         layout.addWidget(self.status_label)
         
-        # Set layout on content widget
-        content_widget.setLayout(layout)
-        
-        # Set content widget in scroll area
-        scroll_area.setWidget(content_widget)
-        
-        # Add scroll area to main layout
-        main_layout.addWidget(scroll_area)
-        
-        # Set main layout
+        # Set main layout directly (no scroll area - parent handles scrolling)
         self.setLayout(main_layout)
     
     def create_summary_card(self, title: str, value: str) -> Tuple[QWidget, QLabel]:
@@ -780,11 +756,21 @@ class StopLossAnalysisTab(QWidget):
     
     def update_recommendations_display(self):
         """Update recommendations display, grouped by effect size."""
+        # Save current checkbox states before clearing
+        checked_recommendations = set()
+        for rec in self.selected_filters:
+            # Use feature + operator as unique key
+            key = (rec.get('feature'), rec.get('operator'))
+            checked_recommendations.add(key)
+        
         # Clear existing recommendations
         while self.recommendations_layout.count():
             child = self.recommendations_layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
+        
+        # Clear selected_filters - will be rebuilt based on checked states
+        self.selected_filters.clear()
         
         if not self.analysis_results or not self.analysis_results.get('recommendations'):
             self.recommendations_summary_label.setText("No recommendations generated")
@@ -813,21 +799,24 @@ class StopLossAnalysisTab(QWidget):
         # Strong recommendations (always visible)
         if strong_recs:
             self.strong_section = self.create_recommendation_section(
-                "Strong Recommendations", strong_recs, "strong", expanded=True
+                "Strong Recommendations", strong_recs, "strong", expanded=True, 
+                checked_keys=checked_recommendations
             )
             self.recommendations_layout.addWidget(self.strong_section)
         
         # Moderate recommendations (always visible)
         if moderate_recs:
             self.moderate_section = self.create_recommendation_section(
-                "Moderate Recommendations", moderate_recs, "moderate", expanded=True
+                "Moderate Recommendations", moderate_recs, "moderate", expanded=True,
+                checked_keys=checked_recommendations
             )
             self.recommendations_layout.addWidget(self.moderate_section)
         
         # Weak recommendations (collapsed by default)
         if weak_recs:
             self.weak_section = self.create_recommendation_section(
-                "Weak Recommendations", weak_recs, "weak", expanded=False
+                "Weak Recommendations", weak_recs, "weak", expanded=False,
+                checked_keys=checked_recommendations
             )
             self.recommendations_layout.addWidget(self.weak_section)
         
@@ -911,8 +900,11 @@ class StopLossAnalysisTab(QWidget):
         # Add spacer
         self.recommendations_layout.addStretch()
     
-    def create_recommendation_section(self, title: str, recommendations: list, category: str, expanded: bool = True) -> QGroupBox:
+    def create_recommendation_section(self, title: str, recommendations: list, category: str, expanded: bool = True, checked_keys: set = None) -> QGroupBox:
         """Create a collapsible section for recommendations."""
+        if checked_keys is None:
+            checked_keys = set()
+        
         section = QGroupBox(title)
         section.setCheckable(True)
         section.setChecked(expanded)
@@ -947,7 +939,9 @@ class StopLossAnalysisTab(QWidget):
         
         # Add each recommendation
         for rec in recommendations:
-            rec_widget = self.create_recommendation_item(rec)
+            rec_key = (rec.get('feature'), rec.get('operator'))
+            is_checked = rec_key in checked_keys
+            rec_widget = self.create_recommendation_item(rec, is_checked=is_checked)
             section_layout.addWidget(rec_widget)
         
         section.setLayout(section_layout)
@@ -957,18 +951,28 @@ class StopLossAnalysisTab(QWidget):
         
         return section
     
-    def create_recommendation_item(self, recommendation: dict) -> QWidget:
+    def create_recommendation_item(self, recommendation: dict, is_checked: bool = False) -> QWidget:
         """Create a widget for a single recommendation."""
         item_widget = QWidget()
         item_layout = QHBoxLayout()
         item_layout.setContentsMargins(10, 5, 10, 5)
         
-        # Checkbox for selection (will be implemented in Unit 2.2)
+        # Checkbox for selection - recommendations remain visible when unchecked
         checkbox = QCheckBox()
-        checkbox.setChecked(False)
+        checkbox.setChecked(is_checked)
         checkbox.recommendation = recommendation  # Store reference
         checkbox.stateChanged.connect(lambda state, rec=recommendation: self.on_recommendation_toggled(rec, state == 2))
         item_layout.addWidget(checkbox)
+        
+        # If checked, add to selected_filters (but avoid duplicates)
+        if is_checked:
+            rec_key = (recommendation.get('feature'), recommendation.get('operator'))
+            # Check if already in selected_filters
+            if not any(
+                (r.get('feature'), r.get('operator')) == rec_key
+                for r in self.selected_filters
+            ):
+                self.selected_filters.append(recommendation)
         
         # Description label
         desc_label = QLabel(recommendation.get('description', ''))
@@ -1358,19 +1362,58 @@ class StopLossAnalysisTab(QWidget):
         item_layout = QHBoxLayout()
         item_layout.setContentsMargins(10, 5, 10, 5)
         
+        # Checkbox for selection
+        checkbox = QCheckBox()
+        checkbox.setChecked(False)
+        checkbox.recommendation = recommendation  # Store reference
+        # Store checkbox reference in recommendation for later access
+        recommendation['_checkbox'] = checkbox
+        item_layout.addWidget(checkbox)
+        
         # Description label
         desc_label = QLabel(recommendation.get('description', ''))
         desc_label.setWordWrap(True)
         desc_label.setStyleSheet("color: #ffffff;")
         item_layout.addWidget(desc_label, 1)
         
+        # Info button
+        info_btn = QPushButton("ℹ")
+        info_btn.setFixedSize(25, 25)
+        info_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                border: 1px solid #00d4aa;
+                border-radius: 12px;
+                color: #00d4aa;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #00d4aa;
+                color: #000000;
+            }
+        """)
+        info_btn.setToolTip("Show feature information")
+        info_btn.clicked.connect(lambda checked=False, feat=recommendation['feature']: self.show_feature_info(feat))
+        item_layout.addWidget(info_btn)
+        
         item_widget.setLayout(item_layout)
         return item_widget
     
     def include_immediate_in_main(self):
-        """Include immediate stop recommendations in main recommendations."""
+        """Include selected immediate stop recommendations in main recommendations."""
         if not self.immediate_stop_recommendations:
             QMessageBox.information(self, "No Recommendations", "No immediate stop recommendations to include.")
+            return
+        
+        # Get selected recommendations (those with checked checkboxes)
+        selected_recs = []
+        for rec in self.immediate_stop_recommendations:
+            checkbox = rec.get('_checkbox')
+            if checkbox and checkbox.isChecked():
+                selected_recs.append(rec)
+        
+        if not selected_recs:
+            QMessageBox.information(self, "No Selection", "Please select at least one immediate stop recommendation to include.")
             return
         
         # Add to main recommendations
@@ -1380,29 +1423,64 @@ class StopLossAnalysisTab(QWidget):
         if 'recommendations' not in self.analysis_results:
             self.analysis_results['recommendations'] = []
         
-        # Add immediate recommendations (mark them as from immediate stops)
-        for rec in self.immediate_stop_recommendations:
+        # Add selected immediate recommendations (mark them as from immediate stops)
+        added_count = 0
+        for rec in selected_recs:
             rec_copy = rec.copy()
             rec_copy['from_immediate'] = True
-            if rec_copy not in self.analysis_results['recommendations']:
+            # Remove checkbox reference before comparing/adding
+            rec_copy.pop('_checkbox', None)
+            # Check if already exists (by feature and operator)
+            exists = any(
+                r.get('feature') == rec_copy.get('feature') and 
+                r.get('operator') == rec_copy.get('operator')
+                for r in self.analysis_results['recommendations']
+            )
+            if not exists:
                 self.analysis_results['recommendations'].append(rec_copy)
+                added_count += 1
         
         # Re-display main recommendations
         self.update_recommendations_display()
         
         QMessageBox.information(self, "Included", 
-                               f"{len(self.immediate_stop_recommendations)} immediate stop recommendation(s) added to main recommendations.")
+                               f"{added_count} immediate stop recommendation(s) added to main recommendations.")
     
     def exclude_immediate_recommendations(self):
-        """Exclude immediate stop recommendations from main recommendations."""
+        """Remove selected immediate stop recommendations from main recommendations."""
         if not self.analysis_results or 'recommendations' not in self.analysis_results:
+            QMessageBox.information(self, "No Recommendations", "No recommendations in main list to remove.")
             return
         
-        # Remove recommendations marked as from immediate stops
+        if not self.immediate_stop_recommendations:
+            QMessageBox.information(self, "No Recommendations", "No immediate stop recommendations available.")
+            return
+        
+        # Get selected recommendations (those with checked checkboxes)
+        selected_recs = []
+        for rec in self.immediate_stop_recommendations:
+            checkbox = rec.get('_checkbox')
+            if checkbox and checkbox.isChecked():
+                selected_recs.append(rec)
+        
+        if not selected_recs:
+            QMessageBox.information(self, "No Selection", "Please select at least one immediate stop recommendation to remove.")
+            return
+        
+        # Remove matching recommendations from main list
         original_count = len(self.analysis_results['recommendations'])
+        removed_count = 0
+        
+        # Create set of (feature, operator) tuples for fast lookup
+        selected_keys = {
+            (rec.get('feature'), rec.get('operator'))
+            for rec in selected_recs
+        }
+        
+        # Filter out matching recommendations
         self.analysis_results['recommendations'] = [
-            rec for rec in self.analysis_results['recommendations'] 
-            if not rec.get('from_immediate', False)
+            rec for rec in self.analysis_results['recommendations']
+            if (rec.get('feature'), rec.get('operator')) not in selected_keys
         ]
         
         removed_count = original_count - len(self.analysis_results['recommendations'])
@@ -1410,10 +1488,10 @@ class StopLossAnalysisTab(QWidget):
         if removed_count > 0:
             # Re-display main recommendations
             self.update_recommendations_display()
-            QMessageBox.information(self, "Excluded", 
+            QMessageBox.information(self, "Removed", 
                                    f"{removed_count} immediate stop recommendation(s) removed from main recommendations.")
         else:
-            QMessageBox.information(self, "No Change", "No immediate stop recommendations found in main recommendations.")
+            QMessageBox.information(self, "No Change", "Selected recommendations were not found in main recommendations.")
     
     def update_charts(self):
         """Update all charts with analysis results."""
