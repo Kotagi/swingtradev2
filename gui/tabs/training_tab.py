@@ -17,6 +17,7 @@ from datetime import datetime
 from gui.services import TrainingService, DataService
 from gui.widgets import PresetManagerWidget
 from gui.utils.model_registry import ModelRegistry
+from gui.tabs.feature_selection_dialog import FeatureSelectionDialog
 import yaml
 
 
@@ -210,6 +211,16 @@ class TrainingTab(QWidget):
         
         advanced_group.setLayout(advanced_layout)
         layout.addWidget(advanced_group)
+        
+        # Feature selection
+        feature_row = QHBoxLayout()
+        feature_row.addWidget(QLabel("Training Features:"))
+        self.feature_selection_btn = QPushButton("Select Features")
+        self.feature_selection_btn.clicked.connect(self.open_feature_selection)
+        self._update_feature_button_text()
+        feature_row.addWidget(self.feature_selection_btn)
+        feature_row.addStretch()
+        layout.addLayout(feature_row)
         
         # Preset manager
         preset_row = QHBoxLayout()
@@ -519,4 +530,31 @@ class TrainingTab(QWidget):
             return 57  # Default fallback (current total)
         except Exception:
             return 57  # Default fallback
+    
+    def _count_enabled_features(self) -> int:
+        """Count enabled features from config/train_features.yaml."""
+        try:
+            config_path = Path(__file__).parent.parent.parent / "config" / "train_features.yaml"
+            if config_path.exists():
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    cfg = yaml.safe_load(f) or {}
+                features = cfg.get("features", {})
+                # Count enabled features (value == 1)
+                return sum(1 for v in features.values() if v == 1)
+            # If train_features.yaml doesn't exist, assume all are enabled
+            return self._count_total_features()
+        except Exception:
+            return self._count_total_features()
+    
+    def _update_feature_button_text(self):
+        """Update the feature selection button text with count."""
+        enabled = self._count_enabled_features()
+        total = self._count_total_features()
+        self.feature_selection_btn.setText(f"Select Features ({enabled} enabled)")
+    
+    def open_feature_selection(self):
+        """Open the feature selection dialog."""
+        dialog = FeatureSelectionDialog(self)
+        dialog.features_saved.connect(self._update_feature_button_text)
+        dialog.exec()
 

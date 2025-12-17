@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QTableWidget, QTableWidgetItem, QHeaderView, QGroupBox,
     QMessageBox, QScrollArea, QCheckBox, QLineEdit, QComboBox,
-    QDialog, QTextEdit
+    QDialog, QTextEdit, QInputDialog
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon, QPalette
@@ -183,6 +183,24 @@ class ModelComparisonTab(QWidget):
         clear_btn = QPushButton("Clear Selection")
         clear_btn.clicked.connect(self.clear_selection)
         action_layout.addWidget(clear_btn)
+        
+        rename_btn = QPushButton("Rename Selected")
+        # Match the height of other buttons
+        rename_btn.setFixedHeight(compare_btn.sizeHint().height())
+        rename_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                border: 1px solid #555;
+                color: white;
+                padding: 5px 15px;
+            }
+            QPushButton:hover {
+                background-color: #ff9800;
+                color: #000000;
+            }
+        """)
+        rename_btn.clicked.connect(self.rename_selected_model)
+        action_layout.addWidget(rename_btn)
         
         delete_btn = QPushButton("Delete Selected")
         delete_btn.setStyleSheet("background-color: #f44336; color: white;")
@@ -465,6 +483,50 @@ class ModelComparisonTab(QWidget):
                 if best_item:
                     best_item.setBackground(Qt.GlobalColor.darkGreen)
                     best_item.setForeground(Qt.GlobalColor.white)
+    
+    def rename_selected_model(self):
+        """Rename a selected model."""
+        if not self.selected_models:
+            QMessageBox.warning(self, "No Selection", "Please select a model to rename.")
+            return
+        
+        if len(self.selected_models) > 1:
+            QMessageBox.warning(self, "Multiple Selection", "Please select only one model to rename.")
+            return
+        
+        # Get the selected model
+        model_id = self.selected_models[0]
+        model = self.registry.get_model(model_id)
+        if not model:
+            QMessageBox.warning(self, "Error", "Could not find selected model.")
+            return
+        
+        # Get current name
+        current_name = model.get("name", "Unknown")
+        
+        # Get new name from user
+        new_name, ok = QInputDialog.getText(
+            self,
+            "Rename Model",
+            "Enter new name:",
+            text=current_name
+        )
+        
+        if not ok or not new_name.strip():
+            return
+        
+        new_name = new_name.strip()
+        
+        # Check if name already exists (optional - could allow duplicates)
+        # For now, we'll allow duplicates
+        
+        # Update model name
+        if self.registry.update_model(model_id, {"name": new_name}):
+            QMessageBox.information(self, "Success", f"Model renamed to '{new_name}'.")
+            self.refresh_model_list()
+            self.update_selected_label()
+        else:
+            QMessageBox.warning(self, "Error", "Failed to rename model.")
     
     def delete_selected_models(self):
         """Delete selected models from registry."""
