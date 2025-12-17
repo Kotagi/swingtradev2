@@ -1208,28 +1208,62 @@ class BacktestTab(QWidget):
         """Save backtest metadata including filter information."""
         import json
         
+        if not output_file:
+            return
+        
         try:
+            # Ensure we have an absolute path
             output_path = Path(output_file)
-            metadata_path = output_path.parent / f"{output_path.stem}_metadata.json"
+            if not output_path.is_absolute():
+                # If relative, assume it's relative to data/backtest_results
+                backtest_dir = PROJECT_ROOT / "data" / "backtest_results"
+                output_path = backtest_dir / output_path.name
+            
+            # Get the actual CSV file to match case exactly
+            # Look for the file in the directory (case-insensitive match)
+            parent_dir = output_path.parent
+            csv_stem = output_path.stem  # Default to path stem
+            
+            if parent_dir.exists():
+                # Find the actual CSV file to get exact case
+                # Try exact match first
+                if output_path.exists():
+                    csv_stem = output_path.stem
+                else:
+                    # Look for case-insensitive match
+                    for file in parent_dir.iterdir():
+                        if file.stem.lower() == output_path.stem.lower() and file.suffix.lower() == '.csv':
+                            csv_stem = file.stem  # Use actual file's stem (preserves case)
+                            break
+            
+            metadata_path = parent_dir / f"{csv_stem}_metadata.json"
             
             # Get model name from model file input
-            model_file = self.model_file_edit.text().strip()
+            model_file = self.model_edit.text().strip() if hasattr(self, 'model_edit') else None
             model_name = Path(model_file).name if model_file else None
+            
+            # Prepare filters list
+            filters_applied = []
+            
+            if self.entry_filters:
+                for f in self.entry_filters:
+                    try:
+                        filters_applied.append({
+                            'feature': f[0],
+                            'operator': f[1],
+                            'value': float(f[2]) if isinstance(f[2], (int, float)) else f[2]
+                        })
+                    except (IndexError, TypeError):
+                        # Skip invalid filter entries
+                        pass
             
             # Prepare metadata
             metadata = {
                 'backtest_file': output_path.name,
                 'created_date': datetime.now().isoformat(),
                 'model_name': model_name,
-                'filter_preset_name': self.loaded_preset_name,
-                'filters_applied': [
-                    {
-                        'feature': f[0],
-                        'operator': f[1],
-                        'value': float(f[2]) if isinstance(f[2], (int, float)) else f[2]
-                    }
-                    for f in self.entry_filters
-                ] if self.entry_filters else [],
+                'filter_preset_name': self.loaded_preset_name if hasattr(self, 'loaded_preset_name') else None,
+                'filters_applied': filters_applied,
                 'backtest_settings': {
                     'horizon': self.horizon_spin.value(),
                     'return_threshold': self.return_threshold_spin.value() / 100.0,  # Convert from percentage
@@ -1250,7 +1284,7 @@ class BacktestTab(QWidget):
         except Exception as e:
             # Don't fail the backtest if metadata save fails
             timestamp = datetime.now().strftime('%H:%M:%S')
-            self.log_text.append(f"[{timestamp}] Warning: Failed to save backtest metadata: {str(e)}")
+            self.log_text.append(f"[{timestamp}] ⚠ Warning: Failed to save backtest metadata: {str(e)}")
     
     def load_and_visualize_results(self, csv_file: str):
         """Load backtest results CSV and display visualizations."""

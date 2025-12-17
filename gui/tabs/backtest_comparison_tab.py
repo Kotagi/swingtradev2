@@ -155,7 +155,7 @@ class BacktestComparisonTab(QWidget):
         layout.addWidget(list_label)
         
         self.backtests_table = QTableWidget()
-        self.backtests_table.setColumnCount(14)
+        self.backtests_table.setColumnCount(15)  # 15 columns including Filters Used
         self.backtests_table.setHorizontalHeaderLabels([
             "Select", "Filename", "Date", "Total Trades", "Win Rate", 
             "Avg Return", "Total P&L", "Avg P&L", "Max Drawdown", 
@@ -165,7 +165,7 @@ class BacktestComparisonTab(QWidget):
         self.backtests_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.backtests_table.setColumnWidth(0, 50)
         # All other columns stretch to fill available space
-        for col in range(1, 14):
+        for col in range(1, 15):  # Include column 14 (Filters Used)
             self.backtests_table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
         self.backtests_table.setAlternatingRowColors(True)
         self.backtests_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -477,7 +477,11 @@ class BacktestComparisonTab(QWidget):
                 filter_item = QTableWidgetItem("None")
             self.backtests_table.setItem(row_idx, 14, filter_item)
         
-        # Make filter column clickable
+        # Make filter column clickable (disconnect first to avoid duplicate connections)
+        try:
+            self.backtests_table.cellDoubleClicked.disconnect(self.on_filter_cell_clicked)
+        except TypeError:
+            pass  # Signal wasn't connected yet
         self.backtests_table.cellDoubleClicked.connect(self.on_filter_cell_clicked)
         
         self.backtests_table.setSortingEnabled(True)
@@ -680,11 +684,11 @@ class BacktestComparisonTab(QWidget):
         
         # Close button
         close_btn = QPushButton("Close")
-        close_btn.clicked.connect(dialog.accept)
+        close_btn.clicked.connect(lambda: dialog.done(QDialog.DialogCode.Accepted))
         layout.addWidget(close_btn)
         
         dialog.setLayout(layout)
-        dialog.exec()
+        dialog.exec()  # exec() returns when dialog is closed
     
     def show_metrics_help(self):
         """Show help dialog for backtest metrics."""
