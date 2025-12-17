@@ -97,6 +97,13 @@ class ModelRegistry:
             
             name = f"XGBoost_{horizon_str}_{threshold_str}"
         
+        # Extract SHAP info from training_info if present
+        shap_artifacts_path = None
+        shap_metadata = None
+        if training_info:
+            shap_artifacts_path = training_info.get("shap_artifacts_path")
+            shap_metadata = training_info.get("shap_metadata")
+        
         # Prepare model entry
         model_entry = {
             "id": model_id,
@@ -105,7 +112,9 @@ class ModelRegistry:
             "training_date": datetime.now().isoformat(),
             "metrics": metrics,
             "parameters": parameters,
-            "training_info": training_info or {}
+            "training_info": training_info or {},
+            "shap_artifacts_path": shap_artifacts_path,  # Optional: path to SHAP artifacts
+            "shap_metadata": shap_metadata  # Optional: SHAP computation metadata
         }
         
         # Add to registry
@@ -121,6 +130,51 @@ class ModelRegistry:
         models = self._registry.get("models", [])
         # Sort by training_date descending
         return sorted(models, key=lambda x: x.get("training_date", ""), reverse=True)
+    
+    def has_shap(self, model_id: str) -> bool:
+        """
+        Check if a model has SHAP artifacts.
+        
+        Args:
+            model_id: Model ID to check
+        
+        Returns:
+            True if SHAP artifacts exist, False otherwise
+        """
+        model = self.get_model(model_id)
+        if not model:
+            return False
+        
+        # Check if SHAP path is stored in registry
+        shap_path = model.get("shap_artifacts_path")
+        if shap_path:
+            # Verify the path actually exists
+            from pathlib import Path
+            return Path(shap_path).exists()
+        
+        return False
+    
+    def get_shap_path(self, model_id: str) -> Optional[str]:
+        """
+        Get the path to SHAP artifacts for a model.
+        
+        Args:
+            model_id: Model ID
+        
+        Returns:
+            Path to SHAP artifacts directory, or None if not available
+        """
+        model = self.get_model(model_id)
+        if not model:
+            return None
+        
+        shap_path = model.get("shap_artifacts_path")
+        if shap_path:
+            from pathlib import Path
+            if Path(shap_path).exists():
+                return shap_path
+        
+        return None
     
     def get_model(self, model_id: str) -> Optional[Dict]:
         """Get a specific model by ID."""

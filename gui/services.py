@@ -1518,6 +1518,29 @@ class TrainingService:
         if val_metrics:
             metrics_dict['validation_metrics'] = val_metrics
         
+        # Parse SHAP artifacts path if SHAP was computed
+        shap_section_match = re.search(r'=== COMPUTING SHAP EXPLANATIONS ===(.*?)(?===|$)', output, re.IGNORECASE | re.DOTALL)
+        if shap_section_match:
+            shap_section = shap_section_match.group(1)
+            
+            # Extract SHAP artifacts path
+            shap_path_match = re.search(r'Artifacts saved to\s*(.+)', shap_section, re.IGNORECASE)
+            if shap_path_match:
+                shap_path = shap_path_match.group(1).strip()
+                metrics_dict['shap_artifacts_path'] = shap_path
+            
+            # Extract SHAP metadata
+            data_split_match = re.search(r'Data split used:\s*(\w+)', shap_section, re.IGNORECASE)
+            sample_size_match = re.search(r'Samples computed:\s*(\d+)', shap_section, re.IGNORECASE)
+            
+            if data_split_match or sample_size_match:
+                shap_metadata = {}
+                if data_split_match:
+                    shap_metadata['data_split'] = data_split_match.group(1).strip()
+                if sample_size_match:
+                    shap_metadata['sample_size'] = int(sample_size_match.group(1))
+                metrics_dict['shap_metadata'] = shap_metadata
+        
         # Build message
         message = "Model training completed successfully"
         if model_path:
@@ -1527,6 +1550,8 @@ class TrainingService:
             message += f" ({minutes:.1f} minutes)"
         if test_metrics.get('roc_auc'):
             message += f" - Test ROC AUC: {test_metrics['roc_auc']:.4f}"
+        if metrics_dict.get('shap_artifacts_path'):
+            message += " - SHAP explanations computed"
         
         return message, metrics_dict
 

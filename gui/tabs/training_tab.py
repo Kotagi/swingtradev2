@@ -592,12 +592,18 @@ class TrainingTab(QWidget):
                     # Count total features from config/features.yaml
                     total_features = self._count_total_features()
                     
-                    # Extract training info
+                    # Extract training info (including SHAP if available)
                     training_info = {
                         'training_time': metrics_dict.get('training_time'),
                         'feature_count': feature_count,
                         'total_features': total_features,
                     }
+                    
+                    # Add SHAP info if available (from training metadata)
+                    if 'shap_artifacts_path' in metrics_dict:
+                        training_info['shap_artifacts_path'] = metrics_dict['shap_artifacts_path']
+                    if 'shap_metadata' in metrics_dict:
+                        training_info['shap_metadata'] = metrics_dict['shap_metadata']
                     
                     # Prepare metrics for registry
                     registry_metrics = {
