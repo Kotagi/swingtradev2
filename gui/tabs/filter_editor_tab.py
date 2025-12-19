@@ -844,17 +844,66 @@ class FilterEditorTab(QWidget):
             html += f"<li>Annual Return: {before.get('annual_return', 0)*100:.2f}% → {after.get('annual_return', 0)*100:.2f}%</li>"
         html += "</ul>"
         
-        # Warnings
+        # Warnings and validation
         warnings = []
+        errors = []
+        
+        # Trade volume warnings
         if combined.get('winners_excluded_pct', 0) > 20:
             warnings.append(f"⚠ Excluding >20% of winners ({combined.get('winners_excluded_pct', 0):.1f}%)")
         if combined.get('total_excluded_pct', 0) > 50:
             warnings.append(f"⚠ Excluding >50% of total trades ({combined.get('total_excluded_pct', 0):.1f}%)")
+        if combined.get('remaining_trades', 0) < 10:
+            warnings.append(f"⚠ Very few trades remaining ({combined.get('remaining_trades', 0)}). Results may be unreliable.")
         
+        # Performance warnings
+        pnl_change = after.get('total_pnl', 0) - before.get('total_pnl', 0)
+        if pnl_change < -1000:
+            warnings.append(f"⚠ Significant P&L reduction: ${pnl_change:,.2f}")
+        
+        win_rate_change = (after.get('win_rate', 0) - before.get('win_rate', 0)) * 100
+        if win_rate_change < -5:
+            warnings.append(f"⚠ Win rate decreased by {abs(win_rate_change):.1f}%")
+        
+        sharpe_change = after.get('sharpe_ratio', 0) - before.get('sharpe_ratio', 0)
+        if sharpe_change < -0.5:
+            warnings.append(f"⚠ Sharpe ratio decreased by {abs(sharpe_change):.2f}")
+        
+        # Errors (critical issues)
+        if after.get('n_trades', 0) == 0:
+            errors.append("❌ All trades filtered out! No trades remain after applying filters.")
+        if after.get('win_rate', 0) == 0 and after.get('n_trades', 0) > 0:
+            errors.append("❌ Win rate is 0% - all remaining trades are losers.")
+        
+        # Display errors first (if any)
+        if errors:
+            html += "<h4 style='color: #f44336;'>Errors:</h4><ul>"
+            for error in errors:
+                html += f"<li>{error}</li>"
+            html += "</ul>"
+        
+        # Then warnings
         if warnings:
-            html += "<h4 style='color: #ff6b6b;'>Warnings:</h4><ul>"
+            html += "<h4 style='color: #ff9800;'>Warnings:</h4><ul>"
             for warning in warnings:
                 html += f"<li>{warning}</li>"
+            html += "</ul>"
+        
+        # Success indicators (if improvements)
+        improvements = []
+        if pnl_change > 1000:
+            improvements.append(f"✓ P&L improved by ${pnl_change:,.2f}")
+        if win_rate_change > 2:
+            improvements.append(f"✓ Win rate improved by {win_rate_change:.1f}%")
+        if sharpe_change > 0.2:
+            improvements.append(f"✓ Sharpe ratio improved by {sharpe_change:.2f}")
+        if combined.get('stop_losses_excluded_pct', 0) > combined.get('winners_excluded_pct', 0) + 5:
+            improvements.append(f"✓ Excluding more stop-losses ({combined.get('stop_losses_excluded_pct', 0):.1f}%) than winners ({combined.get('winners_excluded_pct', 0):.1f}%)")
+        
+        if improvements:
+            html += "<h4 style='color: #4caf50;'>Improvements:</h4><ul>"
+            for improvement in improvements:
+                html += f"<li>{improvement}</li>"
             html += "</ul>"
         
         # Per-feature impact (collapsible or in separate section)

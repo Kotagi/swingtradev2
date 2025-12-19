@@ -45,11 +45,13 @@ features:
   volatility_ratio: 1
   # 22. ATR14 (Normalized)
   atr14_normalized: 1
-  # 22. Log Volume
+  # 22. Volume (Raw)
+  volume: 1
+  # 23. Log Volume
   log_volume: 1
-  # 23. Log Average Volume (20-day)
+  # 24. Log Average Volume (20-day)
   log_avg_volume_20d: 1
-  # 24. Relative Volume
+  # 25. Relative Volume
   relative_volume: 1
   # 25. RSI14
   rsi14: 1
@@ -117,3 +119,5 @@ features:
   price_curvature: 1
   # 52. Volatility-of-Volatility (VoV)
   volatility_of_volatility: 1
+  # 53. SPY Distance from SMA200 (Market Context)
+  mkt_spy_dist_sma200: 1

@@ -10,6 +10,7 @@ A comprehensive machine learning application for identifying swing trading oppor
 - **📈 Backtesting**: Enhanced backtesting with multiple strategies, adaptive stop-losses, and comprehensive metrics
 - **🎯 Trade Identification**: Real-time identification of current trading opportunities
 - **📉 Stop-Loss Analysis**: Advanced analysis of stop-loss patterns with filter recommendations
+- **🎛️ Filter Editor**: Interactive filter editor with SHAP-guided feature importance, real-time impact calculation, and preset management
 - **🖥️ Modern GUI**: Full-featured PyQt6 interface with dark theme
 - **📊 Model Comparison**: Side-by-side comparison of trained models and backtest results
 - **🔍 Advanced Analytics**: Trade log analysis, performance metrics, and visualizations
@@ -37,8 +38,9 @@ The GUI provides a complete interface for all operations:
 - **Feature Engineering**: Build technical indicators
 - **Model Training**: Train ML models with hyperparameter tuning and optional SHAP explainability
 - **Backtesting**: Test strategies with comprehensive metrics
-- **Analysis**: Trade log viewer, performance metrics, model/backtest comparison
+- **Analysis**: Trade log viewer, performance metrics, model/backtest comparison, filter editor
 - **Stop-Loss Analysis**: Analyze stop-loss patterns and generate filter recommendations
+- **Filter Editor**: Interactive filter testing with SHAP importance guidance, impact preview, and preset management
 - **Model Comparison**: Compare trained models, view SHAP explanations, and recompute SHAP for existing models
 - **Trade Identification**: Find current trading opportunities
 

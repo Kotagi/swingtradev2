@@ -70,6 +70,7 @@ from features.technical import (
     feature_hurst_exponent,
     feature_price_curvature,
     feature_volatility_of_volatility,
+    feature_mkt_spy_dist_sma200,
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -195,6 +196,8 @@ FEATURES = {
     "price_curvature":          feature_price_curvature,            # Price Curvature: second derivative of trend (acceleration), positive=trend bending up, negative=trend bending down, normalized to [-0.05, 0.05] - helps catch early reversals and blow-off moves
     # 54. Volatility-of-Volatility (VoV)
     "volatility_of_volatility": feature_volatility_of_volatility,  # Volatility-of-Volatility: measures instability of volatility itself (low=stable regime, high=chaotic regime), normalized to [0, 3] - tells model if volatility indicators are reliable
+    # 55. SPY Distance from SMA200 (Market Context)
+    "mkt_spy_dist_sma200":      feature_mkt_spy_dist_sma200,      # SPY Distance from SMA200: market extension vs long-term trend (higher=risk-on/bullish, lower=risk-off/bearish), z-score normalized to [-3, 3] - provides market regime context
 }
 
 def load_enabled_features(config_path: str) -> dict:

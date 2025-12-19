@@ -70,6 +70,10 @@ class HelpDialog(QDialog):
         stoploss_tab = self.create_stoploss_help()
         tabs.addTab(stoploss_tab, "Stop-Loss Analysis")
         
+        # Filter Editor tab
+        filter_editor_tab = self.create_filter_editor_help()
+        tabs.addTab(filter_editor_tab, "Filter Editor")
+        
         # Model Comparison tab
         model_comp_tab = self.create_model_comp_help()
         tabs.addTab(model_comp_tab, "Model Comparison")
@@ -429,6 +433,107 @@ class HelpDialog(QDialog):
         
         <h3>Stop-Loss Analysis Tab</h3>
         <p>Analyze stop-loss patterns and generate filter recommendations (see Stop-Loss Analysis help tab for details).</p>
+        
+        <h3>Filter Editor Tab</h3>
+        <p>Interactive filter editor with SHAP-guided feature importance and real-time impact calculation (see Filter Editor help tab for details).</p>
+        """
+        return self.create_scrollable_text(content)
+    
+    def create_filter_editor_help(self) -> QWidget:
+        """Create filter editor help tab."""
+        content = """
+        <h2>Filter Editor</h2>
+        <p>Interactive tool for testing and optimizing entry filters with real-time impact calculation and SHAP feature importance guidance.</p>
+        
+        <h3>Overview</h3>
+        <p>The Filter Editor allows you to:</p>
+        <ul>
+            <li>Test different filter combinations on existing backtest results</li>
+            <li>See real-time impact on winning trades, stop-losses, and performance metrics</li>
+            <li>Use SHAP feature importance to guide filter selection</li>
+            <li>Save and compare multiple filter presets</li>
+        </ul>
+        
+        <h3>Getting Started</h3>
+        <ol>
+            <li><b>Load a Backtest CSV</b>: Click "Browse..." to load a backtest results file</li>
+            <li><b>Wait for Feature Extraction</b>: Features are automatically extracted from the feature data files</li>
+            <li><b>SHAP Importance</b>: If the backtest has model metadata, SHAP importance loads automatically</li>
+            <li><b>Enable Filters</b>: Check the box next to features you want to filter on</li>
+            <li><b>Adjust Values</b>: Use +/- buttons or type values directly</li>
+            <li><b>View Impact</b>: Impact preview updates automatically as you change filters</li>
+        </ol>
+        
+        <h3>Feature Controls</h3>
+        <p>Each feature has the following controls:</p>
+        <ul>
+            <li><b>Enable Checkbox</b>: Turn the filter on/off</li>
+            <li><b>Feature Name</b>: Display name with SHAP importance indicators:
+                <ul>
+                    <li>★ (green) = Top 10 most important features</li>
+                    <li>● (gold) = Top 11-20 important features</li>
+                    <li>○ (gray) = Lower importance features</li>
+                </ul>
+            </li>
+            <li><b>Info Button (ℹ)</b>: View feature description and interpretation guide</li>
+            <li><b>Operator</b>: Choose >, >=, <, or <=</li>
+            <li><b>Value</b>: Set the threshold value (use +/- buttons or type directly)</li>
+            <li><b>Increment</b>: Adjust the step size for +/- buttons</li>
+        </ul>
+        
+        <h3>Grouping and Search</h3>
+        <ul>
+            <li><b>Search</b>: Filter features by name</li>
+            <li><b>Group By</b>:
+                <ul>
+                    <li><b>Category</b>: Group by feature type (Price, Momentum, Volume, etc.)</li>
+                    <li><b>None</b>: Show all features (sorted by SHAP importance if available)</li>
+                    <li><b>SHAP Importance</b>: Group into tiers (Top 10, Top 11-20, Top 21-50, Lower, No SHAP Data)</li>
+                </ul>
+            </li>
+            <li><b>Show Only Enabled</b>: Hide disabled filters</li>
+        </ul>
+        
+        <h3>Impact Preview</h3>
+        <p>The impact preview shows:</p>
+        <ul>
+            <li><b>Trade Volume</b>: Total trades, winners excluded, stop-losses excluded</li>
+            <li><b>Performance Metrics</b>: P&L, win rate, Sharpe ratio, drawdown, profit factor, annual return</li>
+            <li><b>Before/After Comparison</b>: Shows changes with color coding (green = improvement, red = decline)</li>
+            <li><b>Warnings</b>: Alerts for excluding too many winners/trades, P&L reduction, etc.</li>
+            <li><b>Errors</b>: Critical issues like all trades filtered out</li>
+            <li><b>Improvements</b>: Positive changes highlighted in green</li>
+            <li><b>Per-Feature Impact</b>: Individual impact of each enabled filter</li>
+        </ul>
+        
+        <h3>Preset Management</h3>
+        <ul>
+            <li><b>Save Preset</b>: Save current filter configuration with a name and description</li>
+            <li><b>Load Preset</b>: Load a previously saved filter preset</li>
+            <li><b>Compare Presets</b>: Compare 2-4 presets side-by-side on the same backtest</li>
+            <li><b>Clear All</b>: Disable all filters</li>
+            <li><b>Reset All</b>: Reset all filters to default neutral values</li>
+        </ul>
+        
+        <h3>SHAP Integration</h3>
+        <p>If your backtest has model metadata, SHAP importance is automatically loaded:</p>
+        <ul>
+            <li>Features are color-coded by importance (green = high, gray = low)</li>
+            <li>Rank and importance percentage shown in tooltips</li>
+            <li>Group by "SHAP Importance" to focus on top features</li>
+            <li>Features automatically sorted by importance when grouping is "None"</li>
+        </ul>
+        <p><b>Note</b>: SHAP data requires the backtest CSV to have a corresponding <code>_metadata.json</code> file with model information.</p>
+        
+        <h3>Tips</h3>
+        <ul>
+            <li>Start with SHAP top 10 features - they're most likely to have meaningful impact</li>
+            <li>Use small increments when fine-tuning values</li>
+            <li>Watch the impact preview warnings - they help avoid over-filtering</li>
+            <li>Compare multiple presets to find the best filter combination</li>
+            <li>Save presets with descriptive names for easy identification</li>
+            <li>Test filters on multiple backtests to ensure robustness</li>
+        </ul>
         """
         return self.create_scrollable_text(content)
     

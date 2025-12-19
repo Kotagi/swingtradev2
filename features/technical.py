@@ -3125,4 +3125,138 @@ def feature_volatility_of_volatility(df: DataFrame) -> Series:
     return vov_normalized
 
 
+def feature_mkt_spy_dist_sma200(df: DataFrame, spy_data: DataFrame = None) -> Series:
+    """
+    Compute SPY distance from SMA200 (market extension vs long-term trend).
+    
+    Measures how extended the market is vs its long-term trend baseline.
+    This provides market regime context:
+    - Higher (positive) = more risk-on / bullish environment (market extended above trend)
+    - Near 0 = neutral (market at trend baseline)
+    - Lower (negative) = risk-off / bearish regime (market below trend)
+    
+    Calculation:
+    1. Calculate SPY SMA200: `spy_sma200 = mean(SPY_close over 200 trading days)`
+    2. Calculate distance: `dist = (SPY_close / spy_sma200) - 1`
+    3. Calculate rolling z-score: `z = (dist - mean_rolling(dist)) / std_rolling(dist)`
+       - Rolling window: 1260 days (~5 years)
+    4. Clip to `[-3, 3]`
+    
+    Normalization:
+    - Z-score normalization makes it comparable across different market regimes
+    - Clipping to [-3, 3] limits extreme values
+    - Range: [-3, 3] (standard deviations from mean)
+    
+    Why it adds value:
+    - Provides market regime context (risk-on vs risk-off)
+    - Helps model understand market environment (extended vs mean-reverting)
+    - Complements beta_spy_252d (correlation) with extension/regime information
+    - Critical for swing trading where market regime matters
+    
+    Args:
+        df: Input DataFrame with 'close' column (used for date alignment only).
+        spy_data: SPY DataFrame (optional, will be loaded if not provided)
+    
+    Returns:
+        Series named 'mkt_spy_dist_sma200' containing normalized SPY distance values in [-3, 3].
+    """
+    close = _get_close_series(df)
+    
+    # Load SPY data if not provided
+    if spy_data is None:
+        spy_data = _load_spy_data()
+        if spy_data is None:
+            # Return NaN if SPY data not available
+            result = pd.Series(np.nan, index=df.index)
+            result.name = "mkt_spy_dist_sma200"
+            return result
+    
+    # Get SPY close price - try different column name variations
+    if 'Close' in spy_data.columns:
+        spy_close = spy_data['Close']
+    elif 'close' in spy_data.columns:
+        spy_close = spy_data['close']
+    elif 'Adj Close' in spy_data.columns:
+        spy_close = spy_data['Adj Close']
+    else:
+        # Try to get first numeric column
+        numeric_cols = spy_data.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) > 0:
+            spy_close = spy_data[numeric_cols[0]]
+        else:
+            result = pd.Series(np.nan, index=df.index)
+            result.name = "mkt_spy_dist_sma200"
+            return result
+    
+    if spy_close is None or len(spy_close) == 0:
+        result = pd.Series(np.nan, index=df.index)
+        result.name = "mkt_spy_dist_sma200"
+        return result
+    
+    # Ensure SPY index is DatetimeIndex and sorted
+    if not isinstance(spy_close.index, pd.DatetimeIndex):
+        spy_close.index = pd.to_datetime(spy_close.index)
+    spy_close = spy_close.sort_index()
+    
+    # Get stock date index for alignment
+    if isinstance(df.index, pd.DatetimeIndex):
+        stock_dates = df.index
+    elif df.index.name == 'date' or (hasattr(df.index, 'dtype') and pd.api.types.is_datetime64_any_dtype(df.index)):
+        stock_dates = pd.to_datetime(df.index)
+    elif 'date' in df.columns:
+        stock_dates = pd.to_datetime(df['date'])
+    else:
+        result = pd.Series(np.nan, index=df.index)
+        result.name = "mkt_spy_dist_sma200"
+        return result
+    
+    # Normalize dates to date-only for matching
+    stock_dates_normalized = pd.to_datetime(stock_dates).normalize()
+    spy_dates_normalized = pd.to_datetime(spy_close.index).normalize()
+    
+    # Create temporary DataFrames for alignment
+    stock_temp = pd.DataFrame({
+        'date': stock_dates_normalized,
+        'idx': range(len(stock_dates_normalized))
+    })
+    spy_temp = pd.DataFrame({
+        'date': spy_dates_normalized,
+        'close': spy_close.values
+    }).sort_values('date')
+    
+    # Merge on date (left join to preserve stock dates)
+    merged = stock_temp.merge(spy_temp, on='date', how='left', suffixes=('_stock', '_spy'), sort=False)
+    merged = merged.sort_values('idx').reset_index(drop=True)
+    
+    # Forward fill missing SPY values
+    merged['close'] = merged['close'].ffill().infer_objects(copy=False)
+    
+    # Step 1: Calculate SPY SMA200
+    spy_sma200 = merged['close'].rolling(window=200, min_periods=1).mean()
+    
+    # Step 2: Calculate distance: (SPY_close / spy_sma200) - 1
+    # Avoid division by zero
+    epsilon = 1e-10
+    dist = (merged['close'] / (spy_sma200 + epsilon)) - 1
+    
+    # Step 3: Calculate rolling z-score over 1260 days (~5 years)
+    # Use full window (no min_periods reduction as requested)
+    dist_mean = dist.rolling(window=1260, min_periods=1).mean()
+    dist_std = dist.rolling(window=1260, min_periods=1).std()
+    
+    # Calculate z-score: (dist - mean) / std
+    # Avoid division by zero
+    dist_std = dist_std.replace(0, np.nan)
+    z_score = (dist - dist_mean) / (dist_std + epsilon)
+    
+    # Step 4: Clip to [-3, 3]
+    z_score_clipped = z_score.clip(-3.0, 3.0)
+    
+    # Create aligned Series with same index as input DataFrame
+    result = pd.Series(z_score_clipped.values, index=df.index)
+    result.name = "mkt_spy_dist_sma200"
+    
+    return result
+
+
 # Ownership features removed - not consistent and cannot be trusted
