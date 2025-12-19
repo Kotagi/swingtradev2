@@ -5,6 +5,7 @@ This provides a clean interface between the GUI and the existing CLI code.
 
 import sys
 import re
+import json
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Callable, Any
 import pandas as pd
@@ -2575,6 +2576,523 @@ class StopLossAnalysisService:
             return True
         except Exception:
             return False
+
+
+class FilterEditorService:
+    """Service for filter editor functionality."""
+    
+    def __init__(self):
+        """Initialize the filter editor service."""
+        self.data_dir = PROJECT_ROOT / "data" / "features_labeled"
+        self.presets_dir = PROJECT_ROOT / "data" / "filter_presets"
+        self.presets_dir.mkdir(parents=True, exist_ok=True)
+    
+    def get_feature_defaults(self, feature_name: str, features_df: pd.DataFrame = None) -> Dict[str, Any]:
+        """
+        Get default neutral point and increment for a feature.
+        
+        Args:
+            feature_name: Name of the feature
+            features_df: Optional DataFrame with feature values (for median calculation)
+        
+        Returns:
+            Dictionary with 'neutral', 'increment', 'min', 'max', 'operator'
+        """
+        from gui.utils.feature_descriptions import FEATURE_DESCRIPTIONS
+        
+        defaults = {
+            "neutral": 0.0,
+            "increment": 0.1,
+            "min": -1.0,
+            "max": 1.0,
+            "operator": ">"  # Default to greater than
+        }
+        
+        # Get feature description if available
+        feature_info = FEATURE_DESCRIPTIONS.get(feature_name, {})
+        interpretation = feature_info.get("interpretation", "")
+        
+        # Determine feature type from interpretation or name
+        if "[-1, +1]" in interpretation or "centered" in interpretation.lower():
+            # Centered features (RSI, etc.)
+            defaults["neutral"] = 0.0
+            defaults["increment"] = 0.1
+            defaults["min"] = -1.0
+            defaults["max"] = 1.0
+        elif "[0, 1]" in interpretation or "0-1" in interpretation.lower() or "normalized" in interpretation.lower():
+            # Normalized 0-1 features
+            defaults["neutral"] = 0.5
+            defaults["increment"] = 0.05
+            defaults["min"] = 0.0
+            defaults["max"] = 1.0
+        elif "[-0.2, 0.2]" in interpretation or "±20%" in interpretation:
+            # Clipped return features
+            defaults["neutral"] = 0.0
+            defaults["increment"] = 0.05
+            defaults["min"] = -0.2
+            defaults["max"] = 0.2
+        elif "[0.0, 0.2]" in interpretation or "0% to 20%" in interpretation:
+            # Percentage-based (0-20%)
+            defaults["neutral"] = 0.1
+            defaults["increment"] = 0.01
+            defaults["min"] = 0.0
+            defaults["max"] = 0.2
+        elif feature_name.startswith("price") and "log" not in feature_name:
+            # Raw price (unbounded)
+            if features_df is not None and feature_name in features_df.columns:
+                defaults["neutral"] = float(features_df[feature_name].median())
+                defaults["increment"] = max(1.0, defaults["neutral"] * 0.1)
+                defaults["min"] = float(features_df[feature_name].quantile(0.01))
+                defaults["max"] = float(features_df[feature_name].quantile(0.99))
+            else:
+                defaults["neutral"] = 10.0
+                defaults["increment"] = 1.0
+                defaults["min"] = 0.0
+                defaults["max"] = 1000.0
+        else:
+            # Unbounded features - use median if available
+            if features_df is not None and feature_name in features_df.columns:
+                median_val = float(features_df[feature_name].median())
+                std_val = float(features_df[feature_name].std())
+                defaults["neutral"] = median_val
+                defaults["increment"] = max(0.1, std_val * 0.1)
+                defaults["min"] = float(features_df[feature_name].quantile(0.01))
+                defaults["max"] = float(features_df[feature_name].quantile(0.99))
+        
+        return defaults
+    
+    def calculate_filter_impact(
+        self,
+        trades_df: pd.DataFrame,
+        features_df: pd.DataFrame,
+        filters: List[Tuple[str, str, float]],
+        progress_callback: Optional[Callable] = None
+    ) -> Dict[str, Any]:
+        """
+        Calculate the impact of applying filters to trades.
+        
+        Args:
+            trades_df: DataFrame with trade data (must have 'return', 'pnl', 'exit_reason' columns)
+            features_df: DataFrame with feature values at entry time (indexed by trade entry_date)
+            filters: List of (feature, operator, value) tuples
+            progress_callback: Optional callback(completed, total, message)
+        
+        Returns:
+            Dictionary with impact metrics:
+            - per_feature: Dict of impact per individual filter
+            - combined: Combined impact of all filters
+            - before_metrics: Metrics before filtering
+            - after_metrics: Metrics after filtering
+        """
+        if progress_callback:
+            progress_callback(0, len(filters) + 2, "Calculating baseline metrics...")
+        
+        # Calculate baseline metrics (before filtering)
+        from src.enhanced_backtest import calculate_metrics
+        
+        # Ensure trades_df has required columns
+        if "return" not in trades_df.columns:
+            trades_df["return"] = (trades_df.get("exit_price", 0) / trades_df.get("entry_price", 1) - 1) if "exit_price" in trades_df.columns else 0.0
+        if "pnl" not in trades_df.columns:
+            trades_df["pnl"] = trades_df.get("return", 0) * trades_df.get("position_size", 1000)
+        if "holding_days" not in trades_df.columns and "entry_date" in trades_df.columns and "exit_date" in trades_df.columns:
+            trades_df["holding_days"] = (pd.to_datetime(trades_df["exit_date"]) - pd.to_datetime(trades_df["entry_date"])).dt.days
+        
+        before_metrics = calculate_metrics(trades_df, position_size=1000.0)
+        
+        # Identify winners and stop-losses
+        winners = trades_df[trades_df["return"] > 0].copy()
+        stop_losses = trades_df[
+            (trades_df.get("exit_reason", "").str.contains("stop_loss", case=False, na=False)) |
+            (trades_df.get("return", 0) < -0.05)  # Fallback: large negative return
+        ].copy()
+        
+        # Calculate per-feature impact
+        per_feature_impact = {}
+        
+        for idx, (feature, operator, value) in enumerate(filters):
+            if progress_callback:
+                progress_callback(idx + 1, len(filters) + 2, f"Calculating impact for {feature}...")
+            
+            if feature not in features_df.columns:
+                per_feature_impact[feature] = {
+                    "winners_excluded": 0,
+                    "winners_excluded_pct": 0.0,
+                    "stop_losses_excluded": 0,
+                    "stop_losses_excluded_pct": 0.0,
+                    "total_excluded": 0,
+                    "total_excluded_pct": 0.0,
+                    "error": f"Feature '{feature}' not found in data"
+                }
+                continue
+            
+            # Apply single filter
+            feature_values = features_df[feature]
+            
+            if operator == ">":
+                mask = feature_values > value
+            elif operator == ">=":
+                mask = feature_values >= value
+            elif operator == "<":
+                mask = feature_values < value
+            elif operator == "<=":
+                mask = feature_values <= value
+            else:
+                mask = pd.Series(True, index=features_df.index)
+            
+            # Get excluded trades (those that don't pass the filter)
+            excluded_mask = ~mask
+            
+            # Match features_df index with trades_df
+            # Features are indexed by (ticker, entry_date) or entry_date
+            # Trades are in trades_df with entry_date column or index
+            trade_mask = pd.Series(False, index=trades_df.index)
+            
+            if "entry_date" in trades_df.columns:
+                # Match by entry_date
+                entry_dates = pd.to_datetime(trades_df["entry_date"])
+                if isinstance(features_df.index, pd.MultiIndex):
+                    # MultiIndex (ticker, entry_date) - need to match both
+                    if "ticker" in trades_df.columns:
+                        for idx in trades_df.index:
+                            ticker = trades_df.loc[idx, "ticker"]
+                            entry_date = pd.to_datetime(trades_df.loc[idx, "entry_date"])
+                            if (ticker, entry_date) in features_df.index:
+                                feature_idx = (ticker, entry_date)
+                                if feature_idx in excluded_mask.index:
+                                    trade_mask.loc[idx] = excluded_mask.loc[feature_idx]
+                elif isinstance(features_df.index, pd.DatetimeIndex):
+                    # DatetimeIndex - match by entry_date
+                    for idx in trades_df.index:
+                        entry_date = pd.to_datetime(trades_df.loc[idx, "entry_date"])
+                        if entry_date in features_df.index:
+                            if entry_date in excluded_mask.index:
+                                trade_mask.loc[idx] = excluded_mask.loc[entry_date]
+                else:
+                    # Integer index - assume same order
+                    if len(excluded_mask) == len(trades_df):
+                        trade_mask = pd.Series(excluded_mask.values, index=trades_df.index)
+            else:
+                # No entry_date column - try index matching
+                if len(excluded_mask) == len(trades_df):
+                    trade_mask = pd.Series(excluded_mask.values, index=trades_df.index)
+            
+            excluded_trades = trades_df[trade_mask]
+            
+            if not excluded_trades.empty:
+                excluded_winners = excluded_trades[excluded_trades["return"] > 0]
+                excluded_stop_losses = excluded_trades[
+                    (excluded_trades.get("exit_reason", "").str.contains("stop_loss", case=False, na=False)) |
+                    (excluded_trades.get("return", 0) < -0.05)
+                ]
+                
+                per_feature_impact[feature] = {
+                    "winners_excluded": len(excluded_winners),
+                    "winners_excluded_pct": (len(excluded_winners) / len(winners) * 100) if len(winners) > 0 else 0.0,
+                    "stop_losses_excluded": len(excluded_stop_losses),
+                    "stop_losses_excluded_pct": (len(excluded_stop_losses) / len(stop_losses) * 100) if len(stop_losses) > 0 else 0.0,
+                    "total_excluded": len(excluded_trades),
+                    "total_excluded_pct": (len(excluded_trades) / len(trades_df) * 100) if len(trades_df) > 0 else 0.0
+                }
+            else:
+                per_feature_impact[feature] = {
+                    "winners_excluded": 0,
+                    "winners_excluded_pct": 0.0,
+                    "stop_losses_excluded": 0,
+                    "stop_losses_excluded_pct": 0.0,
+                    "total_excluded": 0,
+                    "total_excluded_pct": 0.0
+                }
+        
+        # Calculate combined impact
+        if progress_callback:
+            progress_callback(len(filters) + 1, len(filters) + 2, "Calculating combined impact...")
+        
+        # Apply all filters together
+        combined_mask = pd.Series(True, index=features_df.index)
+        
+        for feature, operator, value in filters:
+            if feature not in features_df.columns:
+                continue
+            
+            feature_values = features_df[feature]
+            
+            if operator == ">":
+                feature_mask = feature_values > value
+            elif operator == ">=":
+                feature_mask = feature_values >= value
+            elif operator == "<":
+                feature_mask = feature_values < value
+            elif operator == "<=":
+                feature_mask = feature_values <= value
+            else:
+                feature_mask = pd.Series(True, index=features_df.index)
+            
+            combined_mask = combined_mask & feature_mask
+        
+        # Get filtered trades - match features with trades
+        trade_mask = pd.Series(True, index=trades_df.index)
+        
+        if "entry_date" in trades_df.columns:
+            # Match by entry_date
+            if isinstance(features_df.index, pd.MultiIndex):
+                # MultiIndex (ticker, entry_date)
+                if "ticker" in trades_df.columns:
+                    for idx in trades_df.index:
+                        ticker = trades_df.loc[idx, "ticker"]
+                        entry_date = pd.to_datetime(trades_df.loc[idx, "entry_date"])
+                        if (ticker, entry_date) in features_df.index:
+                            feature_idx = (ticker, entry_date)
+                            if feature_idx in combined_mask.index:
+                                trade_mask.loc[idx] = combined_mask.loc[feature_idx]
+                        else:
+                            trade_mask.loc[idx] = False  # No feature data = exclude
+            elif isinstance(features_df.index, pd.DatetimeIndex):
+                # DatetimeIndex - match by entry_date
+                for idx in trades_df.index:
+                    entry_date = pd.to_datetime(trades_df.loc[idx, "entry_date"])
+                    if entry_date in features_df.index:
+                        if entry_date in combined_mask.index:
+                            trade_mask.loc[idx] = combined_mask.loc[entry_date]
+                    else:
+                        trade_mask.loc[idx] = False  # No feature data = exclude
+            else:
+                # Integer index - assume same order
+                if len(combined_mask) == len(trades_df):
+                    trade_mask = pd.Series(combined_mask.values, index=trades_df.index)
+        else:
+            # No entry_date - try index matching
+            if len(combined_mask) == len(trades_df):
+                trade_mask = pd.Series(combined_mask.values, index=trades_df.index)
+        
+        filtered_trades = trades_df[trade_mask]
+        
+        # Calculate after metrics
+        after_metrics = calculate_metrics(filtered_trades, position_size=1000.0) if not filtered_trades.empty else {
+            "n_trades": 0,
+            "win_rate": 0.0,
+            "total_pnl": 0.0,
+            "sharpe_ratio": 0.0,
+            "max_drawdown": 0.0,
+            "profit_factor": 0.0,
+            "annual_return": 0.0
+        }
+        
+        # Calculate excluded counts
+        excluded_trades = trades_df[~trades_df.index.isin(filtered_trades.index)] if not filtered_trades.empty else trades_df
+        excluded_winners = excluded_trades[excluded_trades["return"] > 0] if not excluded_trades.empty else pd.DataFrame()
+        excluded_stop_losses = excluded_trades[
+            (excluded_trades.get("exit_reason", "").str.contains("stop_loss", case=False, na=False)) |
+            (excluded_trades.get("return", 0) < -0.05)
+        ] if not excluded_trades.empty else pd.DataFrame()
+        
+        combined_impact = {
+            "winners_excluded": len(excluded_winners),
+            "winners_excluded_pct": (len(excluded_winners) / len(winners) * 100) if len(winners) > 0 else 0.0,
+            "stop_losses_excluded": len(excluded_stop_losses),
+            "stop_losses_excluded_pct": (len(excluded_stop_losses) / len(stop_losses) * 100) if len(stop_losses) > 0 else 0.0,
+            "total_excluded": len(excluded_trades),
+            "total_excluded_pct": (len(excluded_trades) / len(trades_df) * 100) if len(trades_df) > 0 else 0.0,
+            "remaining_trades": len(filtered_trades),
+            "remaining_trades_pct": (len(filtered_trades) / len(trades_df) * 100) if len(trades_df) > 0 else 0.0
+        }
+        
+        if progress_callback:
+            progress_callback(len(filters) + 2, len(filters) + 2, "Impact calculation complete!")
+        
+        return {
+            "per_feature": per_feature_impact,
+            "combined": combined_impact,
+            "before_metrics": before_metrics,
+            "after_metrics": after_metrics
+        }
+    
+    def save_filter_preset(
+        self,
+        name: str,
+        filters: List[Tuple[str, str, float]],
+        description: str = "",
+        tags: List[str] = None,
+        metadata: Dict[str, Any] = None
+    ) -> bool:
+        """
+        Save a filter preset.
+        
+        Args:
+            name: Preset name
+            filters: List of (feature, operator, value) tuples
+            description: Optional description
+            tags: Optional list of tags
+            metadata: Optional additional metadata
+        
+        Returns:
+            True if saved successfully
+        """
+        try:
+            preset_data = {
+                "name": name,
+                "description": description or "",
+                "tags": tags or [],
+                "filters": [
+                    {"feature": f, "operator": op, "value": float(v)}
+                    for f, op, v in filters
+                ],
+                "created": datetime.now().isoformat(),
+                "modified": datetime.now().isoformat(),
+                "metadata": metadata or {}
+            }
+            
+            # Convert to JSON-serializable
+            preset_data = self._convert_to_json_serializable(preset_data)
+            
+            # Sanitize filename
+            safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).strip()
+            safe_name = safe_name.replace(' ', '_')
+            filename = f"{safe_name}.json"
+            filepath = self.presets_dir / filename
+            
+            # Handle duplicates
+            counter = 1
+            while filepath.exists():
+                filename = f"{safe_name}_{counter}.json"
+                filepath = self.presets_dir / filename
+                counter += 1
+            
+            with open(filepath, 'w') as f:
+                json.dump(preset_data, f, indent=2)
+            
+            return True
+        except Exception as e:
+            print(f"Error saving filter preset: {e}")
+            return False
+    
+    def load_filter_preset(self, filename: str) -> Optional[Dict[str, Any]]:
+        """
+        Load a filter preset.
+        
+        Args:
+            filename: Preset filename (with or without .json extension)
+        
+        Returns:
+            Preset data dictionary or None if not found
+        """
+        try:
+            if not filename.endswith('.json'):
+                filename += '.json'
+            
+            filepath = self.presets_dir / filename
+            if not filepath.exists():
+                return None
+            
+            with open(filepath, 'r') as f:
+                preset_data = json.load(f)
+            
+            # Convert filters back to tuples
+            if "filters" in preset_data:
+                preset_data["filters"] = [
+                    (f["feature"], f["operator"], f["value"])
+                    for f in preset_data["filters"]
+                ]
+            
+            return preset_data
+        except Exception as e:
+            print(f"Error loading filter preset: {e}")
+            return None
+    
+    def list_filter_presets(self) -> List[Dict[str, Any]]:
+        """List all filter presets with metadata."""
+        presets = []
+        
+        for filepath in self.presets_dir.glob("*.json"):
+            try:
+                with open(filepath, 'r') as f:
+                    preset_data = json.load(f)
+                
+                preset_data["filename"] = filepath.name
+                presets.append(preset_data)
+            except Exception:
+                continue
+        
+        # Sort by modified date (newest first)
+        presets.sort(key=lambda x: x.get("modified", ""), reverse=True)
+        return presets
+    
+    def delete_filter_preset(self, filename: str) -> bool:
+        """Delete a filter preset."""
+        try:
+            if not filename.endswith('.json'):
+                filename += '.json'
+            
+            filepath = self.presets_dir / filename
+            if filepath.exists():
+                filepath.unlink()
+                return True
+            return False
+        except Exception:
+            return False
+    
+    def rename_filter_preset(self, old_filename: str, new_name: str) -> bool:
+        """Rename a filter preset."""
+        try:
+            if not old_filename.endswith('.json'):
+                old_filename += '.json'
+            
+            old_filepath = self.presets_dir / old_filename
+            
+            if not old_filepath.exists():
+                return False
+            
+            # Load old preset
+            with open(old_filepath, 'r') as f:
+                preset_data = json.load(f)
+            
+            # Update name
+            preset_data["name"] = new_name
+            preset_data["modified"] = datetime.now().isoformat()
+            
+            # Sanitize new filename
+            safe_name = "".join(c for c in new_name if c.isalnum() or c in (' ', '-', '_')).strip()
+            safe_name = safe_name.replace(' ', '_')
+            new_filename = f"{safe_name}.json"
+            new_filepath = self.presets_dir / new_filename
+            
+            # Handle duplicates
+            counter = 1
+            while new_filepath.exists() and new_filepath != old_filepath:
+                new_filename = f"{safe_name}_{counter}.json"
+                new_filepath = self.presets_dir / new_filename
+                counter += 1
+            
+            # Save new file
+            with open(new_filepath, 'w') as f:
+                json.dump(preset_data, f, indent=2)
+            
+            # Delete old file if different
+            if new_filepath != old_filepath:
+                old_filepath.unlink()
+            
+            return True
+        except Exception:
+            return False
+    
+    def _convert_to_json_serializable(self, obj: Any) -> Any:
+        """Convert numpy/pandas types to native Python types for JSON serialization."""
+        if isinstance(obj, (np.integer, np.int64, np.int32)):
+            return int(obj)
+        elif isinstance(obj, (np.floating, np.float64, np.float32)):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, pd.Timestamp):
+            return obj.isoformat()
+        elif pd.isna(obj):
+            return None
+        elif isinstance(obj, dict):
+            return {k: self._convert_to_json_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [self._convert_to_json_serializable(item) for item in obj]
+        else:
+            return obj
 
 
 class SHAPService:

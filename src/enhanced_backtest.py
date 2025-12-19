@@ -1035,10 +1035,19 @@ def main():
     
     print("="*80)
     
-    # Save trades if requested
-    if args.output and not trades.empty:
-        trades.to_csv(args.output)
-        print(f"\nTrades saved to {args.output}")
+    # Save trades if requested (save even if empty to preserve output file)
+    if args.output:
+        if not trades.empty:
+            trades.to_csv(args.output)
+            print(f"\nTrades saved to {args.output}")
+        else:
+            # Save empty DataFrame with expected columns for consistency
+            empty_trades = pd.DataFrame(columns=[
+                'entry_date', 'entry_price', 'exit_date', 'exit_price',
+                'return', 'pnl', 'holding_days', 'exit_reason'
+            ])
+            empty_trades.to_csv(args.output, index=False)
+            print(f"\nEmpty trades file saved to {args.output} (0 trades generated)")
 
 
 if __name__ == "__main__":

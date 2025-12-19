@@ -81,6 +81,11 @@ class AnalysisTab(QWidget):
         stop_loss_tab = StopLossAnalysisTab()
         self.tab_widget.addTab(stop_loss_tab, "Stop-Loss Analysis")
         
+        # Tab 5: Filter Editor
+        from gui.tabs.filter_editor_tab import FilterEditorTab
+        filter_editor_tab = FilterEditorTab()
+        self.tab_widget.addTab(filter_editor_tab, "Filter Editor")
+        
         layout.addWidget(self.tab_widget)
         
         # Set layout on content widget
