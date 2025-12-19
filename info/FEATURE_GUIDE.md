@@ -1194,10 +1194,12 @@ This document provides comprehensive documentation for all 61 technical indicato
 ---
 
 ### 49. swing_low_10d
-**What it represents:** Recent swing low (10-day) - the lowest low price over the last 10 days.
+**What it represents:** Recent swing low (10-day) - the lowest low price over the previous 10 days.
 
 **How to Calculate:**
-1. `swing_low_10d = low.rolling(10, min_periods=1).min()`
+1. `swing_low_10d = low.shift(1).rolling(10, min_periods=1).min()`
+   - Excludes current day to avoid lookahead bias
+   - Uses previous 10 days of low prices
 
 **Normalization:** None (raw price value)
 

@@ -31,11 +31,8 @@ def get_feature_set_config_path(feature_set: str) -> Path:
     Returns:
         Path to the feature set config file
     """
-    if feature_set == DEFAULT_FEATURE_SET:
-        # Default set uses the original features.yaml for backward compatibility
-        return CONFIG_DIR / "features.yaml"
-    else:
-        return CONFIG_DIR / f"features_{feature_set}.yaml"
+    # All feature sets now use the features_<set>.yaml naming convention
+    return CONFIG_DIR / f"features_{feature_set}.yaml"
 
 
 def get_feature_set_data_path(feature_set: str) -> Path:
@@ -48,11 +45,8 @@ def get_feature_set_data_path(feature_set: str) -> Path:
     Returns:
         Path to the feature set data directory
     """
-    if feature_set == DEFAULT_FEATURE_SET:
-        # Default set uses the original directory for backward compatibility
-        return DATA_DIR / "features_labeled"
-    else:
-        return DATA_DIR / f"features_labeled_{feature_set}"
+    # All feature sets now use the features_labeled_<set> naming convention
+    return DATA_DIR / f"features_labeled_{feature_set}"
 
 
 def get_train_features_config_path(feature_set: str) -> Path:
@@ -65,11 +59,8 @@ def get_train_features_config_path(feature_set: str) -> Path:
     Returns:
         Path to the train features config file
     """
-    if feature_set == DEFAULT_FEATURE_SET:
-        # Default set uses the original train_features.yaml for backward compatibility
-        return CONFIG_DIR / "train_features.yaml"
-    else:
-        return CONFIG_DIR / f"train_features_{feature_set}.yaml"
+    # All feature sets now use the train_features_<set>.yaml naming convention
+    return CONFIG_DIR / f"train_features_{feature_set}.yaml"
 
 
 def list_feature_sets() -> List[str]:
@@ -79,16 +70,23 @@ def list_feature_sets() -> List[str]:
     Returns:
         List of feature set names
     """
-    feature_sets = [DEFAULT_FEATURE_SET]  # Always include default
+    feature_sets = []
     
     # Find all feature config files
     for config_file in CONFIG_DIR.glob("features_*.yaml"):
-        # Extract feature set name from filename (e.g., "features_v2.yaml" -> "v2")
+        # Extract feature set name from filename (e.g., "features_v1.yaml" -> "v1")
         set_name = config_file.stem.replace("features_", "")
         if set_name and set_name not in feature_sets:
-            feature_sets.append(set_name)
+            # Verify the registry module exists
+            try:
+                import importlib
+                importlib.import_module(f"features.sets.{set_name}.registry")
+                feature_sets.append(set_name)
+            except ImportError:
+                # Skip if registry doesn't exist
+                pass
     
-    return sorted(feature_sets)
+    return sorted(feature_sets) if feature_sets else [DEFAULT_FEATURE_SET]
 
 
 def feature_set_exists(feature_set: str) -> bool:
@@ -101,11 +99,18 @@ def feature_set_exists(feature_set: str) -> bool:
     Returns:
         True if the feature set exists, False otherwise
     """
-    if feature_set == DEFAULT_FEATURE_SET:
-        # Default set exists if features.yaml exists
-        return (CONFIG_DIR / "features.yaml").exists()
-    else:
-        return get_feature_set_config_path(feature_set).exists()
+    # Check if config file exists
+    config_path = get_feature_set_config_path(feature_set)
+    if not config_path.exists():
+        return False
+    
+    # Also check if the registry module exists
+    try:
+        import importlib
+        importlib.import_module(f"features.sets.{feature_set}.registry")
+        return True
+    except ImportError:
+        return False
 
 
 def create_feature_set(

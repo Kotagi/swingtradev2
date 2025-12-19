@@ -1,7 +1,8 @@
-features:
 # config/features.yaml
+
+features:
   # 1. Price
-  price: 0
+  price: 1
   # 2. Price Log
   price_log: 1
   # 3. Price vs MA200
@@ -67,7 +68,7 @@ features:
   # 33. Higher Low (10-day)
   higher_low_10d: 1
   # 34. Swing Low (10-day)
-  swing_low_10d: 0
+  swing_low_10d: 1
   # 35. Trend Residual (Noise vs Trend)
   trend_residual: 1
   # 36. MACD Histogram (Normalized)

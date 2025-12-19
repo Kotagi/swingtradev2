@@ -1,0 +1,14 @@
+# Feature Sets Metadata
+# This file tracks all available feature sets and their configurations
+
+feature_sets:
+  v1:
+    name: "v1"
+    description: "Default feature set"
+    created: "2024-12-19"
+    version: "1.0"
+    features_dir: "features/sets/v1"
+    config_file: "config/features_v1.yaml"
+    train_config_file: "config/train_features_v1.yaml"
+    data_dir: "data/features_labeled_v1"
+

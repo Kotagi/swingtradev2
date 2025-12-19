@@ -34,7 +34,6 @@ except ImportError:
     process_map = None
 
 from utils.logger import setup_logger
-from features.registry import load_enabled_features
 # Labels are now calculated during training, not during feature engineering
 from feature_set_manager import (
     get_feature_set_config_path,
@@ -42,6 +41,36 @@ from feature_set_manager import (
     feature_set_exists,
     DEFAULT_FEATURE_SET
 )
+
+
+def load_enabled_features_for_set(config_path: str, feature_set: str = None) -> dict:
+    """
+    Load enabled features for a feature set.
+    
+    Dynamically imports the registry module for the specified feature set
+    and calls load_enabled_features on it.
+    
+    Args:
+        config_path: Path to the feature config YAML file.
+        feature_set: Name of the feature set (e.g., "v1"). If None, uses DEFAULT_FEATURE_SET.
+    
+    Returns:
+        Dict mapping feature names to feature functions.
+    """
+    if feature_set is None:
+        feature_set = DEFAULT_FEATURE_SET
+    
+    # Import the registry module for this feature set
+    if feature_set == DEFAULT_FEATURE_SET:
+        # For v1, use the new location
+        from features.sets.v1.registry import load_enabled_features
+    else:
+        # For other feature sets, dynamically import
+        import importlib
+        registry_module = importlib.import_module(f"features.sets.{feature_set}.registry")
+        load_enabled_features = registry_module.load_enabled_features
+    
+    return load_enabled_features(config_path)
 
 
 def validate_feature(series: pd.Series, feature_name: str) -> Tuple[bool, List[str]]:
@@ -242,7 +271,19 @@ def main(
     master_log = "feature_pipeline.log"
     logger = setup_logger("pipeline", master_log)
 
-    enabled = load_enabled_features(config_path)
+    # Determine feature set from config path or use default
+    # Extract feature set from config path if it matches pattern
+    feature_set = DEFAULT_FEATURE_SET
+    config_path_obj = Path(config_path)
+    if "features_v" in config_path_obj.name:
+        # Extract feature set from filename (e.g., "features_v1.yaml" -> "v1")
+        feature_set = config_path_obj.stem.replace("features_", "")
+    elif config_path_obj.name == "features.yaml":
+        # Old default config, use v1
+        feature_set = "v1"
+    
+    enabled = load_enabled_features_for_set(config_path, feature_set)
+    logger.info(f"Using feature set: {feature_set}")
     logger.info(f"Enabled features: {list(enabled.keys())}")
     if full_refresh:
         logger.info("Full-refresh mode: recomputing all tickers")
