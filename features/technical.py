@@ -3259,4 +3259,160 @@ def feature_mkt_spy_dist_sma200(df: DataFrame, spy_data: DataFrame = None) -> Se
     return result
 
 
+def feature_mkt_spy_sma200_slope(df: DataFrame, spy_data: DataFrame = None) -> Series:
+    """
+    Compute SPY SMA200 slope (direction/persistence of market's long-term trend).
+    
+    Measures the direction and persistence of the market's long-term trend.
+    This provides market regime context:
+    - High percentile (positive) = strong uptrend regime
+    - Low percentile (negative) = downtrend regime
+    - Mid (near 0) = flat/range regime
+    
+    Calculation:
+    1. Calculate SPY SMA200: `spy_sma200 = mean(SPY_close over 200 trading days)`
+    2. Calculate 60-day slope: `slope = (spy_sma200 / spy_sma200.shift(60)) - 1`
+    3. Calculate rolling percentile rank: `pct = percentile_rank(slope over 1260 days)`
+    4. Remap to [-1, +1]: `mapped = 2 * pct - 1`
+    
+    Normalization:
+    - Percentile rank over 1260 days (~5 years) makes it comparable across different market regimes
+    - Remapping to [-1, +1] provides clear interpretation:
+      - +1 = strong uptrend (top percentile)
+      - 0 = neutral/flat trend (median)
+      - -1 = strong downtrend (bottom percentile)
+    - Range: [-1, +1]
+    
+    Why it adds value:
+    - Provides market trend direction context (uptrend vs downtrend vs flat)
+    - Complements mkt_spy_dist_sma200 (position) with direction information
+    - Helps model understand market regime (trending vs ranging)
+    - Critical for swing trading where trend direction matters
+    - Pairs with distance feature: position + direction = complete market context
+    
+    Args:
+        df: Input DataFrame with 'close' column (used for date alignment only).
+        spy_data: SPY DataFrame (optional, will be loaded if not provided)
+    
+    Returns:
+        Series named 'mkt_spy_sma200_slope' containing normalized SPY SMA200 slope values in [-1, +1].
+    """
+    close = _get_close_series(df)
+    
+    # Load SPY data if not provided
+    if spy_data is None:
+        spy_data = _load_spy_data()
+        if spy_data is None:
+            # Return NaN if SPY data not available
+            result = pd.Series(np.nan, index=df.index)
+            result.name = "mkt_spy_sma200_slope"
+            return result
+    
+    # Get SPY close price - try different column name variations
+    if 'Close' in spy_data.columns:
+        spy_close = spy_data['Close']
+    elif 'close' in spy_data.columns:
+        spy_close = spy_data['close']
+    elif 'Adj Close' in spy_data.columns:
+        spy_close = spy_data['Adj Close']
+    else:
+        # Try to get first numeric column
+        numeric_cols = spy_data.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) > 0:
+            spy_close = spy_data[numeric_cols[0]]
+        else:
+            result = pd.Series(np.nan, index=df.index)
+            result.name = "mkt_spy_sma200_slope"
+            return result
+    
+    if spy_close is None or len(spy_close) == 0:
+        result = pd.Series(np.nan, index=df.index)
+        result.name = "mkt_spy_sma200_slope"
+        return result
+    
+    # Ensure SPY index is DatetimeIndex and sorted
+    if not isinstance(spy_close.index, pd.DatetimeIndex):
+        spy_close.index = pd.to_datetime(spy_close.index)
+    spy_close = spy_close.sort_index()
+    
+    # Get stock date index for alignment
+    if isinstance(df.index, pd.DatetimeIndex):
+        stock_dates = df.index
+    elif df.index.name == 'date' or (hasattr(df.index, 'dtype') and pd.api.types.is_datetime64_any_dtype(df.index)):
+        stock_dates = pd.to_datetime(df.index)
+    elif 'date' in df.columns:
+        stock_dates = pd.to_datetime(df['date'])
+    else:
+        result = pd.Series(np.nan, index=df.index)
+        result.name = "mkt_spy_sma200_slope"
+        return result
+    
+    # Normalize dates to date-only for matching
+    stock_dates_normalized = pd.to_datetime(stock_dates).normalize()
+    spy_dates_normalized = pd.to_datetime(spy_close.index).normalize()
+    
+    # Create temporary DataFrames for alignment
+    stock_temp = pd.DataFrame({
+        'date': stock_dates_normalized,
+        'idx': range(len(stock_dates_normalized))
+    })
+    spy_temp = pd.DataFrame({
+        'date': spy_dates_normalized,
+        'close': spy_close.values
+    }).sort_values('date')
+    
+    # Merge on date (left join to preserve stock dates)
+    merged = stock_temp.merge(spy_temp, on='date', how='left', suffixes=('_stock', '_spy'), sort=False)
+    merged = merged.sort_values('idx').reset_index(drop=True)
+    
+    # Forward fill missing SPY values
+    merged['close'] = merged['close'].ffill().infer_objects(copy=False)
+    
+    # Step 1: Calculate SPY SMA200
+    spy_sma200 = merged['close'].rolling(window=200, min_periods=1).mean()
+    
+    # Step 2: Calculate 60-day slope: (spy_sma200 / spy_sma200.shift(60)) - 1
+    # Avoid division by zero
+    epsilon = 1e-10
+    spy_sma200_shifted = spy_sma200.shift(60)
+    slope = (spy_sma200 / (spy_sma200_shifted + epsilon)) - 1
+    
+    # Step 3: Calculate rolling percentile rank over 1260 days (~5 years)
+    # Use full window (no min_periods reduction as requested)
+    # Calculate percentile rank: for each value, what percentile is it within the rolling window?
+    pct_rank = pd.Series(index=slope.index, dtype=float)
+    
+    for i in range(len(slope)):
+        if pd.isna(slope.iloc[i]):
+            pct_rank.iloc[i] = np.nan
+            continue
+        
+        # Get rolling window (up to 1260 days, but use available data if less)
+        start_idx = max(0, i - 1260 + 1)
+        window_data = slope.iloc[start_idx:i + 1]
+        
+        # Remove NaN values from window
+        window_data_clean = window_data.dropna()
+        
+        if len(window_data_clean) == 0:
+            pct_rank.iloc[i] = np.nan
+        elif len(window_data_clean) == 1:
+            # Only one value, default to median (0.5)
+            pct_rank.iloc[i] = 0.5
+        else:
+            # Calculate percentile rank: (number of values <= current) / total
+            current_val = slope.iloc[i]
+            rank = (window_data_clean <= current_val).sum() / len(window_data_clean)
+            pct_rank.iloc[i] = rank
+    
+    # Step 4: Remap to [-1, +1]: mapped = 2 * pct - 1
+    mapped = 2 * pct_rank - 1
+    
+    # Create aligned Series with same index as input DataFrame
+    result = pd.Series(mapped.values, index=df.index)
+    result.name = "mkt_spy_sma200_slope"
+    
+    return result
+
+
 # Ownership features removed - not consistent and cannot be trusted

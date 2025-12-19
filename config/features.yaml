@@ -121,3 +121,5 @@ features:
   volatility_of_volatility: 1
   # 60. SPY Distance from SMA200 (Market Context)
   mkt_spy_dist_sma200: 1
+  # 61. SPY SMA200 Slope (Market Context)
+  mkt_spy_sma200_slope: 1

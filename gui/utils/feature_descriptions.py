@@ -607,6 +607,24 @@ FEATURE_DESCRIPTIONS = {
             "< -1.0 for bearish market conditions."
         )
     },
+    "mkt_spy_sma200_slope": {
+        "name": "SPY SMA200 Slope",
+        "description": (
+            "SPY SMA200 slope (direction/persistence of market's long-term trend). "
+            "Measures the direction and persistence of the market's long-term trend. "
+            "Provides market trend direction context: uptrend vs downtrend vs flat/range regime. "
+            "Percentile rank normalized over 1260 days (~5 years) and remapped to [-1, +1]."
+        ),
+        "interpretation": (
+            "Normalized values are in [-1, +1] range. "
+            "+1 indicates strong uptrend (top percentile), "
+            "0 indicates neutral/flat trend (median), "
+            "-1 indicates strong downtrend (bottom percentile). "
+            "Typical filter thresholds: > 0.5 for strong uptrend conditions, "
+            "< -0.5 for downtrend conditions. "
+            "Pairs with SPY Distance from SMA200: position + direction = complete market context."
+        )
+    },
     
     # Candlestick Features
     "candle_body_pct": {
