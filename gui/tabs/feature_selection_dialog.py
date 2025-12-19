@@ -79,6 +79,7 @@ class FeatureSelectionDialog(QDialog):
             "Return Features": ["daily_return", "gap_pct", "weekly_return", "monthly_return", 
                                "quarterly_return", "ytd_return"],
             "52-Week Features": ["dist_52w_high", "dist_52w_low", "pos_52w"],
+            "Market Context": ["mkt_spy", "beta_spy"],  # Check this BEFORE Moving Averages
             "Moving Averages": ["sma20", "sma50", "sma200", "sma20_sma50", "sma50_sma200", "sma50_slope", "sma200_slope"],
             "Volatility": ["volatility_5d", "volatility_21d", "volatility_ratio", "atr14", "volatility_of_volatility"],
             "Volume": ["log_volume", "log_avg_volume", "relative_volume", "obv_momentum"],
@@ -88,7 +89,7 @@ class FeatureSelectionDialog(QDialog):
             "Pattern Recognition": ["candle_body_pct", "candle_upper_wick_pct", "candle_lower_wick_pct",
                                    "higher_high", "higher_low", "swing_low"],
             "Channel Indicators": ["donchian_position", "donchian_breakout", "ttm_squeeze"],
-            "Advanced": ["beta_spy", "fractal_dimension_index", "hurst_exponent", "price_curvature"]
+            "Advanced": ["fractal_dimension_index", "hurst_exponent", "price_curvature"]
         }
         
         # Map each feature to a category

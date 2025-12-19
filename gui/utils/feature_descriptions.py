@@ -590,6 +590,23 @@ FEATURE_DESCRIPTIONS = {
             "Typical filter thresholds: > 0.4 for market-sensitive stocks."
         )
     },
+    "mkt_spy_dist_sma200": {
+        "name": "SPY Distance from SMA200",
+        "description": (
+            "SPY distance from SMA200 (market extension vs long-term trend). "
+            "Measures how extended the market is vs its long-term trend baseline. "
+            "Provides market regime context: risk-on (bullish) vs risk-off (bearish) environment. "
+            "Z-score normalized over 1260 days (~5 years) to make it comparable across different market regimes."
+        ),
+        "interpretation": (
+            "Normalized values are z-scores clipped to [-3, 3] range. "
+            "Higher (positive) values indicate risk-on/bullish environment (market extended above trend), "
+            "near 0 indicates neutral (market at trend baseline), "
+            "lower (negative) values indicate risk-off/bearish regime (market below trend). "
+            "Typical filter thresholds: > 1.0 for strong bullish market conditions, "
+            "< -1.0 for bearish market conditions."
+        )
+    },
     
     # Candlestick Features
     "candle_body_pct": {

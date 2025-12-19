@@ -1,6 +1,6 @@
 # Complete Feature Guide
 
-This document provides comprehensive documentation for all 57 technical indicators used in the swing trading ML pipeline. Each feature includes calculation details, normalization methods, and characteristics.
+This document provides comprehensive documentation for all 60 technical indicators used in the swing trading ML pipeline. Each feature includes calculation details, normalization methods, and characteristics.
 
 ---
 
@@ -13,7 +13,7 @@ This document provides comprehensive documentation for all 57 technical indicato
 5. [Volatility Features (8)](#volatility-features-8)
 6. [Volume Features (5)](#volume-features-5)
 7. [Momentum Features (3)](#momentum-features-3)
-8. [Market Context (1)](#market-context-1)
+8. [Market Context (2)](#market-context-2)
 9. [Candlestick Features (3)](#candlestick-features-3)
 10. [Price Action Features (4)](#price-action-features-4)
 11. [Trend Features (8)](#trend-features-8)
@@ -1003,7 +1003,7 @@ This document provides comprehensive documentation for all 57 technical indicato
 
 ---
 
-## Market Context (1)
+## Market Context (2)
 
 ### 41. beta_spy_252d
 **What it represents:** Rolling beta vs SPY over 252 trading days.
@@ -1029,9 +1029,40 @@ This document provides comprehensive documentation for all 57 technical indicato
 
 ---
 
+### 42. mkt_spy_dist_sma200
+**What it represents:** SPY distance from SMA200 (market extension vs long-term trend).
+
+**How to Calculate:**
+1. Calculate SPY SMA200: `spy_sma200 = mean(SPY_close over 200 trading days)`
+2. Calculate distance: `dist = (SPY_close / spy_sma200) - 1`
+3. Calculate rolling z-score: `z = (dist - mean_rolling(dist)) / std_rolling(dist)`
+   - Rolling window: 1260 days (~5 years)
+4. Clip to `[-3, 3]`
+
+**Normalization:**
+- Z-score normalization makes it comparable across different market regimes
+- Clipping to [-3, 3] limits extreme values
+- Range: [-3, 3] (standard deviations from mean)
+
+**Feature Characteristics:**
+- Higher (positive) = more risk-on / bullish environment (market extended above trend)
+- Near 0 = neutral (market at trend baseline)
+- Lower (negative) = risk-off / bearish regime (market below trend)
+- Range: [-3, 3] (standard deviations from mean)
+- First 1260 days will have NaN values (insufficient data for z-score)
+
+**Why it's valuable:**
+- Provides market regime context (risk-on vs risk-off)
+- Helps model understand market environment (extended vs mean-reverting)
+- Complements beta_spy_252d (correlation) with extension/regime information
+- Critical for swing trading where market regime matters
+- Different from beta: measures market extension, not stock correlation
+
+---
+
 ## Candlestick Features (3)
 
-### 42. candle_body_pct
+### 43. candle_body_pct
 **What it represents:** Candle body percentage of total range.
 
 **How to Calculate:**
@@ -1051,7 +1082,7 @@ This document provides comprehensive documentation for all 57 technical indicato
 
 ---
 
-### 43. candle_upper_wick_pct
+### 44. candle_upper_wick_pct
 **What it represents:** Upper wick percentage of total range.
 
 **How to Calculate:**
@@ -1071,7 +1102,7 @@ This document provides comprehensive documentation for all 57 technical indicato
 
 ---
 
-### 44. candle_lower_wick_pct
+### 45. candle_lower_wick_pct
 **What it represents:** Lower wick percentage of total range.
 
 **How to Calculate:**
@@ -1093,7 +1124,7 @@ This document provides comprehensive documentation for all 57 technical indicato
 
 ## Price Action Features (4)
 
-### 45. higher_high_10d
+### 46. higher_high_10d
 **What it represents:** Binary flag indicating if current close is higher than previous 10-day maximum.
 
 **How to Calculate:**
@@ -1111,7 +1142,7 @@ This document provides comprehensive documentation for all 57 technical indicato
 
 ---
 
-### 46. higher_low_10d
+### 47. higher_low_10d
 **What it represents:** Binary flag indicating if current close is higher than previous 10-day minimum.
 
 **How to Calculate:**
@@ -1129,7 +1160,30 @@ This document provides comprehensive documentation for all 57 technical indicato
 
 ---
 
-### 47. donchian_position
+### 48. swing_low_10d
+**What it represents:** Recent swing low (10-day) - the lowest low price over the last 10 days.
+
+**How to Calculate:**
+1. `swing_low_10d = low.rolling(10, min_periods=1).min()`
+
+**Normalization:** None (raw price value)
+
+**Feature Characteristics:**
+- Returns the actual swing low price (not normalized)
+- Uses the 'low' price (not close) to capture the actual swing low point
+- Lower values indicate stronger support levels
+- Used in conjunction with entry price to calculate stop distance
+- Identifies the most recent structural support level
+
+**Why it's valuable:**
+- Identifies structural support levels for stop-loss placement
+- Helps determine risk management (distance from entry to swing low)
+- Provides context for price action analysis
+- Used for calculating stop-loss distances in trading strategies
+
+---
+
+### 49. donchian_position
 **What it represents:** Position within Donchian Channel (20-period) - measures breakout structure.
 
 **How to Calculate:**
@@ -1156,7 +1210,7 @@ This document provides comprehensive documentation for all 57 technical indicato
 
 ---
 
-### 48. donchian_breakout
+### 50. donchian_breakout
 **What it represents:** Binary flag indicating breakout above prior 20-day high close (non-lookahead).
 
 **How to Calculate (non-lookahead):**
@@ -1185,7 +1239,7 @@ This document provides comprehensive documentation for all 57 technical indicato
 
 ## Trend Features (8)
 
-### 49. trend_residual
+### 51. trend_residual
 **What it represents:** Deviation from linear trend (noise vs trend).
 
 **How to Calculate:**
@@ -1206,7 +1260,7 @@ This document provides comprehensive documentation for all 57 technical indicato
 
 ---
 
-### 50. adx14
+### 52. adx14
 **What it represents:** Average Directional Index (14-period) - trend strength indicator.
 
 **How to Calculate:**
@@ -1243,7 +1297,7 @@ This document provides comprehensive documentation for all 57 technical indicato
 
 ---
 
-### 51. aroon_up
+### 53. aroon_up
 **What it represents:** Aroon Up (25-period) - normalized measure of days since highest high, indicating uptrend maturity.
 
 **How to Calculate:**
@@ -1271,7 +1325,7 @@ This document provides comprehensive documentation for all 57 technical indicato
 
 ---
 
-### 52. aroon_down
+### 54. aroon_down
 **What it represents:** Aroon Down (25-period) - normalized measure of days since lowest low, indicating downtrend maturity.
 
 **How to Calculate:**
@@ -1299,7 +1353,7 @@ This document provides comprehensive documentation for all 57 technical indicato
 
 ---
 
-### 53. aroon_oscillator
+### 55. aroon_oscillator
 **What it represents:** Aroon Oscillator (25-period) - trend dominance indicator combining Aroon Up and Aroon Down.
 
 **How to Calculate:**
@@ -1333,7 +1387,7 @@ This document provides comprehensive documentation for all 57 technical indicato
 
 ---
 
-### 54. fractal_dimension_index
+### 56. fractal_dimension_index
 **What it represents:** Measures how "rough" the price path is (fractal dimension).
 
 **How to Calculate:**
@@ -1363,7 +1417,7 @@ This document provides comprehensive documentation for all 57 technical indicato
 
 ---
 
-### 55. hurst_exponent
+### 57. hurst_exponent
 **What it represents:** Quantifies whether returns persist, mean-revert, or act like noise (R/S method).
 
 **How to Calculate:**
@@ -1396,7 +1450,7 @@ This document provides comprehensive documentation for all 57 technical indicato
 
 ---
 
-### 56. price_curvature
+### 58. price_curvature
 **What it represents:** Second derivative of trend (acceleration/deceleration).
 
 **How to Calculate:**
@@ -1434,11 +1488,11 @@ This document provides comprehensive documentation for all 57 technical indicato
 | Volatility | 8 | volatility_5d, volatility_21d, volatility_ratio, atr14_normalized, bollinger_band_width, ttm_squeeze_on, ttm_squeeze_momentum, volatility_of_volatility |
 | Volume | 5 | log_volume, log_avg_volume_20d, relative_volume, chaikin_money_flow, obv_momentum |
 | Momentum | 9 | rsi14, macd_histogram_normalized, ppo_histogram, dpo, roc10, roc20, stochastic_k14, cci20, williams_r14 |
-| Market Context | 1 | beta_spy_252d |
+| Market Context | 2 | beta_spy_252d, mkt_spy_dist_sma200 |
 | Candlestick | 3 | candle_body_pct, candle_upper_wick_pct, candle_lower_wick_pct |
-| Price Action | 4 | higher_high_10d, higher_low_10d, donchian_position, donchian_breakout |
+| Price Action | 5 | higher_high_10d, higher_low_10d, swing_low_10d, donchian_position, donchian_breakout |
 | Trend | 8 | trend_residual, adx14, aroon_up, aroon_down, aroon_oscillator, fractal_dimension_index, hurst_exponent, price_curvature |
-| **Total** | **57** | |
+| **Total** | **60** | |
 
 ---
 
@@ -1457,7 +1511,7 @@ This document provides comprehensive documentation for all 57 technical indicato
 
 ## Best Practices
 
-1. **Feature Selection**: All 57 features are enabled by default in `config/features.yaml`
+1. **Feature Selection**: All 60 features are enabled by default in `config/features.yaml`
 2. **Training**: Use `config/train_features.yaml` to select features for model training
 3. **Scaling**: Features are automatically scaled during training (StandardScaler for unbounded features)
 4. **Validation**: Feature validation checks for infinities, excessive NaNs, and constant values
