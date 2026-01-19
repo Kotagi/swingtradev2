@@ -12,6 +12,7 @@ Uses Joblib to distribute work across all CPU cores on Windows.
 """
 
 import argparse
+import os
 import sys
 import time
 from pathlib import Path
@@ -222,8 +223,12 @@ def process_file(
     logger.debug(f"Start processing {ticker}")
 
     try:
-        # 1) Load cleaned data
-        df = pd.read_parquet(file_path)
+        # 1) Load cleaned data (use PyArrow engine for faster I/O, fallback to default if not available)
+        try:
+            df = pd.read_parquet(file_path, engine='pyarrow')
+        except (ImportError, ValueError):
+            # Fallback to default engine if PyArrow not available
+            df = pd.read_parquet(file_path)
         stats['rows_before'] = len(df)
         
         if df.empty:
@@ -249,8 +254,12 @@ def process_file(
             if high_nan_rows > 0:
                 logger.warning(f"{ticker}: {high_nan_rows} rows with >50% missing features")
 
-        # 5) Write output Parquet (features only, no labels)
-        df_feat.to_parquet(out_file, index=True)
+        # 5) Write output Parquet (features only, no labels, use PyArrow engine for faster I/O)
+        try:
+            df_feat.to_parquet(out_file, index=True, engine='pyarrow')
+        except (ImportError, ValueError):
+            # Fallback to default engine if PyArrow not available
+            df_feat.to_parquet(out_file, index=True)
         logger.debug(f"Finished {ticker} -> {out_file}")
         return (file_path.name, None, stats)
 
@@ -326,8 +335,14 @@ def main(
     logger.info("Starting parallel feature computation...")
     
     # Process in batches for more real-time progress updates
-    # Smaller batches = more frequent updates, but slightly more overhead
-    batch_size = max(1, min(10, len(file_list) // 20))  # Process 5% at a time, or at least 10 files
+    # CPU-aware batch size: Use available CPU cores for optimal parallelization
+    # Formula: min(2x CPU cores, 10% of files, max 50) with minimum of 10 for better CPU utilization
+    num_cores = os.cpu_count() or 8  # Default to 8 if detection fails
+    optimal_batch_size = num_cores * 2  # 2x cores for good parallelism
+    # Ensure minimum of 10 workers (when enough files available) for better parallelization
+    min_batch = min(10, len(file_list))  # Don't exceed available files
+    batch_size = max(min_batch, min(optimal_batch_size, len(file_list) // 10, 50))
+    logger.info(f"Using batch size: {batch_size} (CPU cores: {num_cores})")
     results = []
     stats_tracker = {'success': 0, 'skipped': 0, 'failed': 0}
     
