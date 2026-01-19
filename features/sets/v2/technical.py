@@ -139,20 +139,17 @@ def feature_daily_return(df: DataFrame) -> Series:
     """
     Compute daily return as percentage: (close_t / close_{t-1} - 1) * 100.
     
-    Normalized by clipping to [-0.2, 0.2] to cap extreme moves at ±20%.
-    This prevents outliers from dominating the feature and makes it more
-    suitable for ML models.
+    Returns raw daily percentage returns without clipping to preserve information
+    about extreme moves (e.g., earnings announcements, news events).
     
     Args:
         df: Input DataFrame with a 'close' price column.
     
     Returns:
-        Series named 'daily_return' containing clipped daily percentage returns.
+        Series named 'daily_return' containing daily percentage returns.
     """
     close = _get_close_series(df)
     daily_ret = close.pct_change()
-    # Clip to ±20% to normalize extreme moves
-    daily_ret = daily_ret.clip(-0.2, 0.2)
     daily_ret.name = "daily_return"
     return daily_ret
 
@@ -164,22 +161,19 @@ def feature_gap_pct(df: DataFrame) -> Series:
     This measures the gap between today's open and yesterday's close.
     Positive values indicate gap-up, negative values indicate gap-down.
     
-    Normalized by clipping to [-0.2, 0.2] to cap extreme gaps at ±20%.
-    This prevents outliers from dominating the feature and makes it more
-    suitable for ML models.
+    Returns raw gap percentages without clipping to preserve information
+    about extreme gaps (e.g., earnings announcements, news events).
     
     Args:
         df: Input DataFrame with 'open' and 'close' columns.
     
     Returns:
-        Series named 'gap_pct' containing clipped gap percentages.
+        Series named 'gap_pct' containing gap percentages.
     """
     close = _get_close_series(df)
     openp = _get_open_series(df)
     prev_close = close.shift(1)
     gap_pct = (openp - prev_close) / prev_close
-    # Clip to ±20% to normalize extreme gaps
-    gap_pct = gap_pct.clip(-0.2, 0.2)
     gap_pct.name = "gap_pct"
     return gap_pct
 
@@ -191,20 +185,17 @@ def feature_weekly_return_5d(df: DataFrame) -> Series:
     This measures the percentage return over 5 trading days (approximately one week).
     Calculated as: (close_t / close_{t-5} - 1).
     
-    Normalized by clipping to [-0.3, 0.3] to cap extreme moves at ±30%.
-    This prevents outliers from dominating the feature and makes it more
-    suitable for ML models.
+    Returns raw 5-day percentage returns without clipping to preserve information
+    about extreme moves.
     
     Args:
         df: Input DataFrame with a 'close' price column.
     
     Returns:
-        Series named 'weekly_return_5d' containing clipped 5-day percentage returns.
+        Series named 'weekly_return_5d' containing 5-day percentage returns.
     """
     close = _get_close_series(df)
     ret_5 = close.pct_change(5)
-    # Clip to ±30% to normalize extreme moves
-    ret_5 = ret_5.clip(-0.3, 0.3)
     ret_5.name = "weekly_return_5d"
     return ret_5
 
@@ -216,20 +207,17 @@ def feature_monthly_return_21d(df: DataFrame) -> Series:
     This measures the percentage return over 21 trading days (approximately one month).
     Calculated as: (close_t / close_{t-21} - 1).
     
-    Normalized by clipping to [-0.5, 0.5] to cap extreme moves at ±50%.
-    This prevents outliers from dominating the feature and makes it more
-    suitable for ML models.
+    Returns raw 21-day percentage returns without clipping to preserve information
+    about extreme moves.
     
     Args:
         df: Input DataFrame with a 'close' price column.
     
     Returns:
-        Series named 'monthly_return_21d' containing clipped 21-day percentage returns.
+        Series named 'monthly_return_21d' containing 21-day percentage returns.
     """
     close = _get_close_series(df)
     ret_21 = close.pct_change(21)
-    # Clip to ±50% to normalize extreme moves
-    ret_21 = ret_21.clip(-0.5, 0.5)
     ret_21.name = "monthly_return_21d"
     return ret_21
 
@@ -241,20 +229,17 @@ def feature_quarterly_return_63d(df: DataFrame) -> Series:
     This measures the percentage return over 63 trading days (approximately one quarter).
     Calculated as: (close_t / close_{t-63} - 1).
     
-    Normalized by clipping to [-1.0, 1.0] to cap extreme moves at ±100%.
-    This prevents outliers from dominating the feature and makes it more
-    suitable for ML models.
+    Returns raw 63-day percentage returns without clipping to preserve information
+    about extreme moves.
     
     Args:
         df: Input DataFrame with a 'close' price column.
     
     Returns:
-        Series named 'quarterly_return_63d' containing clipped 63-day percentage returns.
+        Series named 'quarterly_return_63d' containing 63-day percentage returns.
     """
     close = _get_close_series(df)
     ret_63 = close.pct_change(63)
-    # Clip to ±100% to normalize extreme moves
-    ret_63 = ret_63.clip(-1.0, 1.0)
     ret_63.name = "quarterly_return_63d"
     return ret_63
 
@@ -266,18 +251,14 @@ def feature_ytd_return(df: DataFrame) -> Series:
     This measures the percentage return from the first trading day of the year
     to the current date. Calculated as: close / close.groupby(year).transform('first') - 1.
     
-    Normalized by clipping to [-1.0, 2.0] to cap extreme moves:
-    - Minimum: -100% (total loss)
-    - Maximum: +200% (triple the value)
-    
-    This prevents outliers from dominating the feature and makes it more
-    suitable for ML models.
+    Returns raw YTD percentage returns without clipping to preserve information
+    about extreme moves.
     
     Args:
         df: Input DataFrame with a 'close' price column and DatetimeIndex.
     
     Returns:
-        Series named 'ytd_return' containing clipped YTD percentage returns.
+        Series named 'ytd_return' containing YTD percentage returns.
     """
     close = _get_close_series(df)
     
@@ -291,8 +272,6 @@ def feature_ytd_return(df: DataFrame) -> Series:
     # Calculate YTD return: (current_close / first_close_of_year) - 1
     ytd = (close / first_close_of_year) - 1
     
-    # Clip to (-1, +2) to normalize extreme moves
-    ytd = ytd.clip(-1.0, 2.0)
     ytd.name = "ytd_return"
     return ytd
 
@@ -309,18 +288,14 @@ def feature_dist_52w_high(df: DataFrame) -> Series:
     - Negative: Price is below the 52-week high (more negative = further below)
     - Positive: Price is above the 52-week high (rare, but possible with new highs)
     
-    Normalized by clipping to [-1.0, 0.5] to cap extreme values:
-    - Minimum: -100% (price is half of 52-week high)
-    - Maximum: +50% (price is 1.5x the 52-week high)
-    
-    This prevents outliers from dominating the feature and makes it more
-    suitable for ML models.
+    Returns raw distance values without clipping to preserve information
+    about extreme positions relative to 52-week high.
     
     Args:
         df: Input DataFrame with a 'close' price column.
     
     Returns:
-        Series named 'dist_52w_high' containing clipped 52-week high distance.
+        Series named 'dist_52w_high' containing 52-week high distance.
     """
     close = _get_close_series(df)
     
@@ -330,8 +305,6 @@ def feature_dist_52w_high(df: DataFrame) -> Series:
     # Calculate distance: (current_price / 52w_high) - 1
     dist_52_high = (close / high_52) - 1
     
-    # Clip to (-1, 0.5) to normalize extreme values
-    dist_52_high = dist_52_high.clip(-1.0, 0.5)
     dist_52_high.name = "dist_52w_high"
     return dist_52_high
 
@@ -348,18 +321,14 @@ def feature_dist_52w_low(df: DataFrame) -> Series:
     - Positive: Price is above the 52-week low (more positive = further above)
     - Negative: Price is below the 52-week low (rare, but possible with new lows)
     
-    Normalized by clipping to [-0.5, 2.0] to cap extreme values:
-    - Minimum: -50% (price is half of 52-week low)
-    - Maximum: +200% (price is 3x the 52-week low)
-    
-    This prevents outliers from dominating the feature and makes it more
-    suitable for ML models.
+    Returns raw distance values without clipping to preserve information
+    about extreme positions relative to 52-week low.
     
     Args:
         df: Input DataFrame with a 'close' price column.
     
     Returns:
-        Series named 'dist_52w_low' containing clipped 52-week low distance.
+        Series named 'dist_52w_low' containing 52-week low distance.
     """
     close = _get_close_series(df)
     
@@ -369,8 +338,6 @@ def feature_dist_52w_low(df: DataFrame) -> Series:
     # Calculate distance: (current_price / 52w_low) - 1
     dist_52_low = (close / low_52) - 1
     
-    # Clip to (-0.5, 2) to normalize extreme values
-    dist_52_low = dist_52_low.clip(-0.5, 2.0)
     dist_52_low.name = "dist_52w_low"
     return dist_52_low
 
@@ -426,18 +393,14 @@ def feature_sma20_ratio(df: DataFrame) -> Series:
     - > 1.0: Price is above the SMA20 (bullish)
     - < 1.0: Price is below the SMA20 (bearish)
     
-    Normalized by clipping to [0.5, 1.5] to cap extreme values:
-    - Minimum: 0.5 (price is half of SMA20)
-    - Maximum: 1.5 (price is 1.5x the SMA20)
-    
-    This prevents outliers from dominating the feature and makes it more
-    suitable for ML models.
+    Returns raw ratio values without clipping to preserve information
+    about extreme price positions relative to SMA20.
     
     Args:
         df: Input DataFrame with a 'close' price column.
     
     Returns:
-        Series named 'sma20_ratio' containing clipped SMA20 ratios.
+        Series named 'sma20_ratio' containing SMA20 ratios.
     """
     close = _get_close_series(df)
     
@@ -447,8 +410,6 @@ def feature_sma20_ratio(df: DataFrame) -> Series:
     # Calculate ratio: current_price / SMA20
     feat = close / sma20
     
-    # Clip to [0.5, 1.5] to normalize extreme values
-    feat = feat.clip(0.5, 1.5)
     feat.name = "sma20_ratio"
     return feat
 
@@ -465,18 +426,14 @@ def feature_sma50_ratio(df: DataFrame) -> Series:
     - > 1.0: Price is above the SMA50 (bullish)
     - < 1.0: Price is below the SMA50 (bearish)
     
-    Normalized by clipping to [0.5, 1.5] to cap extreme values:
-    - Minimum: 0.5 (price is half of SMA50)
-    - Maximum: 1.5 (price is 1.5x the SMA50)
-    
-    This prevents outliers from dominating the feature and makes it more
-    suitable for ML models.
+    Returns raw ratio values without clipping to preserve information
+    about extreme price positions relative to SMA50.
     
     Args:
         df: Input DataFrame with a 'close' price column.
     
     Returns:
-        Series named 'sma50_ratio' containing clipped SMA50 ratios.
+        Series named 'sma50_ratio' containing SMA50 ratios.
     """
     close = _get_close_series(df)
     
@@ -486,8 +443,6 @@ def feature_sma50_ratio(df: DataFrame) -> Series:
     # Calculate ratio: current_price / SMA50
     feat = close / sma50
     
-    # Clip to [0.5, 1.5] to normalize extreme values
-    feat = feat.clip(0.5, 1.5)
     feat.name = "sma50_ratio"
     return feat
 
@@ -504,18 +459,14 @@ def feature_sma200_ratio(df: DataFrame) -> Series:
     - > 1.0: Price is above the SMA200 (bullish, long-term uptrend)
     - < 1.0: Price is below the SMA200 (bearish, long-term downtrend)
     
-    Normalized by clipping to [0.5, 2.0] to cap extreme values:
-    - Minimum: 0.5 (price is half of SMA200)
-    - Maximum: 2.0 (price is 2x the SMA200)
-    
-    This prevents outliers from dominating the feature and makes it more
-    suitable for ML models.
+    Returns raw ratio values without clipping to preserve information
+    about extreme price positions relative to SMA200.
     
     Args:
         df: Input DataFrame with a 'close' price column.
     
     Returns:
-        Series named 'sma200_ratio' containing clipped SMA200 ratios.
+        Series named 'sma200_ratio' containing SMA200 ratios.
     """
     close = _get_close_series(df)
     
@@ -525,8 +476,6 @@ def feature_sma200_ratio(df: DataFrame) -> Series:
     # Calculate ratio: current_price / SMA200
     feat = close / sma200
     
-    # Clip to [0.5, 2.0] to normalize extreme values
-    feat = feat.clip(0.5, 2.0)
     feat.name = "sma200_ratio"
     return feat
 
@@ -543,18 +492,14 @@ def feature_sma20_sma50_ratio(df: DataFrame) -> Series:
     - > 1.0: SMA20 above SMA50 (bullish crossover, uptrend)
     - < 1.0: SMA20 below SMA50 (bearish crossover, downtrend)
     
-    Normalized by clipping to [0.8, 1.2] to cap extreme values:
-    - Minimum: 0.8 (SMA20 is 80% of SMA50)
-    - Maximum: 1.2 (SMA20 is 120% of SMA50)
-    
-    This prevents outliers from dominating the feature and makes it more
-    suitable for ML models.
+    Returns raw ratio values without clipping to preserve information
+    about extreme relationships between SMAs.
     
     Args:
         df: Input DataFrame with a 'close' price column.
     
     Returns:
-        Series named 'sma20_sma50_ratio' containing clipped SMA20/SMA50 ratios.
+        Series named 'sma20_sma50_ratio' containing SMA20/SMA50 ratios.
     """
     close = _get_close_series(df)
     
@@ -565,8 +510,6 @@ def feature_sma20_sma50_ratio(df: DataFrame) -> Series:
     # Calculate ratio: SMA20 / SMA50
     feat = sma20 / sma50
     
-    # Clip to [0.8, 1.2] to normalize extreme values
-    feat = feat.clip(0.8, 1.2)
     feat.name = "sma20_sma50_ratio"
     return feat
 
@@ -583,18 +526,14 @@ def feature_sma50_sma200_ratio(df: DataFrame) -> Series:
     - > 1.0: SMA50 above SMA200 (Golden Cross, bullish long-term trend)
     - < 1.0: SMA50 below SMA200 (Death Cross, bearish long-term trend)
     
-    Normalized by clipping to [0.6, 1.4] to cap extreme values:
-    - Minimum: 0.6 (SMA50 is 60% of SMA200)
-    - Maximum: 1.4 (SMA50 is 140% of SMA200)
-    
-    This prevents outliers from dominating the feature and makes it more
-    suitable for ML models.
+    Returns raw ratio values without clipping to preserve information
+    about extreme relationships between SMAs.
     
     Args:
         df: Input DataFrame with a 'close' price column.
     
     Returns:
-        Series named 'sma50_sma200_ratio' containing clipped SMA50/SMA200 ratios.
+        Series named 'sma50_sma200_ratio' containing SMA50/SMA200 ratios.
     """
     close = _get_close_series(df)
     
@@ -605,8 +544,6 @@ def feature_sma50_sma200_ratio(df: DataFrame) -> Series:
     # Calculate ratio: SMA50 / SMA200
     feat = sma50 / sma200
     
-    # Clip to [0.6, 1.4] to normalize extreme values
-    feat = feat.clip(0.6, 1.4)
     feat.name = "sma50_sma200_ratio"
     return feat
 
@@ -623,18 +560,14 @@ def feature_sma50_slope(df: DataFrame) -> Series:
     - > 0.0: SMA50 is rising (bullish momentum)
     - < 0.0: SMA50 is falling (bearish momentum)
     
-    Normalized by clipping to [-0.1, 0.1] to cap extreme values:
-    - Minimum: -0.1 (SMA50 falling by 10% of price over 5 days)
-    - Maximum: +0.1 (SMA50 rising by 10% of price over 5 days)
-    
-    This prevents outliers from dominating the feature and makes it more
-    suitable for ML models.
+    Returns raw slope values normalized by price without clipping to preserve
+    information about extreme momentum changes.
     
     Args:
         df: Input DataFrame with a 'close' price column.
     
     Returns:
-        Series named 'sma50_slope' containing clipped SMA50 slope values.
+        Series named 'sma50_slope' containing SMA50 slope values.
     """
     close = _get_close_series(df)
     
@@ -644,8 +577,6 @@ def feature_sma50_slope(df: DataFrame) -> Series:
     # Calculate 5-day change in SMA50, normalized by current price
     feat = sma50.diff(5) / close
     
-    # Clip to [-0.1, 0.1] to normalize extreme values
-    feat = feat.clip(-0.1, 0.1)
     feat.name = "sma50_slope"
     return feat
 
@@ -662,18 +593,14 @@ def feature_sma200_slope(df: DataFrame) -> Series:
     - > 0.0: SMA200 is rising (bullish long-term momentum)
     - < 0.0: SMA200 is falling (bearish long-term momentum)
     
-    Normalized by clipping to [-0.1, 0.1] to cap extreme values:
-    - Minimum: -0.1 (SMA200 falling by 10% of price over 10 days)
-    - Maximum: +0.1 (SMA200 rising by 10% of price over 10 days)
-    
-    This prevents outliers from dominating the feature and makes it more
-    suitable for ML models.
+    Returns raw slope values normalized by price without clipping to preserve
+    information about extreme momentum changes.
     
     Args:
         df: Input DataFrame with a 'close' price column.
     
     Returns:
-        Series named 'sma200_slope' containing clipped SMA200 slope values.
+        Series named 'sma200_slope' containing SMA200 slope values.
     """
     close = _get_close_series(df)
     
@@ -683,8 +610,6 @@ def feature_sma200_slope(df: DataFrame) -> Series:
     # Calculate 10-day change in SMA200, normalized by current price
     feat = sma200.diff(10) / close
     
-    # Clip to [-0.1, 0.1] to normalize extreme values
-    feat = feat.clip(-0.1, 0.1)
     feat.name = "sma200_slope"
     return feat
 
@@ -696,26 +621,20 @@ def feature_volatility_5d(df: DataFrame) -> Series:
     This measures the standard deviation of daily returns over a 5-day rolling window.
     Higher values indicate more volatile price movements.
     
-    Normalized by clipping to [0.0, 0.15] to cap extreme values:
-    - Minimum: 0.0 (no volatility)
-    - Maximum: 0.15 (15% daily volatility)
-    
-    This prevents outliers from dominating the feature and makes it more
-    suitable for ML models.
+    Returns raw volatility values without clipping to preserve information
+    about extreme volatility periods.
     
     Args:
         df: Input DataFrame with a 'close' price column.
     
     Returns:
-        Series named 'volatility_5d' containing clipped 5-day volatility values.
+        Series named 'volatility_5d' containing 5-day volatility values.
     """
     close = _get_close_series(df)
     
     # Calculate 5-day rolling standard deviation of daily returns
     vol_5 = close.pct_change().rolling(window=5, min_periods=1).std()
     
-    # Clip to [0, 0.15] to normalize extreme values
-    vol_5 = vol_5.clip(0.0, 0.15)
     vol_5.name = "volatility_5d"
     return vol_5
 
@@ -727,26 +646,20 @@ def feature_volatility_21d(df: DataFrame) -> Series:
     This measures the standard deviation of daily returns over a 21-day rolling window.
     Higher values indicate more volatile price movements over the medium term.
     
-    Normalized by clipping to [0.0, 0.15] to cap extreme values:
-    - Minimum: 0.0 (no volatility)
-    - Maximum: 0.15 (15% daily volatility)
-    
-    This prevents outliers from dominating the feature and makes it more
-    suitable for ML models.
+    Returns raw volatility values without clipping to preserve information
+    about extreme volatility periods.
     
     Args:
         df: Input DataFrame with a 'close' price column.
     
     Returns:
-        Series named 'volatility_21d' containing clipped 21-day volatility values.
+        Series named 'volatility_21d' containing 21-day volatility values.
     """
     close = _get_close_series(df)
     
     # Calculate 21-day rolling standard deviation of daily returns
     vol_21 = close.pct_change().rolling(window=21, min_periods=1).std()
     
-    # Clip to [0, 0.15] to normalize extreme values
-    vol_21 = vol_21.clip(0.0, 0.15)
     vol_21.name = "volatility_21d"
     return vol_21
 
@@ -764,13 +677,11 @@ def feature_volatility_ratio(df: DataFrame) -> Series:
     1. vol5 = volatility_5d (already computed)
     2. vol21 = volatility_21d (already computed)
     3. volatility_ratio = vol5 / vol21
-    4. Normalize by clipping to [0, 2]
     
-    Normalized by clipping to [0, 2]:
+    Returns raw ratio values without clipping:
     - > 1: Volatility expanding (short-term vol > long-term vol)
     - < 1: Volatility contracting (short-term vol < long-term vol)
     - ≈ 1: Stable regime (short-term vol ≈ long-term vol)
-    - Range: [0, 2]
     - Identifies volatility expansion/compression regimes
     
     Why it adds value:
@@ -795,9 +706,7 @@ def feature_volatility_ratio(df: DataFrame) -> Series:
     # Handle division by zero (when vol21 is 0)
     volatility_ratio = vol5 / (vol21 + 1e-10)
     
-    # Step 2: Normalize by clipping to [0, 2]
-    volatility_ratio = volatility_ratio.clip(0.0, 2.0)
-    
+    # Return raw ratio without clipping to preserve information about extreme volatility regimes
     volatility_ratio.name = "volatility_ratio"
     return volatility_ratio
 
@@ -813,18 +722,14 @@ def feature_atr14_normalized(df: DataFrame) -> Series:
     - TR = max(high - low, abs(high - prev_close), abs(low - prev_close))
     - ATR14 = rolling mean of TR over 14 days
     
-    Normalized by clipping to [0.0, 0.2] to cap extreme values:
-    - Minimum: 0.0 (no volatility)
-    - Maximum: 0.2 (ATR is 20% of price)
-    
-    This prevents outliers from dominating the feature and makes it more
-    suitable for ML models.
+    Normalized by price (scale-invariant) but returns raw values without clipping
+    to preserve information about extreme volatility periods.
     
     Args:
         df: Input DataFrame with 'high', 'low', and 'close' columns.
     
     Returns:
-        Series named 'atr14_normalized' containing clipped normalized ATR14 values.
+        Series named 'atr14_normalized' containing normalized ATR14 values.
     """
     close = _get_close_series(df)
     high = _get_high_series(df)
@@ -841,11 +746,10 @@ def feature_atr14_normalized(df: DataFrame) -> Series:
     # Calculate ATR14 (14-day rolling mean of True Range)
     atr14 = tr.rolling(window=14, min_periods=1).mean()
     
-    # Normalize by current price
+    # Normalize by current price (keeps scale-invariance)
     feat = atr14 / close
     
-    # Clip to [0, 0.2] to normalize extreme values
-    feat = feat.clip(0.0, 0.2)
+    # Return raw normalized values without clipping to preserve information about extreme volatility
     feat.name = "atr14_normalized"
     return feat
 
@@ -904,17 +808,14 @@ def feature_log_avg_volume_20d(df: DataFrame) -> Series:
 
 def feature_relative_volume(df: DataFrame) -> Series:
     """
-    Compute relative volume: np.log1p((volume / vol_avg20).clip(0, 10)).
+    Compute relative volume: np.log1p(volume / vol_avg20).
     
     This measures current volume relative to the 20-day average volume.
     Values > 1.0 indicate above-average volume, values < 1.0 indicate below-average volume.
     
-    Normalized by:
-    1. Clipping the ratio to [0, 10] to cap extreme values
-    2. Applying log1p transformation to compress the scale
-    
-    This prevents outliers from dominating the feature and makes it more
-    suitable for ML models.
+    Normalized by applying log1p transformation to compress the scale.
+    Returns raw log-transformed values without pre-clipping to preserve information
+    about extreme volume spikes.
     
     Args:
         df: Input DataFrame with a 'volume' column.
@@ -930,10 +831,7 @@ def feature_relative_volume(df: DataFrame) -> Series:
     # Calculate relative volume: current volume / average volume
     rvol = volume / vol_avg20
     
-    # Clip to [0, 10] to normalize extreme values
-    rvol = rvol.clip(0, 10)
-    
-    # Apply log1p transformation to compress scale
+    # Apply log1p transformation to compress scale (no pre-clipping to preserve information)
     feat = np.log1p(rvol)
     feat.name = "relative_volume"
     return feat
@@ -1212,9 +1110,8 @@ def feature_trend_residual(df: DataFrame) -> Series:
     1. Fitting linear regression to last 50 close values
     2. Calculating residual: (actual - fitted) / actual
     3. Taking the last residual value
-    4. Clipping to [-0.2, 0.2]
     
-    Values are clipped to [-0.2, 0.2]:
+    Returns raw residual values without clipping:
     - Negative: Price below trend (potential oversold)
     - Positive: Price above trend (potential overbought)
     - Near 0: Price follows trend closely
@@ -1223,7 +1120,7 @@ def feature_trend_residual(df: DataFrame) -> Series:
         df: Input DataFrame with a 'close' price column.
     
     Returns:
-        Series named 'trend_residual' containing normalized residual values.
+        Series named 'trend_residual' containing residual values.
     """
     close = _get_close_series(df)
     
@@ -1233,9 +1130,7 @@ def feature_trend_residual(df: DataFrame) -> Series:
         _trend_residual_window, raw=True
     )
     
-    # Clip to [-0.2, 0.2]
-    resid = resid.clip(-0.2, 0.2)
-    
+    # Return raw residual values without clipping to preserve information about extreme deviations
     resid.name = "trend_residual"
     return resid
 
@@ -1319,14 +1214,13 @@ def feature_ppo_histogram(df: DataFrame) -> Series:
        - ppo_signal = EMA(ppo, 9)
     4. Calculate PPO histogram:
        - ppo_hist = ppo - ppo_signal
-    5. Normalize by clipping to [-0.2, 0.2]
+    5. Returns raw PPO histogram values
     
-    Normalized by clipping to [-0.2, 0.2]:
+    Returns raw values without clipping:
     - Positive: PPO accelerating above signal (bullish momentum acceleration)
     - Negative: PPO decelerating below signal (bearish momentum deceleration)
     - Near 0: PPO and signal converging (momentum neutral)
-    - Range: [-0.2, 0.2] (typically ranges around [-0.1, 0.1])
-    - Scale-invariant and cross-ticker comparable
+    - Scale-invariant and cross-ticker comparable (percentage-based)
     
     Why it adds value:
     - Less redundant with MACD than you'd think (percentage vs absolute)
@@ -1359,12 +1253,9 @@ def feature_ppo_histogram(df: DataFrame) -> Series:
     # ppo_hist = ppo - ppo_signal
     ppo_hist = ppo - ppo_signal
     
-    # Step 5: Normalize by clipping to [-0.2, 0.2]
-    # It typically ranges around [-0.1, 0.1], so clip to [-0.2, 0.2] for safety
-    ppo_hist_norm = ppo_hist.clip(-0.2, 0.2)
-    
-    ppo_hist_norm.name = "ppo_histogram"
-    return ppo_hist_norm
+    # Return raw PPO histogram without clipping to preserve information about extreme momentum
+    ppo_hist.name = "ppo_histogram"
+    return ppo_hist
 
 
 def feature_dpo(df: DataFrame, period: int = 20) -> Series:
@@ -1389,11 +1280,11 @@ def feature_dpo(df: DataFrame, period: int = 20) -> Series:
     3. Normalize by closing price:
        - dpo_norm = dpo / close
     
-    Normalized by dividing by closing price (dpo / close):
+    Normalized by dividing by closing price (dpo / close) for scale-invariance:
     - Positive: Price above detrended average (cycle peak, overextended)
     - Negative: Price below detrended average (cycle trough, compressed)
     - Near 0: Price at detrended average (neutral)
-    - Range: unbounded, but typically small values
+    - Returns raw normalized values without clipping to preserve cycle information
     - Highlights short-term price cycles
     
     Why it adds value:
@@ -1425,13 +1316,10 @@ def feature_dpo(df: DataFrame, period: int = 20) -> Series:
     # dpo = close - shifted_sma
     dpo = close - shifted_sma
     
-    # Step 3: Normalize by closing price
-    # dpo_norm = dpo / close
+    # Step 3: Normalize by closing price (keeps scale-invariance)
     dpo_norm = dpo / close
     
-    # Clip to reasonable range to handle extreme values
-    dpo_norm = dpo_norm.clip(-0.2, 0.2)
-    
+    # Return raw normalized values without clipping to preserve information about extreme cycles
     dpo_norm.name = "dpo"
     return dpo_norm
 
@@ -1447,13 +1335,11 @@ def feature_roc10(df: DataFrame) -> Series:
     
     Calculation:
     1. roc10 = (close - close.shift(10)) / close.shift(10)
-    2. Normalize by clipping to [-0.5, 0.5]
     
-    Normalized by clipping to [-0.5, 0.5]:
+    Returns raw ROC10 values without clipping:
     - Positive: Price rising over 10 periods (bullish momentum)
     - Negative: Price falling over 10 periods (bearish momentum)
     - Near 0: Price relatively stable (neutral momentum)
-    - Range: [-0.5, 0.5] (±50% change over 10 periods)
     - Standardized and directional momentum indicator
     
     Why it adds value:
@@ -1475,9 +1361,7 @@ def feature_roc10(df: DataFrame) -> Series:
     # roc10 = (close - close.shift(10)) / close.shift(10)
     roc10 = (close - close.shift(10)) / close.shift(10)
     
-    # Step 2: Normalize by clipping to [-0.5, 0.5]
-    roc10 = roc10.clip(-0.5, 0.5)
-    
+    # Return raw ROC10 values without clipping to preserve information about extreme momentum
     roc10.name = "roc10"
     return roc10
 
@@ -1493,13 +1377,11 @@ def feature_roc20(df: DataFrame) -> Series:
     
     Calculation:
     1. roc20 = (close - close.shift(20)) / close.shift(20)
-    2. Normalize by clipping to [-0.7, 0.7]
     
-    Normalized by clipping to [-0.7, 0.7]:
+    Returns raw ROC20 values without clipping:
     - Positive: Price rising over 20 periods (bullish momentum)
     - Negative: Price falling over 20 periods (bearish momentum)
     - Near 0: Price relatively stable (neutral momentum)
-    - Range: [-0.7, 0.7] (±70% change over 20 periods)
     - Standardized and directional momentum indicator
     
     Why it adds value:
@@ -1521,9 +1403,7 @@ def feature_roc20(df: DataFrame) -> Series:
     # roc20 = (close - close.shift(20)) / close.shift(20)
     roc20 = (close - close.shift(20)) / close.shift(20)
     
-    # Step 2: Normalize by clipping to [-0.7, 0.7]
-    roc20 = roc20.clip(-0.7, 0.7)
-    
+    # Return raw ROC20 values without clipping to preserve information about extreme momentum
     roc20.name = "roc20"
     return roc20
 
@@ -2050,13 +1930,11 @@ def feature_obv_momentum(df: DataFrame) -> Series:
        - Equal → no change
     2. Calculate 10-day percentage change of OBV:
        - obv_roc = OBV.pct_change(10)
-    3. Normalize by clipping to [-0.5, 0.5]
     
-    Normalized by clipping to [-0.5, 0.5] to cap extreme values:
+    Returns raw OBV momentum values without clipping:
     - Positive: Volume accelerating upward (bullish)
     - Negative: Volume accelerating downward (bearish)
     - Near 0: Volume momentum neutral
-    - Range: [-0.5, 0.5] (±50% change)
     
     Why it adds value:
     - Gives volume acceleration, not just volume level
@@ -2093,9 +1971,7 @@ def feature_obv_momentum(df: DataFrame) -> Series:
     # Step 2: Calculate 10-day percentage change of OBV
     obv_roc = obv.pct_change(10)
     
-    # Step 3: Normalize by clipping to [-0.5, 0.5]
-    obv_roc = obv_roc.clip(-0.5, 0.5)
-    
+    # Return raw OBV momentum values without clipping to preserve information about extreme volume acceleration
     obv_roc.name = "obv_momentum"
     return obv_roc
 
@@ -2501,9 +2377,7 @@ def feature_kama_slope(df: DataFrame, period: int = 10, fast: int = 2, slow: int
     # Step 4: Calculate KAMA Slope (day-to-day change normalized by price)
     kama_slope = kama.diff() / close
     
-    # Clip to reasonable range to handle extreme values
-    kama_slope = kama_slope.clip(-0.1, 0.1)
-    
+    # Return raw slope values normalized by price without clipping to preserve information about extreme adaptive momentum
     kama_slope.name = "kama_slope"
     return kama_slope
 
@@ -2854,11 +2728,11 @@ def feature_price_curvature(df: DataFrame) -> Series:
     1. Use SMA20 as smooth reference line: T_t = SMA20(close)_t
     2. First derivative (slope): S_t = T_t - T_{t-1}
     3. Second derivative (curvature): C_t = S_t - S_{t-1}
-    4. Normalize: C_norm = clip(C_t / (close_t + ε), -0.05, 0.05)
+    4. Normalize: C_norm = C_t / (close_t + ε)
     
     Normalization:
     - Division by price makes it scale-invariant (comparable across tickers)
-    - Clipping to [-0.05, 0.05] limits insane spikes from gappy days
+    - Returns raw normalized values without clipping to preserve information about extreme acceleration/deceleration
     
     Why it adds value:
     - Distinguishes steady trends from accelerating/rolling-over ones
@@ -2887,9 +2761,7 @@ def feature_price_curvature(df: DataFrame) -> Series:
     epsilon = 1e-10
     curvature_normalized = curvature / (close + epsilon)
     
-    # Clip to [-0.05, 0.05] to limit extreme spikes
-    curvature_normalized = curvature_normalized.clip(-0.05, 0.05)
-    
+    # Return raw normalized curvature without clipping to preserve information about extreme acceleration/deceleration
     curvature_normalized.name = "price_curvature"
     return curvature_normalized
 
@@ -2908,11 +2780,10 @@ def feature_volatility_of_volatility(df: DataFrame) -> Series:
     1. Compute 21-day volatility: σ_21,t = std(r_{t-20}, ..., r_t)
     2. Compute rolling std of volatility over 21 bars: VoV_t = std(σ_21,{t-20}, ..., σ_21,t)
     3. Normalize by dividing by long-term average volatility: VoV_rel = VoV_t / mean(σ_21)
-    4. Clip to [0, 3]
     
     Normalization:
     - Division by long-term average volatility makes it relative and comparable
-    - Clipping to [0, 3] limits extreme values
+    - Returns raw relative VoV values without clipping to preserve information about extreme volatility instability
     
     Why it adds value:
     - Tells the model whether volatility indicators are reliable or chaotic
@@ -2943,11 +2814,9 @@ def feature_volatility_of_volatility(df: DataFrame) -> Series:
     epsilon = 1e-10
     vov_relative = vov / (long_term_avg_vol + epsilon)
     
-    # Step 4: Clip to [0, 3]
-    vov_normalized = vov_relative.clip(0.0, 3.0)
-    
-    vov_normalized.name = "volatility_of_volatility"
-    return vov_normalized
+    # Return raw relative VoV without clipping to preserve information about extreme volatility instability
+    vov_relative.name = "volatility_of_volatility"
+    return vov_relative
 
 
 def feature_mkt_spy_dist_sma200(df: DataFrame, spy_data: DataFrame = None) -> Series:

@@ -24,16 +24,35 @@ class FeatureSelectionDialog(QDialog):
     # Signal emitted when features are saved
     features_saved = pyqtSignal()
     
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, feature_set: str = None):
         super().__init__(parent)
-        self.setWindowTitle("Select Features for Training")
+        # Feature set (if provided, use feature set-specific configs)
+        self.feature_set = feature_set
+        if feature_set:
+            self.setWindowTitle(f"Select Features for Training - {feature_set}")
+        else:
+            self.setWindowTitle("Select Features for Training")
         self.setMinimumSize(700, 600)
         self.setModal(True)
         
         # Paths
         self.project_root = Path(__file__).parent.parent.parent
-        self.train_config_path = self.project_root / "config" / "train_features.yaml"
-        self.features_config_path = self.project_root / "config" / "features.yaml"
+        
+        # Determine config paths based on feature set
+        if self.feature_set:
+            try:
+                from feature_set_manager import get_feature_set_config_path, get_train_features_config_path
+                self.train_config_path = get_train_features_config_path(self.feature_set)
+                self.features_config_path = get_feature_set_config_path(self.feature_set)
+            except (ImportError, Exception):
+                # Fallback to default paths
+                self.train_config_path = self.project_root / "config" / f"train_features_{self.feature_set}.yaml"
+                self.features_config_path = self.project_root / "config" / f"features_{self.feature_set}.yaml"
+        else:
+            # Default paths
+            self.train_config_path = self.project_root / "config" / "train_features.yaml"
+            self.features_config_path = self.project_root / "config" / "features.yaml"
+        
         self.presets_dir = self.project_root / "config" / "feature_presets"
         self.presets_dir.mkdir(parents=True, exist_ok=True)
         

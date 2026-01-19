@@ -111,7 +111,7 @@ def clean_data(
 def build_features(
     input_dir: str = "data/clean",
     output_dir: str = "data/features_labeled",
-    config: str = "config/features.yaml",
+    config: str = "config/features_v1.yaml",
     horizon: int = 5,
     threshold: float = 0.0,
     full: bool = False,
@@ -348,7 +348,7 @@ Examples:
     feat_parser.add_argument("--feature-set", type=str, default=None, help="Feature set name (e.g., 'v1', 'v2'). If specified, automatically sets config and output-dir. Default: uses explicit paths.")
     feat_parser.add_argument("--input-dir", default="data/clean")
     feat_parser.add_argument("--output-dir", default="data/features_labeled")
-    feat_parser.add_argument("--config", default="config/features.yaml")
+    feat_parser.add_argument("--config", default="config/features_v1.yaml")
     feat_parser.add_argument("--horizon", type=int, default=5, help="Trade window in days")
     feat_parser.add_argument("--threshold", type=float, default=0.0, help="Return threshold (e.g., 0.05 for 5%%)")
     feat_parser.add_argument("--full", action="store_true", help="Force full recompute")

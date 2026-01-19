@@ -67,7 +67,9 @@ def load_enabled_features_for_set(config_path: str, feature_set: str = None) -> 
     else:
         # For other feature sets, dynamically import
         import importlib
-        registry_module = importlib.import_module(f"features.sets.{feature_set}.registry")
+        # Convert feature set name to valid Python module name (spaces/dashes to underscores)
+        module_name = feature_set.replace(" ", "_").replace("-", "_")
+        registry_module = importlib.import_module(f"features.sets.{module_name}.registry")
         load_enabled_features = registry_module.load_enabled_features
     
     return load_enabled_features(config_path)

@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QIcon, QPalette, QColor
 from PyQt6.QtCore import QSize
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
@@ -413,8 +413,12 @@ class BacktestTab(QWidget):
         self.worker = None
         self.entry_filters = []  # List of (feature, operator, value)
         self.loaded_preset_name = None  # Track which preset was loaded
+        self.current_feature_set = "v1"  # Default
         
         self.init_ui()
+        
+        # Detect feature set from default model path after UI is initialized
+        QTimer.singleShot(100, self._detect_initial_feature_set)
     
     def init_ui(self):
         """Initialize the UI components."""
@@ -457,6 +461,8 @@ class BacktestTab(QWidget):
         model_row = QHBoxLayout()
         model_row.addWidget(QLabel("Model File:"))
         self.model_edit = QLineEdit("models/xgb_classifier_selected_features.pkl")
+        # Detect feature set when model path changes
+        self.model_edit.textChanged.connect(self.on_model_path_changed)
         model_row.addWidget(self.model_edit)
         
         # Create Browse button first to get its height
@@ -856,6 +862,9 @@ class BacktestTab(QWidget):
         model_path = action.data()
         if model_path:
             self.model_edit.setText(model_path)
+            # Detect feature set from model
+            full_path = PROJECT_ROOT / model_path if not Path(model_path).is_absolute() else Path(model_path)
+            self._detect_feature_set_from_model(str(full_path))
     
     def browse_model(self):
         """Browse for model file."""
@@ -874,6 +883,9 @@ class BacktestTab(QWidget):
             except ValueError:
                 # File is outside project, use absolute path
                 self.model_edit.setText(file_path)
+            
+            # Detect feature set from model and update
+            self._detect_feature_set_from_model(file_path)
     
     def _normalize_output_path(self, output: str) -> str:
         """
@@ -928,9 +940,38 @@ class BacktestTab(QWidget):
 
     def open_features_dialog(self):
         """Open dialog to apply feature filters."""
+        # Ensure feature set is detected from current model path before opening dialog
+        if hasattr(self, 'model_edit') and self.model_edit:
+            model_path = self.model_edit.text().strip()
+            if model_path:
+                if not Path(model_path).is_absolute():
+                    full_path = PROJECT_ROOT / model_path
+                else:
+                    full_path = Path(model_path)
+                if full_path.exists():
+                    self._detect_feature_set_from_model(str(full_path))
+        
+        feature_set = self.get_current_feature_set()
         features = self.get_available_features()
         if not features:
-            QMessageBox.warning(self, "No Features Found", "Could not load feature columns from the feature data. Build features first.")
+            # Provide more helpful error message
+            try:
+                from feature_set_manager import get_feature_set_data_path
+                data_path = get_feature_set_data_path(feature_set)
+                error_msg = (
+                    f"Could not load feature columns from the feature data.\n\n"
+                    f"Feature Set: {feature_set}\n"
+                    f"Data Directory: {data_path}\n"
+                    f"Directory Exists: {data_path.exists()}\n\n"
+                    f"Please build features for this feature set first."
+                )
+            except Exception:
+                error_msg = (
+                    f"Could not load feature columns from the feature data.\n\n"
+                    f"Feature Set: {feature_set}\n\n"
+                    f"Please build features for this feature set first."
+                )
+            QMessageBox.warning(self, "No Features Found", error_msg)
             return
 
         dialog = ApplyFeaturesDialog(features=features, existing_filters=self.entry_filters, parent=self)
@@ -1048,19 +1089,166 @@ class BacktestTab(QWidget):
         dialog = PresetManagementDialog(self.sl_analysis_service, parent=self)
         dialog.exec()
     
-    def get_available_features(self):
-        """Get list of feature columns from the feature data (single feature set)."""
+    def _detect_initial_feature_set(self):
+        """Detect feature set from the initial model path after UI initialization."""
+        if hasattr(self, 'model_edit') and self.model_edit:
+            model_path = self.model_edit.text().strip()
+            if model_path:
+                # Resolve to absolute path
+                if not Path(model_path).is_absolute():
+                    full_path = PROJECT_ROOT / model_path
+                else:
+                    full_path = Path(model_path)
+                
+                if full_path.exists():
+                    self._detect_feature_set_from_model(str(full_path))
+    
+    def on_model_path_changed(self, text: str):
+        """Handle model path text change - detect feature set from model."""
+        if text.strip():
+            # Resolve path
+            model_path = text.strip()
+            if not Path(model_path).is_absolute():
+                model_path = str(PROJECT_ROOT / model_path)
+            self._detect_feature_set_from_model(model_path)
+    
+    def _detect_feature_set_from_model(self, model_path: str):
+        """Detect feature set from model metadata and update the feature set selector."""
         try:
-            # Use default feature directory; only one feature set now
-            features_dir = Path(self.data_service.get_data_dir())
+            import joblib
+            path = Path(model_path)
+            if not path.exists():
+                return
+            
+            # Load model to get metadata
+            model_data = joblib.load(path)
+            
+            # Extract metadata
+            feature_set = None
+            if isinstance(model_data, dict) and 'metadata' in model_data:
+                metadata = model_data['metadata']
+                feature_set = metadata.get('feature_set')
+            
+            # Fallback: try to extract from filename
+            if not feature_set:
+                filename = path.stem
+                
+                if '_' in filename:
+                    parts = filename.split('_')
+                    
+                    # Strategy 1: Look for pattern v\d+ (e.g., v1, v2, v3) anywhere in filename
+                    # This handles patterns like: model_20d_15pct_v2_57feat... or xgb_classifier_selected_features_v2
+                    for part in parts:
+                        # Check if part matches v followed by digits (e.g., v1, v2, v10)
+                        if part.startswith('v') and len(part) > 1 and part[1:].isdigit():
+                            feature_set = part
+                            break
+                    
+                    # Strategy 2: Look for pattern after 'features' or 'feat'
+                    if not feature_set:
+                        for keyword in ['features', 'feat']:
+                            if keyword in parts:
+                                idx = parts.index(keyword)
+                                if idx + 1 < len(parts):
+                                    potential_feature_set = parts[idx + 1]
+                                    # Validate it's a reasonable feature set name
+                                    if potential_feature_set.replace('_', '').replace('-', '').isalnum() and len(potential_feature_set) <= 20:
+                                        # Skip if it looks like a number or timestamp
+                                        if not (potential_feature_set.isdigit() or len(potential_feature_set) == 6):
+                                            feature_set = potential_feature_set
+                                            break
+                    
+                    # Strategy 3: Check last part if it looks like a feature set (but not a timestamp)
+                    if not feature_set and len(parts) >= 2:
+                        last_part = parts[-1]
+                        # Check if last part looks like a feature set (starts with 'v' + digits, or short alphanumeric)
+                        # But exclude timestamps (6+ digit numbers)
+                        if (last_part.startswith('v') and last_part[1:].isdigit()) or \
+                           (len(last_part) <= 10 and last_part.replace('_', '').replace('-', '').isalnum() and not last_part.isdigit()):
+                            feature_set = last_part
+            
+            if feature_set:
+                # Always update local state first
+                self.current_feature_set = feature_set
+                
+                # Update the main window's feature set selector
+                try:
+                    main_window = self.window()
+                    if main_window and hasattr(main_window, 'feature_set_selector') and main_window.feature_set_selector:
+                        # Check if feature set exists before setting
+                        try:
+                            from feature_set_manager import feature_set_exists
+                            if feature_set_exists(feature_set):
+                                # Set the feature set in the selector
+                                main_window.feature_set_selector.set_feature_set(feature_set)
+                                # Notify tabs of the change
+                                if hasattr(main_window, 'on_feature_set_changed'):
+                                    main_window.on_feature_set_changed(feature_set)
+                            else:
+                                # Still try to set it even if it doesn't exist (might be a new feature set)
+                                try:
+                                    main_window.feature_set_selector.set_feature_set(feature_set)
+                                except:
+                                    pass
+                        except (ImportError, Exception):
+                            # Feature set manager not available or feature set doesn't exist
+                            # Still try to set it
+                            try:
+                                main_window.feature_set_selector.set_feature_set(feature_set)
+                            except:
+                                pass
+                except (AttributeError, RuntimeError, TypeError):
+                    # Fallback: just store it locally
+                    pass
+        except Exception:
+            # Silently fail - feature set detection is optional
+            pass
+    
+    def get_current_feature_set(self) -> str:
+        """Get the current feature set from main window or use default."""
+        # Try to get from main window's feature_set_selector directly (avoid method call recursion)
+        try:
+            main_window = self.window()
+            if main_window and hasattr(main_window, 'feature_set_selector') and main_window.feature_set_selector:
+                return main_window.feature_set_selector.get_current_feature_set()
+        except (AttributeError, RuntimeError, TypeError):
+            pass
+        # Fall back to stored value
+        return getattr(self, 'current_feature_set', 'v1')
+    
+    def on_feature_set_changed(self, feature_set: str):
+        """Handle feature set change from main window."""
+        self.current_feature_set = feature_set
+    
+    def get_available_features(self):
+        """Get list of feature columns from the feature data for the selected feature set."""
+        try:
+            # Get feature set-specific data directory
+            feature_set = self.get_current_feature_set()
+            
+            # Try to use feature_set_manager to get the correct path
+            try:
+                from feature_set_manager import get_feature_set_data_path
+                features_dir = get_feature_set_data_path(feature_set)
+            except (ImportError, Exception):
+                # Fallback to default if feature_set_manager not available
+                features_dir = Path(self.data_service.get_data_dir())
+            
+            # Ensure features_dir is a Path object
+            if isinstance(features_dir, str):
+                features_dir = Path(features_dir)
+            
             if not features_dir.exists():
                 return []
+            
             parquet_files = sorted(features_dir.glob("*.parquet"))
             if not parquet_files:
                 return []
+            
             # Read columns from first parquet file (read minimal data)
             df = pd.read_parquet(parquet_files[0]).head(1)
             cols = list(df.columns)
+            
             # Exclude label/metadata columns and raw price columns
             excluded = {
                 "label", "ticker", "date", "entry_signal", "entry_date", "exit_date", 
@@ -1075,8 +1263,7 @@ class BacktestTab(QWidget):
                 and not c.lower().startswith("label_")
             ]
             return features
-        except Exception as e:
-            print(f"Error loading features: {e}")
+        except Exception:
             return []
     
     def run_backtest(self):
@@ -1101,7 +1288,8 @@ class BacktestTab(QWidget):
             "position_size": self.position_spin.value(),
             "strategy": self.strategy_combo.currentText(),
             "model_path": self.model_edit.text(),
-            "model_threshold": self.model_threshold_spin.value() / 100.0  # Convert % to decimal
+            "model_threshold": self.model_threshold_spin.value() / 100.0,  # Convert % to decimal
+            "feature_set": self.get_current_feature_set()  # Pass selected feature set
         }
         
         # Stop-loss configuration
@@ -1358,6 +1546,11 @@ class BacktestTab(QWidget):
                 self.strategy_combo.setCurrentIndex(index)
         if "model_path" in config:
             self.model_edit.setText(config["model_path"])
+            # Detect feature set from loaded model path
+            model_path = config["model_path"]
+            if not Path(model_path).is_absolute():
+                model_path = str(PROJECT_ROOT / model_path)
+            self._detect_feature_set_from_model(model_path)
         if "model_threshold" in config:
             self.model_threshold_spin.setValue(config["model_threshold"])
         if "horizon" in config:

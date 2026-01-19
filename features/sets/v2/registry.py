@@ -9,7 +9,7 @@ a loader to read a feature-toggle YAML and return only those features enabled.
 """
 
 import yaml
-from features.technical import (
+from features.sets.v2.technical import (
     # V2 Features (32 features)
     feature_price,
     feature_price_log,
@@ -86,51 +86,51 @@ FEATURES = {
     "price_log":                feature_price_log,                  # Log of closing price (ln(close))
     "price_vs_ma200":           feature_price_vs_ma200,             # Price normalized to 200-day MA (close / SMA200)
     # 2. Daily Return (%)
-    "daily_return":             feature_daily_return,                # Daily return % clipped to ±20%
+    "daily_return":             feature_daily_return,                # Daily return % (no clipping)
     # 3. Gap % (Open - Previous Close)
-    "gap_pct":                  feature_gap_pct,                    # Gap % (open - prev_close) / prev_close, clipped to ±20%
+    "gap_pct":                  feature_gap_pct,                    # Gap % (open - prev_close) / prev_close (no clipping)
     # 4. Weekly Return (5-day)
-    "weekly_return_5d":         feature_weekly_return_5d,          # 5-day (weekly) return % clipped to ±30%
+    "weekly_return_5d":         feature_weekly_return_5d,          # 5-day (weekly) return % (no clipping)
     # 5. Monthly Return (21-day)
-    "monthly_return_21d":       feature_monthly_return_21d,        # 21-day (monthly) return % clipped to ±50%
+    "monthly_return_21d":       feature_monthly_return_21d,        # 21-day (monthly) return % (no clipping)
     # 6. Quarterly Return (63-day)
-    "quarterly_return_63d":     feature_quarterly_return_63d,      # 63-day (quarterly) return % clipped to ±100%
+    "quarterly_return_63d":     feature_quarterly_return_63d,      # 63-day (quarterly) return % (no clipping)
     # 8. YTD Return
-    "ytd_return":               feature_ytd_return,                # Year-to-Date return % clipped to (-1, +2)
+    "ytd_return":               feature_ytd_return,                # Year-to-Date return % (no clipping)
     # 9. 52-Week High Distance
-    "dist_52w_high":            feature_dist_52w_high,             # 52-week high distance clipped to (-1, 0.5)
+    "dist_52w_high":            feature_dist_52w_high,             # 52-week high distance (no clipping)
     # 10. 52-Week Low Distance
-    "dist_52w_low":             feature_dist_52w_low,               # 52-week low distance clipped to (-0.5, 2)
+    "dist_52w_low":             feature_dist_52w_low,               # 52-week low distance (no clipping)
     # 11. 52-Week Position (0=Low, 1=High)
-    "pos_52w":                  feature_pos_52w,                    # 52-week position (0=low, 1=high) clipped to [0, 1]
+    "pos_52w":                  feature_pos_52w,                    # 52-week position (0=low, 1=high) clipped to [0, 1] for safety
     # 12. SMA20 Ratio
-    "sma20_ratio":              feature_sma20_ratio,                # SMA20 ratio (close/SMA20) clipped to [0.5, 1.5]
+    "sma20_ratio":              feature_sma20_ratio,                # SMA20 ratio (close/SMA20) (no clipping)
     # 13. SMA50 Ratio
-    "sma50_ratio":              feature_sma50_ratio,                # SMA50 ratio (close/SMA50) clipped to [0.5, 1.5]
+    "sma50_ratio":              feature_sma50_ratio,                # SMA50 ratio (close/SMA50) (no clipping)
     # 14. SMA200 Ratio
-    "sma200_ratio":             feature_sma200_ratio,                # SMA200 ratio (close/SMA200) clipped to [0.5, 2.0]
+    "sma200_ratio":             feature_sma200_ratio,                # SMA200 ratio (close/SMA200) (no clipping)
     # 15. SMA20 / SMA50
-    "sma20_sma50_ratio":        feature_sma20_sma50_ratio,          # SMA20/SMA50 ratio clipped to [0.8, 1.2]
+    "sma20_sma50_ratio":        feature_sma20_sma50_ratio,          # SMA20/SMA50 ratio (no clipping)
     # 16. SMA50 / SMA200
-    "sma50_sma200_ratio":       feature_sma50_sma200_ratio,         # SMA50/SMA200 ratio clipped to [0.6, 1.4]
+    "sma50_sma200_ratio":       feature_sma50_sma200_ratio,         # SMA50/SMA200 ratio (no clipping)
     # 17. SMA50 Slope
-    "sma50_slope":              feature_sma50_slope,                # SMA50 slope (5-day change/close) clipped to [-0.1, 0.1]
+    "sma50_slope":              feature_sma50_slope,                # SMA50 slope (5-day change/close) (no clipping)
     # 18. SMA200 Slope
-    "sma200_slope":             feature_sma200_slope,                # SMA200 slope (10-day change/close) clipped to [-0.1, 0.1]
+    "sma200_slope":             feature_sma200_slope,                # SMA200 slope (10-day change/close) (no clipping)
     # 19. 5-Day Volatility
-    "volatility_5d":            feature_volatility_5d,              # 5-day volatility (std of returns) clipped to [0, 0.15]
+    "volatility_5d":            feature_volatility_5d,              # 5-day volatility (std of returns) (no clipping)
     # 20. 21-Day Volatility
-    "volatility_21d":          feature_volatility_21d,              # 21-day volatility (std of returns) clipped to [0, 0.15]
+    "volatility_21d":          feature_volatility_21d,              # 21-day volatility (std of returns) (no clipping)
     # 21. Volatility Ratio (5d/21d)
-    "volatility_ratio":        feature_volatility_ratio,            # Volatility ratio: vol5/vol21 clipped to [0, 2] - identifies volatility expansion/compression regimes
+    "volatility_ratio":        feature_volatility_ratio,            # Volatility ratio: vol5/vol21 (no clipping) - identifies volatility expansion/compression regimes
     # 22. ATR14 (Normalized)
-    "atr14_normalized":        feature_atr14_normalized,            # Normalized ATR14 (ATR14/close) clipped to [0, 0.2]
+    "atr14_normalized":        feature_atr14_normalized,            # Normalized ATR14 (ATR14/close) (no clipping)
     # 22. Log Volume
     "log_volume":              feature_log_volume,                  # Log volume (log1p(volume))
     # 23. Log Average Volume (20-day)
     "log_avg_volume_20d":      feature_log_avg_volume_20d,          # Log average volume 20-day (log1p(vol_avg20))
     # 24. Relative Volume
-    "relative_volume":         feature_relative_volume,             # Relative volume (log1p of volume/vol_avg20, clipped to [0,10])
+    "relative_volume":         feature_relative_volume,             # Relative volume (log1p of volume/vol_avg20, no pre-clipping)
     # 25. RSI14
     "rsi14":                   feature_rsi14,                       # RSI14 centered ((rsi-50)/50) in [-1, +1] range
     # 26. Rolling Beta vs SPY
@@ -148,17 +148,17 @@ FEATURES = {
     # 32. Swing Low (10-day)
     "swing_low_10d":           feature_swing_low_10d,               # Recent swing low (10-day) - lowest low over last 10 days
     # 33. Trend Residual (Noise vs Trend)
-    "trend_residual":          feature_trend_residual,               # Trend residual (noise vs trend) clipped to [-0.2, 0.2]
+    "trend_residual":          feature_trend_residual,               # Trend residual (noise vs trend) (no clipping)
     # 33. MACD Histogram (Normalized)
     "macd_histogram_normalized": feature_macd_histogram_normalized,  # MACD histogram normalized by price: (macd_line - signal_line) / close
     # 34. PPO Histogram (12/26/9)
-    "ppo_histogram":            feature_ppo_histogram,                 # PPO histogram: percentage-based momentum acceleration/deceleration, clipped to [-0.2, 0.2] - scale-invariant and cross-ticker comparable
+    "ppo_histogram":            feature_ppo_histogram,                 # PPO histogram: percentage-based momentum acceleration/deceleration (no clipping) - scale-invariant and cross-ticker comparable
     # 35. DPO (Detrended Price Oscillator, 20-period)
-    "dpo":                     feature_dpo,                            # DPO: detrended price oscillator normalized by price, clipped to [-0.2, 0.2] - cyclical indicator that removes long-term trend, highlights short-term cycles
+    "dpo":                     feature_dpo,                            # DPO: detrended price oscillator normalized by price (no clipping) - cyclical indicator that removes long-term trend, highlights short-term cycles
     # 36. ROC (Rate of Change) 10-period
-    "roc10":                   feature_roc10,                         # ROC10: short-term momentum velocity, (close - close.shift(10)) / close.shift(10), clipped to [-0.5, 0.5]
+    "roc10":                   feature_roc10,                         # ROC10: short-term momentum velocity, (close - close.shift(10)) / close.shift(10) (no clipping)
     # 37. ROC (Rate of Change) 20-period
-    "roc20":                   feature_roc20,                         # ROC20: medium-term momentum velocity, (close - close.shift(20)) / close.shift(20), clipped to [-0.7, 0.7]
+    "roc20":                   feature_roc20,                         # ROC20: medium-term momentum velocity, (close - close.shift(20)) / close.shift(20) (no clipping)
     # 38. Stochastic Oscillator %K (14-period)
     "stochastic_k14":          feature_stochastic_k14,               # Stochastic %K: (close - low_14) / (high_14 - low_14) in [0, 1] range
     # 37. Bollinger Band Width (Log Normalized)
@@ -176,7 +176,7 @@ FEATURES = {
     # 43. TTM Squeeze Momentum (20-period)
     "ttm_squeeze_momentum":    feature_ttm_squeeze_momentum,        # TTM Squeeze momentum: (close - SMA20) / close - momentum direction during squeeze
     # 44. OBV Momentum (10-day ROC)
-    "obv_momentum":            feature_obv_momentum,                 # OBV rate of change: 10-day pct change of On-Balance Volume, clipped to [-0.5, 0.5]
+    "obv_momentum":            feature_obv_momentum,                 # OBV rate of change: 10-day pct change of On-Balance Volume (no clipping)
     # 45. Aroon Up (25-period)
     "aroon_up":                feature_aroon_up,                    # Aroon Up: normalized measure of days since highest high in [0, 1] range - uptrend maturity
     # 46. Aroon Down (25-period)
@@ -188,15 +188,15 @@ FEATURES = {
     # 49. Williams %R (14-period)
     "williams_r14":            feature_williams_r14,                 # Williams %R: range momentum/reversion oscillator normalized to [0, 1] - very sensitive to reversal points
     # 50. KAMA Slope (10-period)
-    "kama_slope":              feature_kama_slope,                  # KAMA Slope: adaptive moving average slope normalized by price - adaptive trend strength, works better in choppy tickers
+    "kama_slope":              feature_kama_slope,                  # KAMA Slope: adaptive moving average slope normalized by price (no clipping) - adaptive trend strength, works better in choppy tickers
     # 51. Fractal Dimension Index (100-period)
     "fractal_dimension_index": feature_fractal_dimension_index,    # Fractal Dimension Index: measures price path roughness (1.0-1.3=smooth/trending, 1.6-1.8=choppy/noisy), normalized to [0, 1] - helps identify trend-friendly vs whipsaw environments
     # 52. Hurst Exponent (100-period)
     "hurst_exponent":            feature_hurst_exponent,            # Hurst Exponent: quantifies return persistence (H>0.5=trending/persistent, H<0.5=mean-reverting, H≈0.5=random walk), in [0, 1] - tells model if momentum should be trusted
     # 53. Price Curvature (SMA20-based)
-    "price_curvature":          feature_price_curvature,            # Price Curvature: second derivative of trend (acceleration), positive=trend bending up, negative=trend bending down, normalized to [-0.05, 0.05] - helps catch early reversals and blow-off moves
+    "price_curvature":          feature_price_curvature,            # Price Curvature: second derivative of trend (acceleration), positive=trend bending up, negative=trend bending down, normalized by price (no clipping) - helps catch early reversals and blow-off moves
     # 54. Volatility-of-Volatility (VoV)
-    "volatility_of_volatility": feature_volatility_of_volatility,  # Volatility-of-Volatility: measures instability of volatility itself (low=stable regime, high=chaotic regime), normalized to [0, 3] - tells model if volatility indicators are reliable
+    "volatility_of_volatility": feature_volatility_of_volatility,  # Volatility-of-Volatility: measures instability of volatility itself (low=stable regime, high=chaotic regime), normalized by long-term avg vol (no clipping) - tells model if volatility indicators are reliable
     # 55. SPY Distance from SMA200 (Market Context)
     "mkt_spy_dist_sma200":      feature_mkt_spy_dist_sma200,      # SPY Distance from SMA200: market extension vs long-term trend (higher=risk-on/bullish, lower=risk-off/bearish), z-score normalized to [-3, 3] - provides market regime context
     # 56. SPY SMA200 Slope (Market Context)

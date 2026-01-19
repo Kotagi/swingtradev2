@@ -882,17 +882,19 @@ class FeatureService:
             try:
                 if full and feature_start_time is not None:
                     # For full rebuild, only count files modified after build started
+                    # Use a more lenient time window to catch files being written
                     parquet_files = list(output_path.glob("*.parquet"))
                     for parquet_file in parquet_files:
                         try:
                             mtime = os.path.getmtime(parquet_file)
-                            # Only count files modified after build started
-                            if mtime >= (feature_start_time - 1.0):
+                            # Count files modified after build started (with 2 second buffer for file system delays)
+                            if mtime >= (feature_start_time - 2.0):
                                 completed_count += 1
                         except Exception:
                             pass
                 else:
                     # For normal build, count all files
+                    # This will include existing files, caller should subtract initial count
                     completed_count = len(list(output_path.glob("*.parquet")))
             except Exception:
                 completed_count = 0
@@ -924,10 +926,20 @@ class FeatureService:
         
         if input_dir is None:
             input_dir = str(PROJECT_ROOT / "data" / "clean")
-        if output_dir is None:
-            output_dir = str(PROJECT_ROOT / "data" / "features_labeled")
         if config is None:
             config = str(PROJECT_ROOT / "config" / "features.yaml")
+        
+        # Determine correct output_dir based on feature_set
+        if feature_set:
+            # Import feature set manager if available
+            try:
+                from src.feature_set_manager import get_feature_set_data_path
+                output_dir = str(get_feature_set_data_path(feature_set))
+            except ImportError:
+                # Fallback if feature set manager not available
+                output_dir = str(PROJECT_ROOT / "data" / f"features_labeled_{feature_set}")
+        elif output_dir is None:
+            output_dir = str(PROJECT_ROOT / "data" / "features_labeled")
         
         # Get initial count of feature files (before building starts)
         initial_features = 0
@@ -1012,27 +1024,117 @@ class FeatureService:
             
             # Monitor progress
             if progress_callback:
+                import re
+                last_progress_count = 0
+                last_update_time = time.time()
+                no_progress_warning_time = 5.0  # Show warning if no progress for 5 seconds
+                
                 while process.poll() is None:
-                    # Get current progress
-                    current_features, total_count = self.get_feature_progress(
-                        input_dir, 
-                        output_dir, 
-                        full,
-                        feature_start_time=feature_start_time if full else None
-                    )
+                    current_time = time.time()
                     
-                    # Adjust for initial count
-                    if full:
-                        # For full rebuild, current_features already only counts new files
-                        adjusted_count = current_features
+                    # Try to parse progress from stdout/stderr (tqdm writes to stderr by default)
+                    # tqdm format: "Building features: 45%|████▌     | 450/1000 [00:30<00:35, 15.2ticker/s]"
+                    # Note: tqdm uses \r to overwrite lines, so we need to check all content, not just lines
+                    progress_from_output = None
+                    
+                    # Check both stdout and stderr (tqdm typically writes to stderr)
+                    # Combine all output and split by both \n and \r to handle tqdm's line overwriting
+                    all_output = ''.join(stdout_lines + stderr_lines)
+                    # Split by both newline and carriage return to catch tqdm updates
+                    all_content_parts = re.split(r'[\r\n]+', all_output)
+                    
+                    if all_content_parts:
+                        # Look for the most recent progress in the output
+                        # Check from end backwards to get latest progress
+                        for content in reversed(all_content_parts[-50:]):  # Check last 50 parts
+                            if not content.strip():
+                                continue
+                            # Match tqdm progress: "XX/YY" format (most reliable)
+                            # Look for pattern like "450/1000 [" which is tqdm's format
+                            match = re.search(r'(\d+)/(\d+)\s+\[', content)
+                            if match:
+                                current = int(match.group(1))
+                                total = int(match.group(2))
+                                # Validate: total should match expected total_files (within 10% tolerance)
+                                # or be a reasonable number
+                                if total > 0 and current <= total:
+                                    # Only trust if total is close to expected or if we don't have expected
+                                    if total_files == 0 or abs(total - total_files) / max(total_files, 1) < 0.1:
+                                        progress_from_output = (current, total)
+                                        break
+                            # Also try percentage format: "XX%" but be more careful
+                            # Look for percentage in context of progress bar (usually has | or bar characters)
+                            match = re.search(r'(\d+)%\s*\|', content)  # Percentage followed by bar
+                            if not match:
+                                match = re.search(r'Building features.*?(\d+)%', content)  # In "Building features" context
+                            if match and total_files > 0:
+                                percent = int(match.group(1))
+                                if 0 <= percent <= 100:
+                                    current = int(total_files * percent / 100)
+                                    progress_from_output = (current, total_files)
+                                    break
+                    
+                    # Use parsed progress if available
+                    if progress_from_output:
+                        adjusted_count, total_count = progress_from_output
+                        # Sanity check: don't allow huge jumps (more than 10% at once unless we're starting)
+                        if last_progress_count == 0:
+                            # First update - allow it but cap at reasonable initial value
+                            max_initial = max(1, int(total_count * 0.05))  # Allow up to 5% on first update
+                            if adjusted_count > max_initial:
+                                adjusted_count = max_initial
+                        else:
+                            # Subsequent updates - don't allow jumps > 10% unless it's been a while
+                            max_jump = max(1, int(total_count * 0.10))
+                            if adjusted_count - last_progress_count > max_jump:
+                                # Cap the jump to prevent unrealistic progress
+                                adjusted_count = min(last_progress_count + max_jump, total_count)
+                        
+                        # Update progress
+                        if adjusted_count >= last_progress_count and adjusted_count <= total_count:
+                            progress_callback(adjusted_count, total_count)
+                            if adjusted_count > last_progress_count:
+                                last_progress_count = adjusted_count
+                                last_update_time = current_time
                     else:
-                        # For normal build, only count new files
-                        adjusted_count = max(0, current_features - initial_features)
+                        # Fallback: Get current progress from file counting
+                        current_features, total_count = self.get_feature_progress(
+                            input_dir, 
+                            output_dir, 
+                            full,
+                            feature_start_time=feature_start_time if full else None
+                        )
+                        
+                        # Adjust for initial count
+                        if full:
+                            # For full rebuild, current_features already only counts new files
+                            adjusted_count = current_features
+                        else:
+                            # For normal build, only count new files
+                            adjusted_count = max(0, current_features - initial_features)
+                        
+                        # Sanity check: don't allow huge jumps from file counting
+                        if last_progress_count == 0 and adjusted_count > 0:
+                            # First update from file counting - be conservative
+                            max_initial = max(1, int(total_count * 0.05))
+                            if adjusted_count > max_initial:
+                                adjusted_count = max_initial
+                        elif adjusted_count - last_progress_count > int(total_count * 0.10):
+                            # Cap large jumps
+                            adjusted_count = min(last_progress_count + int(total_count * 0.10), total_count)
+                        
+                        # Update progress if we have progress or if it's been a while (show activity)
+                        if total_count > 0:
+                            if adjusted_count > last_progress_count:
+                                progress_callback(adjusted_count, total_count)
+                                last_progress_count = adjusted_count
+                                last_update_time = current_time
+                            elif current_time - last_update_time > no_progress_warning_time:
+                                # Show current progress even if unchanged (indicates activity)
+                                progress_callback(adjusted_count, total_count)
+                                last_update_time = current_time
                     
-                    if total_count > 0:
-                        progress_callback(adjusted_count, total_count)
-                    
-                    time.sleep(0.5)  # Check every 0.5 seconds
+                    time.sleep(0.2)  # Check more frequently (every 0.2 seconds for smoother updates)
             
             # Wait for completion
             process.wait()
@@ -1587,6 +1689,7 @@ class BacktestService:
         atr_stop_max_pct: float = 0.10,
         output: Optional[str] = None,
         entry_filters: Optional[list] = None,
+        feature_set: Optional[str] = None,
         progress_callback=None
     ) -> Tuple[bool, Optional[str], str]:
         """
@@ -1607,6 +1710,18 @@ class BacktestService:
         if model_path is None:
             model_path = str(PROJECT_ROOT / "models" / "xgb_classifier_selected_features.pkl")
         
+        # Determine data directory based on feature set
+        try:
+            from feature_set_manager import get_feature_set_data_path, DEFAULT_FEATURE_SET
+            if feature_set:
+                data_dir = get_feature_set_data_path(feature_set)
+            else:
+                # Use default feature set if not specified
+                data_dir = get_feature_set_data_path(DEFAULT_FEATURE_SET)
+        except (ImportError, Exception):
+            # Fallback to default if feature_set_manager not available
+            data_dir = PROJECT_ROOT / "data" / "features_labeled"
+        
         scripts_dir = PROJECT_ROOT / "src"
         cmd = [
             sys.executable,
@@ -1616,7 +1731,8 @@ class BacktestService:
             "--position-size", str(position_size),
             "--strategy", strategy,
             "--model", model_path,
-            "--model-threshold", str(model_threshold)
+            "--model-threshold", str(model_threshold),
+            "--data-dir", str(data_dir)  # Pass the feature set-specific data directory
         ]
         
         if stop_loss is not None:
@@ -1648,7 +1764,6 @@ class BacktestService:
             
             # Try to estimate total tickers from data directory
             try:
-                data_dir = PROJECT_ROOT / "data"
                 if data_dir.exists():
                     feature_files = list(data_dir.glob("*.parquet"))
                     total_tickers = len(feature_files)

@@ -1,0 +1,14 @@
+{
+  "model_id": "model_20d_15pct_v2_57feat_notuned_nocv_20260120_015358",
+  "computation_date": "2026-01-20T02:00:21.587992",
+  "data_split": "validation",
+  "sample_size": 1000,
+  "total_samples_available": 122263,
+  "n_features": 59,
+  "feature_list_hash": "9663a26200b0e32db1a3cd8c3d335ed2",
+  "top_n_concentration": {
+    "n": 10,
+    "percentage": 98.58812439441681
+  },
+  "shap_version": "0.50.0"
+}

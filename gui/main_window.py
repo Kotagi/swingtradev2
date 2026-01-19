@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QKeySequence, QShortcut
 from gui.help_panel import HelpDialog
+from gui.widgets.feature_set_selector import FeatureSetSelector
 
 from gui.tabs.dashboard_tab import DashboardTab
 from gui.tabs.identify_tab import IdentifyTab
@@ -29,6 +30,9 @@ class MainWindow(QMainWindow):
         
         # Set window to maximized by default
         self.setWindowState(Qt.WindowState.WindowMaximized)
+        
+        # Feature set selector (shared across all tabs)
+        self.feature_set_selector = None
         
         self.init_ui()
     
@@ -70,6 +74,23 @@ class MainWindow(QMainWindow):
         # Tab 6: Backtesting
         backtest_tab = BacktestTab()
         self.tabs.addTab(backtest_tab, "Backtesting")
+        
+        # Store tab references for feature set updates
+        self.features_tab = features_tab
+        self.training_tab = training_tab
+        self.backtest_tab = backtest_tab
+        self.identify_tab = identify_tab
+        
+        # Create shared feature set selector (used by tabs that need it)
+        self.feature_set_selector = FeatureSetSelector(show_manage_button=True)
+        self.feature_set_selector.feature_set_changed.connect(self.on_feature_set_changed)
+        
+        # Pass feature set selector to Feature Engineering tab
+        features_tab.set_feature_set_selector(self.feature_set_selector)
+        
+        # Notify tabs of initial feature set
+        initial_feature_set = self.get_current_feature_set()
+        self.on_feature_set_changed(initial_feature_set)
         
         # Tab 7: Analysis
         analysis_tab = AnalysisTab()
@@ -143,4 +164,34 @@ class MainWindow(QMainWindow):
             dashboard = self.tabs.currentWidget()
             if hasattr(dashboard, 'refresh_stats'):
                 dashboard.refresh_stats()
+    
+    def on_feature_set_changed(self, feature_set: str):
+        """Handle feature set change - notify all tabs."""
+        # Update status bar
+        self.statusBar().showMessage(f"Feature set changed to: {feature_set}", 3000)
+        
+        # Notify specific tabs that support feature sets
+        if hasattr(self, 'features_tab') and hasattr(self.features_tab, 'on_feature_set_changed'):
+            self.features_tab.on_feature_set_changed(feature_set)
+        if hasattr(self, 'training_tab') and hasattr(self.training_tab, 'on_feature_set_changed'):
+            self.training_tab.on_feature_set_changed(feature_set)
+        if hasattr(self, 'backtest_tab') and hasattr(self.backtest_tab, 'on_feature_set_changed'):
+            self.backtest_tab.on_feature_set_changed(feature_set)
+        if hasattr(self, 'identify_tab') and hasattr(self.identify_tab, 'on_feature_set_changed'):
+            self.identify_tab.on_feature_set_changed(feature_set)
+        
+        # Also notify all tabs generically
+        for i in range(self.tabs.count()):
+            tab = self.tabs.widget(i)
+            if hasattr(tab, 'on_feature_set_changed'):
+                tab.on_feature_set_changed(feature_set)
+    
+    def get_current_feature_set(self) -> str:
+        """Get the currently selected feature set."""
+        if self.feature_set_selector:
+            try:
+                return self.feature_set_selector.get_current_feature_set()
+            except Exception:
+                return "v1"
+        return "v1"
 

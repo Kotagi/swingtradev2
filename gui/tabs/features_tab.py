@@ -55,8 +55,25 @@ class FeaturesTab(QWidget):
         self.service = FeatureService()
         self.data_service = DataService()
         self.worker = None
+        self.current_feature_set = "v1"  # Default
+        self.feature_set_selector = None  # Will be set by main window
         
         self.init_ui()
+    
+    def set_feature_set_selector(self, selector):
+        """Set the feature set selector widget (called by main window)."""
+        self.feature_set_selector = selector
+        # Add it to the UI - replace the display label with the selector
+        if hasattr(self, 'featureset_row') and hasattr(self, 'featureset_display'):
+            # Find the display label in the layout
+            for i in range(self.featureset_row.count()):
+                item = self.featureset_row.itemAt(i)
+                if item and item.widget() == self.featureset_display:
+                    # Remove the display label
+                    self.featureset_display.setParent(None)
+                    # Insert the selector at the same position
+                    self.featureset_row.insertWidget(i, selector)
+                    break
     
     def init_ui(self):
         """Initialize the UI components."""
@@ -92,18 +109,15 @@ class FeaturesTab(QWidget):
         note_label.setWordWrap(True)
         params_layout.addWidget(note_label)
         
-        # Feature set
-        featureset_row = QHBoxLayout()
-        featureset_row.addWidget(QLabel("Feature Set:"))
-        self.featureset_combo = QComboBox()
-        self.featureset_combo.setEditable(True)
-        self.featureset_combo.setMinimumWidth(200)
-        self.featureset_combo.lineEdit().setPlaceholderText("Leave empty for default")
-        # Only one feature set now; keep empty for default
-        self.featureset_combo.addItems([""])
-        featureset_row.addWidget(self.featureset_combo)
-        featureset_row.addStretch()
-        params_layout.addLayout(featureset_row)
+        # Feature set selector (will be populated by main window)
+        # Note: The selector widget already has its own "Feature Set:" label, so we don't add another one
+        self.featureset_row = QHBoxLayout()
+        # Placeholder - will be replaced with actual selector from main window
+        self.featureset_display = QLabel("v1 (default)")
+        self.featureset_display.setStyleSheet("color: #00d4aa; font-weight: bold;")
+        self.featureset_row.addWidget(self.featureset_display)
+        self.featureset_row.addStretch()
+        params_layout.addLayout(self.featureset_row)
         
         # Options
         options_row = QHBoxLayout()
@@ -287,8 +301,8 @@ class FeaturesTab(QWidget):
             "full": self.full_features_check.isChecked()
         }
         
-        # Feature set
-        feature_set = self.featureset_combo.currentText().strip()
+        # Feature set - get from main window's global selector
+        feature_set = self.get_current_feature_set()
         if feature_set:
             kwargs["feature_set"] = feature_set
         
@@ -374,6 +388,25 @@ class FeaturesTab(QWidget):
                 error_msg = f"Error deleting feature data: {str(e)}"
                 self.log_text.append(f"[{timestamp}] ✗ {error_msg}")
                 QMessageBox.critical(self, "Error", error_msg)
+    
+    def get_current_feature_set(self) -> str:
+        """Get the current feature set from selector or use default."""
+        # Try to get from local selector first
+        if self.feature_set_selector:
+            try:
+                return self.feature_set_selector.get_current_feature_set()
+            except Exception:
+                pass
+        # Fall back to stored value
+        return getattr(self, 'current_feature_set', 'v1')
+    
+    def on_feature_set_changed(self, feature_set: str):
+        """Handle feature set change from selector."""
+        self.current_feature_set = feature_set
+        # Update display if selector hasn't been added yet
+        if hasattr(self, 'featureset_display') and self.featureset_display.parent():
+            self.featureset_display.setText(f"{feature_set} {'(default)' if feature_set == 'v1' else ''}")
+            self.featureset_display.setStyleSheet("color: #00d4aa; font-weight: bold;")
     
     def on_build_finished(self, success: bool, message: str):
         """Handle completion of feature building."""

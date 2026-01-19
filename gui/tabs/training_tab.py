@@ -54,6 +54,8 @@ class TrainingTab(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.current_feature_set = "v1"  # Default (for global selector compatibility)
+        self.training_feature_set = "v1"  # Feature set selected for training (independent)
         self.service = TrainingService()
         self.data_service = DataService()
         self.registry = ModelRegistry()
@@ -137,12 +139,9 @@ class TrainingTab(QWidget):
         self.shap_check = QCheckBox("Compute SHAP Explanations")
         self.shap_check.setChecked(True)  # Default: enabled
         self.shap_check.setToolTip("Compute and save SHAP explanations for model interpretability (adds ~30-60 seconds)")
-        self.diagnostics_check = QCheckBox("SHAP Diagnostics (Legacy)")
-        self.diagnostics_check.setToolTip("Legacy SHAP diagnostics - use 'Compute SHAP Explanations' instead")
         self.no_early_stop_check = QCheckBox("Disable Early Stopping")
         other_row.addWidget(self.plots_check)
         other_row.addWidget(self.shap_check)
-        other_row.addWidget(self.diagnostics_check)
         other_row.addWidget(self.no_early_stop_check)
         other_row.addStretch()
         options_layout.addLayout(other_row)
@@ -190,18 +189,24 @@ class TrainingTab(QWidget):
         threshold_row.addStretch()
         advanced_layout.addLayout(threshold_row)
         
-        # Feature set
+        # Feature set selector (independent from global selector)
         featureset_row = QHBoxLayout()
         featureset_row.addWidget(QLabel("Feature Set:"))
-        self.featureset_combo = QComboBox()
-        self.featureset_combo.setEditable(True)
-        self.featureset_combo.setMinimumWidth(200)
-        self.featureset_combo.lineEdit().setPlaceholderText("Leave empty for default")
-        # Only one feature set now; keep empty for default
-        self.featureset_combo.addItems([""])
-        featureset_row.addWidget(self.featureset_combo)
+        self.feature_set_combo = QComboBox()
+        self.feature_set_combo.setMinimumWidth(150)
+        # Populate with available feature sets
+        self._populate_feature_sets()
+        self.feature_set_combo.currentTextChanged.connect(self.on_training_feature_set_changed)
+        featureset_row.addWidget(self.feature_set_combo)
         featureset_row.addStretch()
         advanced_layout.addLayout(featureset_row)
+        
+        # Warning label for when features aren't built
+        self.feature_set_warning = QLabel("")
+        self.feature_set_warning.setStyleSheet("color: #ff9800; font-weight: bold; padding: 5px;")
+        self.feature_set_warning.setWordWrap(True)
+        self.feature_set_warning.setVisible(False)
+        advanced_layout.addWidget(self.feature_set_warning)
         
         # Model output
         output_row = QHBoxLayout()
@@ -297,7 +302,8 @@ class TrainingTab(QWidget):
         # Connect parameter changes to auto-name generation
         self.horizon_spin.valueChanged.connect(self.update_auto_name)
         self.return_threshold_spin.valueChanged.connect(self.update_auto_name)
-        self.featureset_combo.currentTextChanged.connect(self.update_auto_name)
+        # Feature set changes - connect to update auto-name immediately
+        self.feature_set_combo.currentTextChanged.connect(self.update_auto_name)
         self.tune_check.toggled.connect(self.update_auto_name)
         self.cv_check.toggled.connect(self.update_auto_name)
         self.cv_folds_spin.valueChanged.connect(self.update_auto_name)
@@ -329,7 +335,7 @@ class TrainingTab(QWidget):
         """
         horizon = self.horizon_spin.value()
         threshold = self.return_threshold_spin.value()
-        feature_set = self.featureset_combo.currentText().strip()
+        feature_set = self.training_feature_set
         tuned = "tuned" if self.tune_check.isChecked() else "notuned"
         cv = f"cv{self.cv_folds_spin.value()}" if self.cv_check.isChecked() else "nocv"
         
@@ -410,12 +416,11 @@ class TrainingTab(QWidget):
             "fast": self.fast_check.isChecked(),
             "plots": self.plots_check.isChecked(),
             "shap": self.shap_check.isChecked(),
-            "diagnostics": self.diagnostics_check.isChecked(),
             "no_early_stop": self.no_early_stop_check.isChecked(),
             "imbalance_multiplier": self.imbalance_spin.value(),
             "horizon": self.horizon_spin.value(),
             "return_threshold": self.return_threshold_spin.value(),
-            "feature_set": self.featureset_combo.currentText().strip(),
+            "feature_set": self.training_feature_set or None,
             "model_output": self.model_output_edit.text().strip()
         }
     
@@ -433,8 +438,6 @@ class TrainingTab(QWidget):
             self.fast_check.setChecked(config["fast"])
         if "plots" in config:
             self.plots_check.setChecked(config["plots"])
-        if "diagnostics" in config:
-            self.diagnostics_check.setChecked(config["diagnostics"])
         if "no_early_stop" in config:
             self.no_early_stop_check.setChecked(config["no_early_stop"])
         if "imbalance_multiplier" in config:
@@ -443,12 +446,17 @@ class TrainingTab(QWidget):
             self.horizon_spin.setValue(config["horizon"])
         if "return_threshold" in config:
             self.return_threshold_spin.setValue(config["return_threshold"])
+        # Feature set is now managed globally, so we just update display
         if "feature_set" in config:
-            index = self.featureset_combo.findText(config["feature_set"])
-            if index >= 0:
-                self.featureset_combo.setCurrentIndex(index)
-            else:
-                self.featureset_combo.setCurrentText(config["feature_set"])
+            # Update display but don't change global selector
+            if config["feature_set"]:
+                # Update the combo box to match the loaded config
+                if 'feature_set' in config:
+                    idx = self.feature_set_combo.findData(config['feature_set'])
+                    if idx >= 0:
+                        self.feature_set_combo.setCurrentIndex(idx)
+                        self.training_feature_set = config['feature_set']
+                        self._check_features_built()
         if "model_output" in config:
             self.model_output_edit.setText(config["model_output"])
     
@@ -466,11 +474,9 @@ class TrainingTab(QWidget):
         self.status_label.setStyleSheet("color: #ff9800;")
         self.log_text.append(f"[{datetime.now().strftime('%H:%M:%S')}] Starting model training...")
         
-        # Calculate total stages (base 7, +1 for tuning, +1 for diagnostics)
+        # Calculate total stages (base 7, +1 for tuning)
         total_stages = 7
         if self.tune_check.isChecked():
-            total_stages += 1
-        if self.diagnostics_check.isChecked():
             total_stages += 1
         
         self.progress_bar.setRange(0, total_stages)
@@ -484,7 +490,6 @@ class TrainingTab(QWidget):
             "cv_folds": self.cv_folds_spin.value() if self.cv_check.isChecked() else None,
             "fast": self.fast_check.isChecked(),
             "plots": self.plots_check.isChecked(),
-            "diagnostics": self.diagnostics_check.isChecked(),
             "shap": self.shap_check.isChecked(),
             "no_early_stop": self.no_early_stop_check.isChecked(),
             "imbalance_multiplier": self.imbalance_spin.value()
@@ -500,12 +505,12 @@ class TrainingTab(QWidget):
         if return_threshold_pct > 0:
             kwargs["return_threshold"] = return_threshold_pct / 100.0
         
-        # Feature set
-        feature_set = self.featureset_combo.currentText().strip()
+        # Feature set - use the training tab's independent selector
+        feature_set = self.training_feature_set
         if feature_set:
             kwargs["feature_set"] = feature_set
         
-        # Model output (use auto-generated name if empty)
+        # Model output (use auto-generated name if empty, or regenerate with current timestamp if auto-generated)
         model_output = self.model_output_edit.text().strip()
         if not model_output:
             # Generate auto-name if field is empty
@@ -518,6 +523,19 @@ class TrainingTab(QWidget):
             self.model_output_edit.setText(model_output)
             self.model_output_manually_edited = False
             self._updating_auto_name = False
+        else:
+            # If it's an auto-generated name, regenerate with current timestamp at save time
+            filename = Path(model_output).name
+            if filename.startswith("model_"):
+                # Regenerate with current timestamp
+                auto_name = self.generate_auto_name()
+                models_dir = Path(self.data_service.get_models_dir())
+                models_dir.mkdir(parents=True, exist_ok=True)
+                model_output = str(models_dir / auto_name)
+                # Update UI to show the regenerated name with current timestamp
+                self._updating_auto_name = True
+                self.model_output_edit.setText(model_output)
+                self._updating_auto_name = False
         
         kwargs["model_output"] = model_output
         
@@ -555,6 +573,94 @@ class TrainingTab(QWidget):
         timestamp = datetime.now().strftime('%H:%M:%S')
         self.log_text.append(f"[{timestamp}] {message}")
     
+    def _populate_feature_sets(self):
+        """Populate the feature set combo box with available feature sets."""
+        try:
+            from feature_set_manager import list_feature_sets, DEFAULT_FEATURE_SET
+            feature_sets = list_feature_sets()
+            self.feature_set_combo.clear()
+            for fs in feature_sets:
+                display_name = f"{fs} (default)" if fs == DEFAULT_FEATURE_SET else fs
+                self.feature_set_combo.addItem(display_name, fs)
+            
+            # Set to default or current training feature set
+            default_idx = self.feature_set_combo.findData(self.training_feature_set)
+            if default_idx >= 0:
+                self.feature_set_combo.setCurrentIndex(default_idx)
+            elif self.feature_set_combo.count() > 0:
+                self.feature_set_combo.setCurrentIndex(0)
+                self.training_feature_set = self.feature_set_combo.currentData()
+        except (ImportError, Exception):
+            # Fallback if feature_set_manager not available
+            self.feature_set_combo.clear()
+            self.feature_set_combo.addItem("v1 (default)", "v1")
+            self.training_feature_set = "v1"
+    
+    def on_training_feature_set_changed(self, text: str):
+        """Handle feature set selection change in training tab."""
+        # Get the actual feature set value (data) from the combo box
+        if self.feature_set_combo.currentData():
+            self.training_feature_set = self.feature_set_combo.currentData()
+        else:
+            # Fallback: extract from display text
+            self.training_feature_set = text.split()[0] if text else "v1"
+        
+        # Check if features are built and show warning if not
+        self._check_features_built()
+        # Update feature button text to reflect the new feature set's enabled count
+        self._update_feature_button_text()
+        # Auto-name will be updated via the currentTextChanged signal connection
+    
+    def _check_features_built(self) -> bool:
+        """Check if features are built for the selected feature set. Returns True if built, False otherwise."""
+        try:
+            from feature_set_manager import get_feature_set_data_path
+            data_dir = get_feature_set_data_path(self.training_feature_set)
+            
+            if not data_dir.exists():
+                self.feature_set_warning.setText(
+                    f"⚠ Warning: Features not built for '{self.training_feature_set}'. "
+                    f"Data directory does not exist: {data_dir}"
+                )
+                self.feature_set_warning.setVisible(True)
+                return False
+            
+            parquet_files = list(data_dir.glob("*.parquet"))
+            if len(parquet_files) == 0:
+                self.feature_set_warning.setText(
+                    f"⚠ Warning: Features not built for '{self.training_feature_set}'. "
+                    f"No feature files found in: {data_dir}"
+                )
+                self.feature_set_warning.setVisible(True)
+                return False
+            
+            # Features are built - hide warning
+            self.feature_set_warning.setVisible(False)
+            return True
+        except (ImportError, Exception):
+            # Can't check - assume OK
+            self.feature_set_warning.setVisible(False)
+            return True
+    
+    def get_current_feature_set(self) -> str:
+        """Get the current feature set from main window or use default."""
+        # Try to get from main window's feature_set_selector directly (avoid method call recursion)
+        try:
+            main_window = self.window()
+            if main_window and hasattr(main_window, 'feature_set_selector') and main_window.feature_set_selector:
+                return main_window.feature_set_selector.get_current_feature_set()
+        except (AttributeError, RuntimeError, TypeError):
+            pass
+        # Fall back to stored value
+        return getattr(self, 'current_feature_set', 'v1')
+    
+    def on_feature_set_changed(self, feature_set: str):
+        """Handle feature set change from main window (for global selector compatibility)."""
+        self.current_feature_set = feature_set
+        # Note: Training tab uses its own independent selector, so we don't update the combo here
+        # But we can update the auto name if needed
+        # self.update_auto_name()  # Commented out - training tab has its own selector
+    
     def on_training_finished(self, success: bool, message: str, metrics_dict: dict = None):
         """Handle completion of model training."""
         # Re-enable button
@@ -585,7 +691,7 @@ class TrainingTab(QWidget):
                     parameters = {
                         'horizon': horizon,
                         'return_threshold': return_threshold,
-                        'feature_set': self.featureset_combo.currentText().strip() or None,
+                        'feature_set': self.training_feature_set or None,
                         'tune': self.tune_check.isChecked(),
                         'cv': self.cv_check.isChecked(),
                         'imbalance_multiplier': self.imbalance_spin.value(),
@@ -640,33 +746,55 @@ class TrainingTab(QWidget):
             QMessageBox.critical(self, "Training Failed", error_details)
     
     def _count_total_features(self) -> int:
-        """Count total available features from config/features.yaml."""
+        """Count total available features from the feature set's features config."""
         try:
-            config_path = Path(__file__).parent.parent.parent / "config" / "features.yaml"
+            from feature_set_manager import get_feature_set_config_path
+            # Use the training feature set's config
+            config_path = get_feature_set_config_path(self.training_feature_set)
             if config_path.exists():
                 with open(config_path, 'r', encoding='utf-8') as f:
                     cfg = yaml.safe_load(f) or {}
                 features = cfg.get("features", {})
                 # Count all features (enabled or disabled)
                 return len([k for k in features.keys() if not k.startswith('#')])
+            # Fallback to default config
+            config_path = Path(__file__).parent.parent.parent / "config" / "features.yaml"
+            if config_path.exists():
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    cfg = yaml.safe_load(f) or {}
+                features = cfg.get("features", {})
+                return len([k for k in features.keys() if not k.startswith('#')])
             return 57  # Default fallback (current total)
-        except Exception:
+        except (ImportError, Exception):
             return 57  # Default fallback
     
     def _count_enabled_features(self) -> int:
-        """Count enabled features from config/train_features.yaml."""
+        """Count enabled features from the feature set's train_features config."""
         try:
-            config_path = Path(__file__).parent.parent.parent / "config" / "train_features.yaml"
+            from feature_set_manager import get_train_features_config_path
+            # Use the training feature set's config
+            config_path = get_train_features_config_path(self.training_feature_set)
             if config_path.exists():
                 with open(config_path, 'r', encoding='utf-8') as f:
                     cfg = yaml.safe_load(f) or {}
                 features = cfg.get("features", {})
                 # Count enabled features (value == 1)
                 return sum(1 for v in features.values() if v == 1)
-            # If train_features.yaml doesn't exist, assume all are enabled
-            return self._count_total_features()
-        except Exception:
-            return self._count_total_features()
+            # If train_features config doesn't exist, return 0 (no features enabled yet)
+            return 0
+        except (ImportError, Exception):
+            # Fallback to default config if feature_set_manager not available
+            try:
+                config_path = Path(__file__).parent.parent.parent / "config" / "train_features.yaml"
+                if config_path.exists():
+                    with open(config_path, 'r', encoding='utf-8') as f:
+                        cfg = yaml.safe_load(f) or {}
+                    features = cfg.get("features", {})
+                    return sum(1 for v in features.values() if v == 1)
+            except Exception:
+                pass
+            # If no config exists, return 0
+            return 0
     
     def _update_feature_button_text(self):
         """Update the feature selection button text with count."""
@@ -676,7 +804,7 @@ class TrainingTab(QWidget):
     
     def open_feature_selection(self):
         """Open the feature selection dialog."""
-        dialog = FeatureSelectionDialog(self)
+        dialog = FeatureSelectionDialog(self, feature_set=self.training_feature_set)
         dialog.features_saved.connect(self._update_feature_button_text)
         dialog.features_saved.connect(self.update_auto_name)  # Also update auto-name when features change
         dialog.exec()

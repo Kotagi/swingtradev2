@@ -1,8 +1,8 @@
 {
-  "training_date": "2025-12-19T02:49:57.954855",
+  "training_date": "2026-01-20T02:00:19.410651",
   "train_samples": 1676192,
   "val_samples": 122263,
-  "test_samples": 243431,
+  "test_samples": 243430,
   "n_features": 59,
   "features": [
     "price_log",
@@ -109,93 +109,93 @@
   },
   "metrics": {
     "validation": {
-      "roc_auc": 0.6189690660325093,
-      "average_precision": 0.32697352102588917,
-      "f1_score": 0.4312900192540187,
-      "precision": 0.33715455834223007,
-      "recall": 0.5983537816431123,
-      "specificity": 0.5795065950170982,
-      "accuracy": 0.5844695451608418,
+      "roc_auc": 0.618966420104958,
+      "average_precision": 0.3264126095532164,
+      "f1_score": 0.4327644899814821,
+      "precision": 0.3365179002552252,
+      "recall": 0.606118962571828,
+      "specificity": 0.572833858862193,
+      "accuracy": 0.5815986848024342,
       "confusion_matrix": [
         [
-          52195,
-          37873
+          51594,
+          38474
         ],
         [
-          12931,
-          19264
+          12681,
+          19514
         ]
       ]
     },
     "test": {
-      "roc_auc": 0.5450412315644876,
-      "average_precision": 0.14813043203640822,
-      "f1_score": 0.2502881290818287,
-      "precision": 0.16366262638949947,
-      "recall": 0.5317282187308713,
-      "specificity": 0.5542405462787628,
-      "accuracy": 0.5510678590647863,
+      "roc_auc": 0.5445377398444696,
+      "average_precision": 0.14807108488234033,
+      "f1_score": 0.25092739075882387,
+      "precision": 0.16377668191771555,
+      "recall": 0.5363201772284731,
+      "specificity": 0.5507784854918613,
+      "accuracy": 0.5487409111448877,
       "confusion_matrix": [
         [
-          115905,
-          93219
+          115181,
+          93943
         ],
         [
-          16065,
-          18242
+          15907,
+          18399
         ]
       ]
     }
   },
   "feature_importances": {
-    "price_log": 0.14658285677433014,
-    "dist_52w_low": 0.11330413818359375,
-    "log_volume": 0.09646252542734146,
-    "beta_spy_252d": 0.06970197707414627,
-    "log_avg_volume_20d": 0.06658747792243958,
-    "sma200_slope": 0.06121961399912834,
-    "ytd_return": 0.057218823581933975,
-    "volatility_21d": 0.046971455216407776,
-    "obv_momentum": 0.04509566351771355,
-    "atr14_normalized": 0.04297776147723198,
-    "sma50_ratio": 0.0384630486369133,
-    "volatility_of_volatility": 0.033659957349300385,
-    "sma20_ratio": 0.031954076141119,
-    "price_vs_ma200": 0.024872425943613052,
-    "mkt_spy_sma200_slope": 0.024059778079390526,
-    "sma20_sma50_ratio": 0.01595640555024147,
-    "dist_52w_high": 0.013677021488547325,
-    "sma200_ratio": 0.012964466586709023,
-    "pos_52w": 0.012880234979093075,
-    "mkt_spy_dist_sma200": 0.010939251631498337,
-    "adx14": 0.009309876710176468,
-    "sma50_slope": 0.005640235263854265,
-    "trend_residual": 0.004318236373364925,
-    "sma50_sma200_ratio": 0.0042993733659386635,
-    "hurst_exponent": 0.0037834211252629757,
-    "quarterly_return_63d": 0.00331875286065042,
-    "chaikin_money_flow": 0.001720380736514926,
-    "donchian_position": 0.0011563122970983386,
-    "bollinger_band_width": 0.0009045434417203069,
+    "price_log": 0.15704770386219025,
+    "dist_52w_low": 0.11108990758657455,
+    "log_volume": 0.09332156926393509,
+    "beta_spy_252d": 0.07410262525081635,
+    "log_avg_volume_20d": 0.07034642994403839,
+    "sma200_slope": 0.06695131212472916,
+    "volatility_21d": 0.06362443417310715,
+    "ytd_return": 0.05971229448914528,
+    "atr14_normalized": 0.048949114978313446,
+    "sma50_ratio": 0.04819951578974724,
+    "obv_momentum": 0.041078660637140274,
+    "volatility_of_volatility": 0.03118690848350525,
+    "mkt_spy_sma200_slope": 0.027251340448856354,
+    "price_vs_ma200": 0.02169824205338955,
+    "sma20_sma50_ratio": 0.020258000120520592,
+    "mkt_spy_dist_sma200": 0.012489029206335545,
+    "sma50_slope": 0.011629467830061913,
+    "adx14": 0.01034228689968586,
+    "dist_52w_high": 0.010202000848948956,
+    "sma50_sma200_ratio": 0.007133084814995527,
+    "bollinger_band_width": 0.004300784785300493,
+    "quarterly_return_63d": 0.003680069698020816,
+    "fractal_dimension_index": 0.0021171984262764454,
+    "pos_52w": 0.001934723579324782,
+    "rsi14": 0.0008749156259000301,
+    "chaikin_money_flow": 0.00047835634904913604,
     "daily_return": 0.0,
     "gap_pct": 0.0,
     "weekly_return_5d": 0.0,
     "monthly_return_21d": 0.0,
+    "sma20_ratio": 0.0,
+    "sma200_ratio": 0.0,
     "volatility_5d": 0.0,
     "volatility_ratio": 0.0,
     "relative_volume": 0.0,
-    "rsi14": 0.0,
     "candle_body_pct": 0.0,
     "candle_upper_wick_pct": 0.0,
     "candle_lower_wick_pct": 0.0,
     "higher_high_10d": 0.0,
     "higher_low_10d": 0.0,
+    "trend_residual": 0.0,
     "macd_histogram_normalized": 0.0,
     "ppo_histogram": 0.0,
     "dpo": 0.0,
     "roc10": 0.0,
     "roc20": 0.0,
     "stochastic_k14": 0.0,
+    "donchian_position": 0.0,
     "donchian_breakout": 0.0,
     "ttm_squeeze_on": 0.0,
     "ttm_squeeze_momentum": 0.0,
@@ -205,12 +205,12 @@
     "cci20": 0.0,
     "williams_r14": 0.0,
     "kama_slope": 0.0,
-    "fractal_dimension_index": 0.0,
+    "hurst_exponent": 0.0,
     "price_curvature": 0.0
   },
   "baseline_auc": {
     "dummy": 0.5,
-    "logistic_regression": 0.5135418372083969
+    "logistic_regression": 0.5091810154534322
   },
   "class_imbalance_ratio": 0.41544687024473614,
   "train_date_range": [
@@ -227,6 +227,6 @@
   "label_col": "training_label",
   "early_stopping": {
     "best_iteration": 11,
-    "best_score": 0.6723532876664332
+    "best_score": 0.6725908708071908
   }
 }

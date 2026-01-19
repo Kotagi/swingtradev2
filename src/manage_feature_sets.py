@@ -24,43 +24,59 @@ from feature_set_manager import (
     feature_set_exists,
     create_feature_set,
     get_feature_set_info,
+    validate_feature_set,
+    get_all_feature_sets,
+    get_feature_set_config_path,
+    get_feature_set_data_path,
+    get_train_features_config_path,
     DEFAULT_FEATURE_SET
 )
 
 
 def cmd_list(args):
-    """List all available feature sets."""
-    feature_sets = list_feature_sets()
+    """List all available feature sets with enhanced details."""
+    all_sets = get_all_feature_sets()
     
     print("\n" + "="*80)
     print("AVAILABLE FEATURE SETS")
     print("="*80)
     
-    if not feature_sets:
+    if not all_sets:
         print("No feature sets found.")
         return
     
-    for fs in feature_sets:
-        try:
-            info = get_feature_set_info(fs)
-            is_default = " (default)" if fs == DEFAULT_FEATURE_SET else ""
-            
-            print(f"\n{fs}{is_default}:")
-            print(f"  Config: {info['config_path']}")
-            print(f"  Data: {info['data_path']}")
-            print(f"  Config exists: {info['config_exists']}")
-            print(f"  Data exists: {info['data_exists']}")
-            
-            if 'enabled_features' in info:
-                print(f"  Features: {info['enabled_features']} enabled / {info['total_features']} total")
-            
-            if 'data_files' in info:
-                print(f"  Data files: {info['data_files']} tickers")
-            
-            if 'metadata' in info and 'description' in info['metadata']:
-                print(f"  Description: {info['metadata']['description']}")
-        except Exception as e:
-            print(f"\n{fs}: Error getting info - {e}")
+    for info in all_sets:
+        if 'error' in info:
+            print(f"\n{info['name']}: ERROR - {info['error']}")
+            continue
+        
+        fs = info['name']
+        is_default = " (default)" if fs == DEFAULT_FEATURE_SET else ""
+        validation = info.get('validation', {})
+        is_valid = validation.get('is_valid', False)
+        status = "[OK]" if is_valid else "[WARN]"
+        
+        print(f"\n{status} {fs}{is_default}:")
+        print(f"  Config: {info['config_path']} {'[OK]' if info['config_exists'] else '[MISSING]'}")
+        print(f"  Data: {info['data_path']} {'[OK]' if info['data_exists'] else '[MISSING]'}")
+        print(f"  Train Config: {'[OK]' if info['train_config_exists'] else '[MISSING]'}")
+        
+        if 'enabled_features' in info:
+            print(f"  Features: {info['enabled_features']} enabled / {info['total_features']} total")
+        
+        if 'data_files' in info:
+            print(f"  Data files: {info['data_files']} tickers")
+        
+        if 'metadata' in info and 'description' in info['metadata']:
+            print(f"  Description: {info['metadata']['description']}")
+        
+        # Show validation warnings/errors
+        if validation.get('warnings'):
+            for warning in validation['warnings']:
+                print(f"  [WARN] {warning}")
+        if validation.get('errors'):
+            for error in validation['errors']:
+                print(f"  [ERROR] {error}")
     
     print("\n" + "="*80)
 
@@ -101,17 +117,21 @@ def cmd_info(args):
     
     try:
         info = get_feature_set_info(args.name)
+        validation = validate_feature_set(args.name)
         
         print("\n" + "="*80)
         print(f"FEATURE SET: {args.name}")
+        if args.name == DEFAULT_FEATURE_SET:
+            print("(DEFAULT)")
         print("="*80)
         print(f"Config path: {info['config_path']}")
         print(f"Data path: {info['data_path']}")
         print(f"Train config path: {info['train_config_path']}")
         print(f"\nStatus:")
-        print(f"  Config exists: {info['config_exists']}")
-        print(f"  Data exists: {info['data_exists']}")
-        print(f"  Train config exists: {info['train_config_exists']}")
+        print(f"  Config exists: {info['config_exists']} {'[OK]' if info['config_exists'] else '[MISSING]'}")
+        print(f"  Data exists: {info['data_exists']} {'[OK]' if info['data_exists'] else '[MISSING]'}")
+        print(f"  Train config exists: {info['train_config_exists']} {'[OK]' if info['train_config_exists'] else '[MISSING]'}")
+        print(f"  Valid: {validation['is_valid']} {'[OK]' if validation['is_valid'] else '[INVALID]'}")
         
         if 'enabled_features' in info:
             print(f"\nFeatures:")
@@ -127,9 +147,83 @@ def cmd_info(args):
             for key, value in info['metadata'].items():
                 print(f"  {key}: {value}")
         
+        if validation.get('warnings'):
+            print(f"\nWarnings:")
+            for warning in validation['warnings']:
+                print(f"  [WARN] {warning}")
+        
+        if validation.get('errors'):
+            print(f"\nErrors:")
+            for error in validation['errors']:
+                print(f"  [ERROR] {error}")
+        
         print("="*80 + "\n")
     except Exception as e:
         print(f"Error getting feature set info: {e}")
+        sys.exit(1)
+
+
+def cmd_delete(args):
+    """Delete a feature set with optional cleanup options."""
+    if args.name == DEFAULT_FEATURE_SET:
+        print(f"Error: Cannot delete default feature set '{DEFAULT_FEATURE_SET}'")
+        sys.exit(1)
+    
+    if not feature_set_exists(args.name):
+        print(f"Error: Feature set '{args.name}' does not exist.")
+        print(f"Use 'list' to see all feature sets.")
+        sys.exit(1)
+    
+    # Show what will be deleted
+    config_path = get_feature_set_config_path(args.name)
+    data_path = get_feature_set_data_path(args.name)
+    train_config_path = get_train_features_config_path(args.name)
+    
+    print(f"\n[WARNING] This will delete feature set '{args.name}':")
+    print(f"  Config: {config_path}")
+    print(f"  Train Config: {train_config_path}")
+    if args.delete_data:
+        print(f"  Data directory: {data_path}")
+    else:
+        print(f"  Data directory: {data_path} (will be kept)")
+    
+    # Confirmation
+    if not args.force:
+        response = input("\nAre you sure you want to delete this feature set? (yes/no): ")
+        if response.lower() not in ['yes', 'y']:
+            print("Cancelled.")
+            return
+    
+    # Delete files
+    import shutil
+    deleted = []
+    
+    try:
+        if config_path.exists():
+            config_path.unlink()
+            deleted.append(f"Config: {config_path}")
+        
+        if train_config_path.exists():
+            train_config_path.unlink()
+            deleted.append(f"Train config: {train_config_path}")
+        
+        if args.delete_data and data_path.exists():
+            shutil.rmtree(data_path)
+            deleted.append(f"Data directory: {data_path}")
+        
+        # Try to delete feature implementation directory
+        feature_dir = Path(__file__).parent.parent / "features" / "sets" / args.name
+        if feature_dir.exists():
+            shutil.rmtree(feature_dir)
+            deleted.append(f"Feature implementation: {feature_dir}")
+        
+        print(f"\n[OK] Feature set '{args.name}' deleted successfully!")
+        print("Deleted:")
+        for item in deleted:
+            print(f"  - {item}")
+        
+    except Exception as e:
+        print(f"Error deleting feature set: {e}")
         sys.exit(1)
 
 
@@ -150,6 +244,12 @@ Examples:
 
   # View feature set information
   python src/manage_feature_sets.py info v2
+
+  # Delete a feature set (keeps data)
+  python src/manage_feature_sets.py delete v2
+
+  # Delete a feature set including data
+  python src/manage_feature_sets.py delete v2 --delete-data
         """
     )
     
@@ -168,6 +268,12 @@ Examples:
     info_parser = subparsers.add_parser("info", help="Show detailed information about a feature set")
     info_parser.add_argument("name", help="Name of the feature set")
     
+    # Delete command
+    delete_parser = subparsers.add_parser("delete", help="Delete a feature set")
+    delete_parser.add_argument("name", help="Name of the feature set to delete")
+    delete_parser.add_argument("--delete-data", action="store_true", help="Also delete the data directory")
+    delete_parser.add_argument("--force", action="store_true", help="Skip confirmation prompt")
+    
     args = parser.parse_args()
     
     if not args.command:
@@ -180,6 +286,8 @@ Examples:
         cmd_create(args)
     elif args.command == "info":
         cmd_info(args)
+    elif args.command == "delete":
+        cmd_delete(args)
     else:
         parser.print_help()
 

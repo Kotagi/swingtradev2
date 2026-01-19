@@ -12,7 +12,7 @@ Enhanced training script for XGBoost classifier with:
 
 This script:
   1. Loads all labeled feature Parquet files from `data/features_labeled/`
-  2. Filters features based on `config/train_features.yaml`
+  2. Filters features based on `config/train_features_v1.yaml` (or feature set config)
   3. Drops NaNs and raw-price/forward-return columns to prevent leakage
   4. Splits data into train/validation/test by date
   5. Trains baseline models (DummyClassifier & LogisticRegression)
@@ -97,7 +97,7 @@ VAL_END      = "2023-12-31"      # cut-off date (inclusive) for validation
 # Label column configuration
 # Default: auto-detect from data, or use --horizon/--label-col CLI args
 LABEL_COL    = None              # Will be auto-detected or set via CLI
-TRAIN_CFG    = PROJECT_ROOT / "config" / "train_features.yaml"
+TRAIN_CFG    = PROJECT_ROOT / "config" / "train_features_v1.yaml"  # Default to v1
 # —————————————————————————————————————————————————————————————————————————
 
 # Hyperparameter search space for XGBoost
@@ -953,7 +953,8 @@ def main() -> None:
         'plot_files': plot_files if plot_files else None,
         'return_threshold': args.return_threshold,  # Store return threshold for metadata
         'horizon': args.horizon,  # Store horizon for metadata
-        'label_col': label_col  # Store label column for metadata
+        'label_col': label_col,  # Store label column for metadata
+        'feature_set': args.feature_set if hasattr(args, 'feature_set') and args.feature_set else DEFAULT_FEATURE_SET  # Store feature set used
     }
     
     # Add early stopping info if available

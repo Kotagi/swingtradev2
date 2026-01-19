@@ -204,6 +204,129 @@
       },
       "shap_artifacts_path": null,
       "shap_metadata": null
+    },
+    {
+      "id": "model_20260119_221528",
+      "name": "XGBoost_20d_15%",
+      "file_path": "C:\\Users\\brand\\Documents\\Stocks\\SwingTradeApp\\SwingTradeV2\\models\\model_20d_15pct_Test_57feat_notuned_nocv_20260119_221026.pkl",
+      "training_date": "2026-01-19T22:15:28.312401",
+      "metrics": {
+        "test": {
+          "roc_auc": 0.545,
+          "average_precision": 0.1481,
+          "f1_score": 0.2503,
+          "precision": 0.1637,
+          "recall": 0.5317,
+          "accuracy": 0.5511
+        },
+        "validation": {
+          "roc_auc": 0.619,
+          "average_precision": 0.327,
+          "f1_score": 0.4313,
+          "precision": 0.3372,
+          "recall": 0.5984,
+          "accuracy": 0.5845
+        }
+      },
+      "parameters": {
+        "horizon": 20,
+        "return_threshold": 0.15,
+        "feature_set": "Test",
+        "tune": false,
+        "cv": false,
+        "imbalance_multiplier": 1.0,
+        "n_iter": null,
+        "cv_folds": null
+      },
+      "training_info": {
+        "training_time": 279.46,
+        "feature_count": 59,
+        "total_features": 57
+      },
+      "shap_artifacts_path": null,
+      "shap_metadata": null
+    },
+    {
+      "id": "model_20260120_015105",
+      "name": "XGBoost_30d_5%",
+      "file_path": "C:\\Users\\brand\\Documents\\Stocks\\SwingTradeApp\\SwingTradeV2\\models\\model_30d_5pct_v2_57feat_notuned_nocv_20260120_005347.pkl",
+      "training_date": "2026-01-20T01:51:05.365928",
+      "metrics": {
+        "test": {
+          "roc_auc": 0.5313,
+          "average_precision": 0.7538,
+          "f1_score": 0.6801,
+          "precision": 0.7631,
+          "recall": 0.6134,
+          "accuracy": 0.5713
+        },
+        "validation": {
+          "roc_auc": 0.6685,
+          "average_precision": 0.9336,
+          "f1_score": 0.7118,
+          "precision": 0.927,
+          "recall": 0.5777,
+          "accuracy": 0.588
+        }
+      },
+      "parameters": {
+        "horizon": 30,
+        "return_threshold": 0.05,
+        "feature_set": "v2",
+        "tune": false,
+        "cv": false,
+        "imbalance_multiplier": 1.0,
+        "n_iter": null,
+        "cv_folds": null
+      },
+      "training_info": {
+        "training_time": 357.86,
+        "feature_count": 59,
+        "total_features": 57
+      },
+      "shap_artifacts_path": null,
+      "shap_metadata": null
+    },
+    {
+      "id": "model_20260120_020025",
+      "name": "V2_Non_Normalized_20d_15%",
+      "file_path": "C:\\Users\\brand\\Documents\\Stocks\\SwingTradeApp\\SwingTradeV2\\models\\model_20d_15pct_v2_57feat_notuned_nocv_20260120_015358.pkl",
+      "training_date": "2026-01-20T02:00:25.171931",
+      "metrics": {
+        "test": {
+          "roc_auc": 0.5445,
+          "average_precision": 0.1481,
+          "f1_score": 0.2509,
+          "precision": 0.1638,
+          "recall": 0.5363,
+          "accuracy": 0.5487
+        },
+        "validation": {
+          "roc_auc": 0.619,
+          "average_precision": 0.3264,
+          "f1_score": 0.4328,
+          "precision": 0.3365,
+          "recall": 0.6061,
+          "accuracy": 0.5816
+        }
+      },
+      "parameters": {
+        "horizon": 20,
+        "return_threshold": 0.15,
+        "feature_set": "v2",
+        "tune": false,
+        "cv": false,
+        "imbalance_multiplier": 1.0,
+        "n_iter": null,
+        "cv_folds": null
+      },
+      "training_info": {
+        "training_time": 366.42,
+        "feature_count": 59,
+        "total_features": 57
+      },
+      "shap_artifacts_path": null,
+      "shap_metadata": null
     }
   ],
   "version": "1.0"
