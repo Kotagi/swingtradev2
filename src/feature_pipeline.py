@@ -23,6 +23,7 @@ SRC_DIR = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(SRC_DIR))
 
+import inspect
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
@@ -41,6 +42,7 @@ from feature_set_manager import (
     feature_set_exists,
     DEFAULT_FEATURE_SET
 )
+from features.shared.utils import _load_spy_data
 
 
 def load_enabled_features_for_set(config_path: str, feature_set: str = None) -> dict:
@@ -111,7 +113,8 @@ def apply_features(
     df: pd.DataFrame,
     enabled_features: dict,
     logger,
-    validate: bool = True
+    validate: bool = True,
+    spy_data: Optional[pd.DataFrame] = None
 ) -> Tuple[pd.DataFrame, Dict[str, List[str]]]:
     """
     Apply each enabled feature function to the DataFrame with validation.
@@ -121,6 +124,7 @@ def apply_features(
         enabled_features: Dict[name -> feature_fn].
         logger: Logger for status.
         validate: If True, validate features for NaNs/infinities.
+        spy_data: Optional SPY DataFrame to pass to features that need it.
 
     Returns:
         (df_feat, validation_issues) where:
@@ -132,7 +136,14 @@ def apply_features(
     
     for name, func in enabled_features.items():
         try:
-            feature_series = func(df)
+            # Check if feature function accepts spy_data parameter
+            sig = inspect.signature(func)
+            if 'spy_data' in sig.parameters:
+                # Pass spy_data to features that need it
+                feature_series = func(df, spy_data=spy_data)
+            else:
+                # Call normally for features that don't need SPY data
+                feature_series = func(df)
             
             # Validate feature output
             if validate:
@@ -169,7 +180,8 @@ def process_file(
     output_path: Path,
     enabled: dict,
     log_file: str,
-    full_refresh: bool
+    full_refresh: bool,
+    spy_data: Optional[pd.DataFrame] = None
 ) -> Tuple[str, Optional[str], Dict]:
     """
     Worker: process one ticker end-to-end with optional caching.
@@ -180,6 +192,7 @@ def process_file(
         enabled: Mapping of feature names to functions.
         log_file: Shared log file path.
         full_refresh: If True, ignore existing outputs and recompute everything.
+        spy_data: Optional SPY DataFrame to pass to features that need it.
 
     Returns:
         (filename, error_message_or_None, stats_dict)
@@ -216,8 +229,8 @@ def process_file(
         if df.empty:
             raise ValueError(f"{ticker}: Empty DataFrame")
 
-        # 2) Compute features with validation
-        df_feat, validation_issues = apply_features(df, enabled, logger, validate=True)
+        # 2) Compute features with validation (pass spy_data if available)
+        df_feat, validation_issues = apply_features(df, enabled, logger, validate=True, spy_data=spy_data)
         stats['features_computed'] = len(enabled) - len(validation_issues)
         stats['features_failed'] = len([v for v in validation_issues.values() if 'Computation error' in str(v)])
         stats['validation_issues'] = sum(len(issues) for issues in validation_issues.values())
@@ -290,6 +303,15 @@ def main(
     if full_refresh:
         logger.info("Full-refresh mode: recomputing all tickers")
 
+    # Pre-load SPY data once to share across all worker processes
+    # This eliminates redundant I/O and parsing for market context features
+    logger.info("Loading SPY data for market context features...")
+    spy_data = _load_spy_data()
+    if spy_data is not None:
+        logger.info(f"SPY data loaded: {len(spy_data)} rows from {spy_data.index.min()} to {spy_data.index.max()}")
+    else:
+        logger.warning("SPY data not available - market context features will return NaN")
+
     files = sorted(input_path.glob("*.parquet"))
     logger.info(f"{len(files)} tickers to process")
     
@@ -317,7 +339,7 @@ def main(
         for i in range(0, len(file_list), batch_size):
             batch = file_list[i:i + batch_size]
             
-            # Process this batch in parallel
+            # Process this batch in parallel (pass spy_data to each worker)
             batch_results = Parallel(
                 n_jobs=-1,
                 backend="multiprocessing",
@@ -325,7 +347,7 @@ def main(
             )(
                 delayed(process_file)(
                     f, output_path, enabled,
-                    master_log, full_refresh
+                    master_log, full_refresh, spy_data
                 )
                 for f in batch
             )
