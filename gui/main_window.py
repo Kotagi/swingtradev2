@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QKeySequence, QShortcut
+import os
 from gui.help_panel import HelpDialog
 from gui.widgets.feature_set_selector import FeatureSetSelector
 
@@ -33,6 +34,7 @@ class MainWindow(QMainWindow):
         
         # Feature set selector (shared across all tabs)
         self.feature_set_selector = None
+        self.dev_tools_enabled = os.getenv("DEV_TOOLS", "0") == "1"
         
         self.init_ui()
     
@@ -87,6 +89,7 @@ class MainWindow(QMainWindow):
         
         # Pass feature set selector to Feature Engineering tab
         features_tab.set_feature_set_selector(self.feature_set_selector)
+        features_tab.set_dev_tools_enabled(self.dev_tools_enabled)
         
         # Notify tabs of initial feature set
         initial_feature_set = self.get_current_feature_set()
@@ -101,6 +104,14 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(model_comparison_tab, "Model Comparison")
         
         layout.addWidget(self.tabs)
+        
+        # Settings menu with Developer Tools toggle
+        menubar = self.menuBar()
+        settings_menu = menubar.addMenu("Settings")
+        self.dev_tools_action = settings_menu.addAction("Developer Tools")
+        self.dev_tools_action.setCheckable(True)
+        self.dev_tools_action.setChecked(self.dev_tools_enabled)
+        self.dev_tools_action.triggered.connect(self.toggle_dev_tools)
         
         # Status bar
         self.statusBar().showMessage("Ready")
@@ -194,4 +205,12 @@ class MainWindow(QMainWindow):
             except Exception:
                 return "v1"
         return "v1"
+
+    def toggle_dev_tools(self, checked: bool):
+        """Toggle developer tools visibility across the app."""
+        self.dev_tools_enabled = checked
+        if hasattr(self, "features_tab") and hasattr(self.features_tab, "set_dev_tools_enabled"):
+            self.features_tab.set_dev_tools_enabled(checked)
+        state = "ON" if checked else "OFF"
+        self.statusBar().showMessage(f"Developer Tools {state}", 3000)
 
