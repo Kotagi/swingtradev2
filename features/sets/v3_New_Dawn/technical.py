@@ -9962,7 +9962,12 @@ def feature_signal_regime_alignment(df: DataFrame) -> Series:
     """
     regime = feature_market_regime(df)
     regime_strength = feature_regime_strength(df)
-    relative_strength = feature_relative_strength_vs_spy(df)
+    relative_strength = feature_relative_strength_spy(df)
+    
+    # Fill NaN values with defaults (for initial periods or missing SPY data)
+    regime = regime.fillna(2.0)  # Default to sideways
+    regime_strength = regime_strength.fillna(0.5)  # Default to neutral
+    relative_strength = relative_strength.fillna(0.0)  # Default to no relative strength
     
     # Normalize regime (0=bull, 1=bear, 2=sideways -> 1, 0, 0.5)
     regime_norm = pd.Series(index=regime.index, dtype=float)
@@ -10045,8 +10050,12 @@ def feature_signal_relative_strength(df: DataFrame) -> Series:
     Higher values = strong relative strength, lower = weak.
     Normalized to [0, 1]. Clipped for safety.
     """
-    relative_strength = feature_relative_strength_vs_spy(df)
-    relative_momentum = feature_relative_momentum_vs_spy(df)
+    relative_strength = feature_relative_strength_spy(df)
+    relative_momentum = feature_rs_momentum(df)
+    
+    # Fill NaN values with 0.0 before normalization (for initial periods)
+    relative_strength = relative_strength.fillna(0.0)
+    relative_momentum = relative_momentum.fillna(0.0)
     
     # Normalize components
     relative_strength_norm = (relative_strength + 1.0) / 2.0
@@ -10073,7 +10082,23 @@ def feature_signal_multi_timeframe(df: DataFrame) -> Series:
     # Get multi-timeframe trends
     daily_trend = feature_trend_strength_20d(df)
     weekly_trend = feature_weekly_trend_strength(df)
-    monthly_trend = feature_monthly_trend_strength(df)
+    
+    # For monthly trend, use monthly SMA slope as proxy (since monthly_trend_strength doesn't exist)
+    # Use monthly_sma_3m slope normalized
+    close = _get_close_series(df)
+    monthly_close = close.resample('ME').last()
+    monthly_sma_3m = monthly_close.rolling(window=3, min_periods=1).mean()
+    monthly_slope = monthly_sma_3m.diff(1)
+    monthly_slope_daily = monthly_slope.reindex(close.index, method='ffill')
+    # Normalize monthly trend to [0, 1] range
+    monthly_trend = monthly_slope_daily / (monthly_slope_daily.abs().rolling(window=252, min_periods=1).max() + 1e-10)
+    monthly_trend = (monthly_trend + 1.0) / 2.0  # Convert [-1, 1] to [0, 1]
+    monthly_trend = monthly_trend.clip(0.0, 1.0)
+    
+    # Fill NaN values with defaults (for initial periods)
+    daily_trend = daily_trend.fillna(0.5)  # Default to neutral trend
+    weekly_trend = weekly_trend.fillna(0.5)  # Default to neutral trend
+    monthly_trend = monthly_trend.fillna(0.5)  # Default to neutral trend
     
     # Combine (weighted by timeframe importance)
     multi_timeframe = (daily_trend * 0.5 + weekly_trend * 0.3 + monthly_trend * 0.2)
