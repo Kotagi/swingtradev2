@@ -86,6 +86,11 @@ class AnalysisTab(QWidget):
         filter_editor_tab = FilterEditorTab()
         self.tab_widget.addTab(filter_editor_tab, "Filter Editor")
         
+        # Tab 6: Data Inspector (Parquet Inspector)
+        from gui.tabs.parquet_inspector_tab import ParquetInspectorTab
+        parquet_inspector_tab = ParquetInspectorTab()
+        self.tab_widget.addTab(parquet_inspector_tab, "Data Inspector")
+        
         layout.addWidget(self.tab_widget)
         
         # Set layout on content widget
