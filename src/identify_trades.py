@@ -37,13 +37,15 @@ MIN_PROBABILITY = 0.5  # Minimum prediction probability to consider a trade
 
 def load_model(model_path: Path) -> Tuple:
     """
-    Load the trained model, feature list, and scaler from a pickle file.
+    Load the trained model and feature list from a pickle file.
 
     Args:
         model_path: Path to the model pickle file.
 
     Returns:
         Tuple of (model, feature_list, scaler, features_to_scale, features_to_keep).
+        Note: scaler and features_to_scale are kept for backward compatibility but are not used
+        (XGBoost doesn't require feature scaling).
     """
     if not model_path.exists():
         raise FileNotFoundError(f"Model file not found: {model_path}")
@@ -238,28 +240,39 @@ def identify_opportunities(
         # Align features with model expectations
         feature_df = pd.DataFrame([feature_vector])
         available_features = [f for f in features if f in feature_df.columns]
+        missing_features = [f for f in features if f not in feature_df.columns]
+        
+        # Log missing features if significant
+        if missing_features:
+            missing_pct = (len(missing_features) / len(features)) * 100
+            if missing_pct > 5:  # Log if more than 5% missing
+                print(f"  {ticker}: {len(missing_features)} features missing ({missing_pct:.1f}%), filling with 0.0")
         
         if len(available_features) < len(features) * 0.8:
+            if missing_features:
+                missing_pct = (len(missing_features) / len(features)) * 100
+                print(f"  {ticker}: Skipping - too many features missing ({len(missing_features)}/{len(features)} = {missing_pct:.1f}%)")
             continue
         
         # Prepare feature matrix
-        X = feature_df[available_features]
+        X = feature_df[available_features].copy()
         
-        # Handle missing features by filling with 0 (or median if available)
-        for f in features:
-            if f not in X.columns:
-                X[f] = 0.0
+        # Handle NaN values in available features (fill with 0.0, consistent with training)
+        X = X.replace([np.inf, -np.inf], np.nan)
+        nan_counts = X.isna().sum()
+        if nan_counts.sum() > 0:
+            nan_pct = (nan_counts.sum() / (len(X) * len(X.columns))) * 100
+            if nan_pct > 10:  # Log if significant NaNs
+                print(f"  {ticker}: {nan_pct:.1f}% NaN values in features, filling with 0.0")
+        X = X.fillna(0.0)
+        
+        # Handle missing features (columns that don't exist) by filling with 0.0
+        for f in missing_features:
+            X[f] = 0.0
         
         X = X[features]  # Ensure correct order
         
-        # Apply scaling if scaler is provided
-        if scaler is not None and features_to_scale:
-            X_scaled = X.copy()
-            # Only scale features that were scaled during training
-            scale_cols = [f for f in features_to_scale if f in X.columns]
-            if scale_cols:
-                X_scaled[scale_cols] = scaler.transform(X[scale_cols])
-            X = X_scaled
+        # Note: XGBoost doesn't require feature scaling, so no scaling is applied
         
         # Make prediction
         try:

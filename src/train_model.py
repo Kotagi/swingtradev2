@@ -84,16 +84,36 @@ MODEL_DIR    = PROJECT_ROOT / "models"
 MODEL_DIR.mkdir(exist_ok=True)
 MODEL_OUT    = MODEL_DIR / "xgb_classifier_selected_features.pkl"
 # Data split configuration
-# Option 1: More recent training (recommended for current market conditions)
-TRAIN_START  = None              # Start date for training (None = use all available data)
-TRAIN_END    = "2022-12-31"      # cut-off date (inclusive) for training
-VAL_END      = "2023-12-31"      # cut-off date (inclusive) for validation
-# Option 2: More recent training (uncomment to use)
-# TRAIN_END    = "2020-12-31"      # Train on 2015-2020 (more recent patterns)
-# VAL_END      = "2022-12-31"      # Validate on 2021-2022 (2 years)
-# Option 3: Even more recent (uncomment to use)
-# TRAIN_END    = "2021-12-31"      # Train on 2018-2021
+# Recommended split for 500+ tickers with data from 2008:
+# - Training: 2010-2021 (12 years, includes COVID, excludes 2008-2009 crisis)
+# - Validation: 2022-2023 (2 years, includes high volatility 2022 and recovery 2023)
+# - Test: 2024+ (12+ months, ongoing for evaluation)
+# 
+# Rationale:
+# - Excludes 2008-2009 financial crisis (unique event, market structure changed)
+# - Includes 2020 COVID (learns from extreme volatility, similar events may occur)
+# - Includes 2018-2019 trade wars (normal market dynamics)
+# - 2-year validation provides robust tuning and tests across different regimes
+# - 12+ month test set provides statistically meaningful evaluation
+TRAIN_START  = "2010-01-01"      # Start date for training (excludes 2008-2009 crisis)
+TRAIN_END    = "2021-12-31"      # Cut-off date (inclusive) for training
+VAL_END      = "2023-12-31"      # Cut-off date (inclusive) for validation (validation = 2022-2023)
+# 
+# Alternative configurations (uncomment to use):
+# Option 2: Exclude 2020 COVID (more conservative)
+# TRAIN_START  = "2010-01-01"
+# TRAIN_END    = "2019-12-31"      # Train on 2010-2019, 2021 (exclude 2020)
 # VAL_END      = "2023-12-31"      # Validate on 2022-2023
+# 
+# Option 3: Maximum history (includes 2008-2009)
+# TRAIN_START  = None              # Use all available data from 2008
+# TRAIN_END    = "2021-12-31"
+# VAL_END      = "2023-12-31"
+# 
+# Option 4: Recent focus (post-crisis only)
+# TRAIN_START  = "2015-01-01"      # Post-crisis recovery period
+# TRAIN_END    = "2021-12-31"
+# VAL_END      = "2023-12-31"
 # Label column configuration
 # Default: auto-detect from data, or use --horizon/--label-col CLI args
 LABEL_COL    = None              # Will be auto-detected or set via CLI
@@ -156,7 +176,7 @@ def prepare(df: pd.DataFrame, label_col: str) -> Tuple[pd.DataFrame, pd.Series, 
     """
     Clean and split the raw DataFrame into X (features) and y (target).
 
-    - Drops rows with missing values.
+    - Fills missing values with 0.0 (consistent with backtest/inference).
     - Removes forward-return columns (to prevent leakage).
     - Removes raw price columns: open/high/low/close/adj close.
     - Leaves only label and feature columns.
@@ -170,8 +190,19 @@ def prepare(df: pd.DataFrame, label_col: str) -> Tuple[pd.DataFrame, pd.Series, 
         y: Series of the target label.
         feats: List of feature column names used.
     """
-    # 1) Replace infinities with NaN, then drop rows with missing values
-    df_clean = df.replace([np.inf, -np.inf], np.nan).dropna().copy()
+    # 1) Replace infinities with NaN, then fill NaNs with 0.0 (consistent with backtest)
+    df_clean = df.replace([np.inf, -np.inf], np.nan).copy()
+    
+    # Count NaNs before filling for logging
+    nan_counts = df_clean.isna().sum()
+    total_nans = nan_counts.sum()
+    if total_nans > 0:
+        nan_pct = (total_nans / (len(df_clean) * len(df_clean.columns))) * 100
+        if nan_pct > 5:  # Log if more than 5% NaN values
+            print(f"Note: Found {nan_pct:.1f}% NaN values in data. Filling with 0.0 (consistent with inference).")
+    
+    # Fill NaNs with 0.0 (XGBoost can handle NaN, but filling is safer and consistent with backtest)
+    df_clean = df_clean.fillna(0.0)
 
     # 2) Candidate feature names (exclude label & ticker)
     feats = [c for c in df_clean.columns if c not in [label_col, "ticker"]]
@@ -192,16 +223,15 @@ def prepare(df: pd.DataFrame, label_col: str) -> Tuple[pd.DataFrame, pd.Series, 
     # Clip to ±1e6 to prevent overflow issues while preserving signal
     X = X.clip(lower=-1e6, upper=1e6)
     
-    # 7) Final check: ensure no infinities or NaNs remain
+    # 7) Final check: ensure no infinities remain (NaNs already filled)
     if X.isin([np.inf, -np.inf]).any().any():
-        print("Warning: Found infinities after cleaning, replacing with NaN")
-        X = X.replace([np.inf, -np.inf], np.nan)
+        print("Warning: Found infinities after cleaning, replacing with 0.0")
+        X = X.replace([np.inf, -np.inf], 0.0)
     
+    # Verify no NaNs remain (shouldn't happen after fillna, but double-check)
     if X.isna().any().any():
-        print("Warning: Found NaNs after cleaning, dropping rows")
-        mask = ~X.isna().any(axis=1)
-        X = X[mask]
-        y = y[mask]
+        print("Warning: Found NaNs after filling, filling again with 0.0")
+        X = X.fillna(0.0)
 
     return X, y, feats
 
@@ -482,19 +512,19 @@ def main() -> None:
         "--train-start",
         type=str,
         default=None,
-        help="Training data start date (YYYY-MM-DD). Default: None (use all available data from the beginning). Use to exclude older data (e.g., '2020-01-01' to start from 2020)."
+        help="Training data start date (YYYY-MM-DD). Default: 2010-01-01 (excludes 2008-2009 financial crisis). Use None to include all available data from the beginning."
     )
     parser.add_argument(
         "--train-end",
         type=str,
         default=None,
-        help="Training data end date (YYYY-MM-DD). Default: 2022-12-31. Use more recent dates (e.g., 2020-12-31) for recent market patterns."
+        help="Training data end date (YYYY-MM-DD). Default: 2021-12-31 (includes COVID period 2020-2021)."
     )
     parser.add_argument(
         "--val-end",
         type=str,
         default=None,
-        help="Validation data end date (YYYY-MM-DD). Default: 2023-12-31."
+        help="Validation data end date (YYYY-MM-DD). Default: 2023-12-31 (provides 2-year validation period 2022-2023)."
     )
     parser.add_argument(
         "--horizon",
@@ -585,10 +615,16 @@ def main() -> None:
     print(f"Calculating labels with horizon={horizon} days, threshold={return_threshold:.2%}")
     
     # Find close and high columns (case-insensitive)
+    # Prefer 'close' over 'adj close' for consistency with 'high' (both split-adjusted only)
     close_col = None
     high_col = None
     for col in df_all.columns:
-        if col.lower() == 'close' or col.lower() == 'adj close':
+        # Prefer 'close' (split-adjusted) over 'adj close' (split+dividend adjusted)
+        # This ensures consistency with 'high' column which is also split-adjusted only
+        if col.lower() == 'close':
+            close_col = col
+        elif col.lower() == 'adj close' and close_col is None:
+            # Fallback to adj close if regular close not found
             close_col = col
         if col.lower() == 'high':
             high_col = col
@@ -597,6 +633,12 @@ def main() -> None:
         raise ValueError("Could not find 'close' or 'adj close' column in data")
     if not high_col:
         raise ValueError("Could not find 'high' column in data")
+    
+    # Log which column is being used
+    if close_col.lower() == 'adj close':
+        print(f"Warning: Using 'adj close' instead of 'close' for labeling. This may cause inconsistencies with 'high' column.")
+    else:
+        print(f"Using '{close_col}' column for labeling (consistent with 'high' column)")
     
     # Ensure close and high columns are numeric (convert from string if needed)
     if df_all[close_col].dtype == 'object':
@@ -642,9 +684,9 @@ def main() -> None:
     print(f"X shape: {X.shape}")
     print("Label distribution (positive class %):")
     print(y.value_counts(normalize=True))
-    print(f"Any NaNs in X? {X.isna().any().any()}")
+    print(f"Any NaNs in X? {X.isna().any().any()} (should be False - NaNs filled with 0.0)")
     print(f"Number of features: {len(feats)}")
-    print(f"Feature names: {', '.join(feats)}")
+    print(f"Feature names: {', '.join(feats[:10])}{'...' if len(feats) > 10 else ''}")
     print(f"Date range: {X.index.min()} to {X.index.max()}")
     print("=" * 70)
 
@@ -687,7 +729,8 @@ def main() -> None:
     dummy_auc = roc_auc_score(y_test, dummy_proba)
     print(f"DummyClassifier Test AUC: {dummy_auc:.4f}")
 
-    # Step 8: Baseline LogisticRegression (features already normalized)
+    # Step 8: Baseline LogisticRegression
+    # Note: XGBoost doesn't require feature scaling, so we train on raw features
     lr = LogisticRegression(
         class_weight="balanced",
         max_iter=1000,
@@ -964,7 +1007,8 @@ def main() -> None:
             'best_score': float(model.best_score) if hasattr(model, 'best_score') else None
         }
     
-    # Save model with metadata (features already normalized in pipeline)
+    # Save model with metadata
+    # Note: XGBoost doesn't require feature scaling, so features are used as-is
     model_data = {
         "model": model,
         "features": feats,

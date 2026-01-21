@@ -28,8 +28,8 @@ from sklearn.metrics import (
 # Default paths
 DEFAULT_MODEL = Path("models/xgb_classifier_selected_features.pkl")
 DEFAULT_DATA_DIR = Path("data/features_labeled")
-DEFAULT_TRAIN_END = "2022-12-31"
-DEFAULT_VAL_END = "2023-12-31"
+DEFAULT_TRAIN_END = "2021-12-31"  # Updated to match new training split (training ends 2021)
+DEFAULT_VAL_END = "2023-12-31"     # Validation period: 2022-2023 (2 years)
 
 
 def load_model(model_path: Path) -> Tuple:
@@ -108,17 +108,11 @@ def load_validation_data(data_dir: Path, features: list, label_col: str,
     X_val = val_data[features].copy()
     y_val = val_data[label_col].copy()
     
-    # Handle infinities and NaNs
+    # Handle infinities and NaNs (fill with 0.0, consistent with training)
     X_val = X_val.replace([np.inf, -np.inf], np.nan)
     X_val = X_val.fillna(0.0)
     
-    # Apply scaling if provided
-    if scaler is not None and features_to_scale:
-        scale_cols = [f for f in features_to_scale if f in X_val.columns]
-        if scale_cols:
-            X_val_scaled = X_val.copy()
-            X_val_scaled[scale_cols] = scaler.transform(X_val[scale_cols])
-            X_val = X_val_scaled
+    # Note: XGBoost doesn't require feature scaling, so no scaling is applied
     
     # Remove rows with NaN labels
     valid_mask = ~y_val.isna()

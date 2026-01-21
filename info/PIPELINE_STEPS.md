@@ -279,10 +279,10 @@ python src/swing_trade_app.py train --feature-set v2
 python src/swing_trade_app.py train --feature-set v2 --model-output models/custom_v2_model.pkl
 
 # Train model with custom date range (exclude older data)
-python src/swing_trade_app.py train --train-start 2020-01-01 --train-end 2022-12-31
+python src/swing_trade_app.py train --train-start 2015-01-01 --train-end 2021-12-31 --val-end 2023-12-31
 
 # Train model with specific date range
-python src/swing_trade_app.py train --train-start 2018-01-01 --train-end 2021-12-31 --val-end 2022-12-31
+python src/swing_trade_app.py train --train-start 2010-01-01 --train-end 2021-12-31 --val-end 2023-12-31
 ```
 
 **All Available Arguments:**
@@ -299,8 +299,9 @@ python src/swing_trade_app.py train --train-start 2018-01-01 --train-end 2021-12
 | `--fast` | `False` | Use faster hyperparameter tuning (reduced search space, fewer CV folds). ~3-5x faster but slightly less optimal |
 | `--imbalance-multiplier` | `1.0` | Multiplier for class imbalance handling. Increase to 2.0-3.0 to favor positive class more. Higher = more trades predicted |
 | `--train-start` | `None` (use all available) | Training data start date (YYYY-MM-DD). Default: None (use all available data from the beginning). Use to exclude older data (e.g., '2020-01-01' to start from 2020) |
-| `--train-end` | `None` (defaults to `2022-12-31`) | Training data end date (YYYY-MM-DD). Use more recent dates (e.g., 2020-12-31) for recent market patterns |
-| `--val-end` | `None` (defaults to `2023-12-31`) | Validation data end date (YYYY-MM-DD) |
+| `--train-start` | `None` (defaults to `2010-01-01`) | Training data start date (YYYY-MM-DD). Default excludes 2008-2009 financial crisis |
+| `--train-end` | `None` (defaults to `2021-12-31`) | Training data end date (YYYY-MM-DD). Default includes COVID period (2020-2021) |
+| `--val-end` | `None` (defaults to `2023-12-31`) | Validation data end date (YYYY-MM-DD). Default provides 2-year validation period (2022-2023) |
 | `--horizon` | `None` (auto-detected) | Trade horizon in trading days (e.g., 5, 30). Used for on-the-fly label calculation during training |
 | `--return-threshold` | `None` | Return threshold for label calculation (as decimal, e.g., 0.05 for 5%). Used for on-the-fly label calculation during training |
 | `--label-col` | `None` (auto-detected) | Label column name (e.g., 'label_5d', 'label_30d'). Auto-detected if not specified. **Note:** Labels are now calculated during training, not during feature engineering |
@@ -309,33 +310,31 @@ python src/swing_trade_app.py train --train-start 2018-01-01 --train-end 2021-12
 
 **What it does:**
 - **Enhanced data splitting:** Train/Validation/Test split by date:
-  - Train: up to 2022-12-31
-  - Validation: 2023-01-01 to 2023-12-31 (for early stopping)
-  - Test: 2024-01-01 onwards
+  - Train: 2010-01-01 to 2021-12-31 (12 years, includes COVID, excludes 2008-2009 crisis)
+  - Validation: 2022-01-01 to 2023-12-31 (2 years, includes high volatility 2022 and recovery 2023)
+  - Test: 2024-01-01 onwards (12+ months, ongoing for evaluation)
 - Loads all feature data from `data/features_labeled/`
 - **Calculates labels on-the-fly:** Creates binary labels based on `--horizon` (trading days) and `--return-threshold` before data preparation. Labels are computed using future returns, not pre-computed during feature engineering.
 - Filters features based on `config/train_features.yaml`
-- **Feature normalization/scaling:**
-  - Automatically identifies which features need scaling vs those already normalized
-  - Features already normalized (kept as-is): Pattern features (0-1), percentile features (0-1), crossover signals (-1, 0, 1)
-  - Features scaled (StandardScaler): Price-based features, unbounded percentages, z-scores, MACD, OBV, etc.
-  - Fits StandardScaler on training data only (prevents data leakage)
-  - Transforms train/validation/test sets using the fitted scaler
-  - Saves scaler with model for consistent inference
-- Trains baseline models (DummyClassifier, LogisticRegression with scaling)
+- **Feature handling:**
+  - Features are used as-is (XGBoost handles mixed scales natively)
+  - NaN values filled with 0.0 (consistent with inference/backtest)
+  - Extreme values clipped to ±1e6 to prevent overflow
+  - Many features are already normalized (ratios, percentages, bounded features)
+- Trains baseline models (DummyClassifier, LogisticRegression)
 - **Hyperparameter tuning:** Searches 9 hyperparameters (n_estimators, max_depth, learning_rate, etc.)
 - **Early stopping:** Prevents overfitting using validation set
 - Trains XGBoost classifier with improved class imbalance handling
 - **Comprehensive evaluation:** ROC AUC, Average Precision, F1 Score, Confusion Matrix, Precision/Recall/Specificity
 - **Feature importance:** Always displays top 20 features with rankings
-- Saves model, scaler, features, and training metadata
+- Saves model, features, and training metadata
 
 **Output:** 
-- Trained model file: `models/xgb_classifier_selected_features.pkl` (default) or custom path if `--model-output` specified (includes model, scaler, features, metadata)
+- Trained model file: `models/xgb_classifier_selected_features.pkl` (default) or custom path if `--model-output` specified (includes model, features, metadata)
 - Training metadata: `models/training_metadata.json`
 - Training curves plot: `models/xgb_training_curves.png` (if `--plots` used)
 - Feature importance chart: `models/feature_importance_chart.png` (if `--plots` used)
-- Console metrics: Comprehensive evaluation metrics including feature normalization summary
+- Console metrics: Comprehensive evaluation metrics
 
 **Model Naming:**
 - **Default:** `models/xgb_classifier_selected_features.pkl`
@@ -392,8 +391,8 @@ python src/swing_trade_app.py backtest --horizon 5 --return-threshold 0.05 --str
 | `--test-start-date` | `2024-01-01` | Start date for test data (YYYY-MM-DD). Only data after this date will be backtested. Default: 2024-01-01 (to avoid data leakage from training/validation) |
 
 **What it does:**
-- Loads trained model, scaler, and feature data
-- **Applies feature scaling:** Automatically scales features during prediction using the saved scaler
+- Loads trained model and feature data
+- Handles NaN values by filling with 0.0 (consistent with training)
 - Generates entry signals based on strategy
 - Simulates trades with configurable exit logic:
   - Exit at return threshold (if reached)
@@ -499,8 +498,9 @@ python src/analyze_stop_losses.py --horizon 30 --return-threshold 0.15 --model-t
 | `--atr-stop-max-pct` | `0.10` | Maximum stop distance for adaptive stops (e.g., 0.10 = 10%). Only used when `--stop-loss-mode=adaptive_atr` |
 | `--trades-csv` | `None` | CSV file with existing backtest trades (if not provided, will run backtest) |
 | `--use-validation` | `True` | Use validation data (2023) for analysis instead of test data |
-| `--train-end` | `2022-12-31` | Training data end date (YYYY-MM-DD) |
-| `--val-end` | `2023-12-31` | Validation data end date (YYYY-MM-DD) |
+| `--train-start` | `2010-01-01` | Training data start date (YYYY-MM-DD). Excludes 2008-2009 financial crisis |
+| `--train-end` | `2021-12-31` | Training data end date (YYYY-MM-DD). Includes COVID period (2020-2021) |
+| `--val-end` | `2023-12-31` | Validation data end date (YYYY-MM-DD). Provides 2-year validation (2022-2023) |
 | `--output` | `None` | Optional JSON file to save analysis results |
 
 **What it does:**
@@ -582,7 +582,8 @@ python src/apply_entry_filters.py --horizon 30 --return-threshold 0.15 --model-t
 | `--custom-filter` | `None` | Add custom filter (can be used multiple times). Format: `--custom-filter FEATURE OPERATOR THRESHOLD` (e.g., `--custom-filter rsi_slope ">" 0.5`) |
 
 **What it does:**
-- Loads trained model, scaler, and feature data
+- Loads trained model and feature data
+- Handles NaN values by filling with 0.0 (consistent with training)
 - **Applies default filters** (17 feature-based filters from stop-loss analysis):
   - Momentum filters: `rsi_slope > -1.349`, `log_return_1d > -0.017`, `log_return_5d > -0.057`
   - Market context: `relative_strength_spy_5d > -4.269`, `market_correlation_20d > 0.532`
@@ -650,8 +651,8 @@ python src/identify_trades.py --min-probability 0.6 --top-n 20 --custom-filter c
 | `--custom-filter` | `None` | Add custom filter (can be used multiple times). Format: `--custom-filter FEATURE OPERATOR THRESHOLD` (e.g., `--custom-filter candle_body_pct ">" -10`). Operators: `>`, `<`, `>=`, `<=` |
 
 **What it does:**
-- Loads trained model, scaler, and feature list
-- **Applies feature scaling:** Automatically scales features during prediction using the saved scaler
+- Loads trained model and feature list
+- Handles NaN values by filling with 0.0 (consistent with training)
 - For each ticker, loads latest feature data
 - **Applies entry filters** (if enabled):
   - Filters are applied **before** making predictions
@@ -935,12 +936,11 @@ python src/identify_trades.py --min-probability 0.6 --top-n 20 --use-recommended
 - ✅ Ownership features removed (not consistent and cannot be trusted)
 
 ### Training Step
-- ✅ **Feature normalization/scaling:**
-  - Automatic identification of features to scale vs keep as-is
-  - StandardScaler applied to price-based and unbounded features
-  - Pattern/percentile features kept in original scale (already normalized)
-  - Scaler fitted on training data only (prevents data leakage)
-  - Scaler saved with model for consistent inference
+- ✅ **Feature handling:**
+  - Features used as-is (XGBoost handles mixed scales natively)
+  - NaN values filled with 0.0 (consistent with inference/backtest)
+  - Extreme values clipped to prevent overflow
+  - Many features already normalized (ratios, percentages, bounded features)
 - ✅ Hyperparameter tuning with RandomizedSearchCV
 - ✅ Early stopping to prevent overfitting
 - ✅ Cross-validation support

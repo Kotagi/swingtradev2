@@ -63,8 +63,7 @@ class TradeIdentificationService:
             self.model_path = str(path)
             
             msg = f"Model loaded successfully. Using {len(self.features)} features."
-            if self.scaler is not None:
-                msg += f" Scaler loaded for {len(self.features_to_scale)} features."
+            # Note: XGBoost doesn't require feature scaling, so scaler is not used
             
             return True, msg
         except Exception as e:
@@ -3371,10 +3370,16 @@ class SHAPService:
                 progress_callback(3, f"Calculating labels (horizon={horizon}d, threshold={return_threshold:.2%})...")
             
             # Find close and high columns (case-insensitive)
+            # Prefer 'close' over 'adj close' for consistency with 'high' (both split-adjusted only)
             close_col = None
             high_col = None
             for col in df_all.columns:
-                if col.lower() in ['close', 'adj close']:
+                # Prefer 'close' (split-adjusted) over 'adj close' (split+dividend adjusted)
+                # This ensures consistency with 'high' column which is also split-adjusted only
+                if col.lower() == 'close':
+                    close_col = col
+                elif col.lower() == 'adj close' and close_col is None:
+                    # Fallback to adj close if regular close not found
                     close_col = col
                 if col.lower() == 'high':
                     high_col = col

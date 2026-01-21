@@ -109,18 +109,27 @@ def _get_column(df: DataFrame, col_name: str, required: bool = True) -> Series:
 
 def _get_close_series(df: DataFrame) -> Series:
     """
-    Return the 'close' price series, handling both lowercase and uppercase.
+    Return the closing price series, preferring 'adj close' over 'close'.
+    
+    Adjusted close accounts for splits and dividends, making it superior for
+    ML features that need consistent price series over time. Falls back to
+    'close' if 'adj close' is not available.
 
     Args:
         df: Input DataFrame.
 
     Returns:
-        Series of closing prices.
+        Series of closing prices (adjusted close if available, else close).
 
     Raises:
-        KeyError: If neither 'close' nor 'Close' is present.
+        KeyError: If neither 'adj close'/'Adj Close' nor 'close'/'Close' is present.
     """
-    return _get_column(df, 'close')
+    # Prefer adjusted close (split-adjusted, better for ML)
+    try:
+        return _get_column(df, 'adj close')
+    except KeyError:
+        # Fallback to regular close if adj close not available
+        return _get_column(df, 'close')
 
 
 def _get_open_series(df: DataFrame) -> Series:

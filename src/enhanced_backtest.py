@@ -46,7 +46,11 @@ DEFAULT_MODEL = MODEL_DIR / "xgb_classifier_selected_features.pkl"
 
 
 def load_model(model_path: Path):
-    """Load trained model, features, and scaler."""
+    """Load trained model and features from pickle file.
+    
+    Note: scaler and features_to_scale are kept for backward compatibility but are not used
+    (XGBoost doesn't require feature scaling).
+    """
     if not model_path.exists():
         return None, [], None, [], []
     
@@ -55,8 +59,8 @@ def load_model(model_path: Path):
         return (
             data.get("model"),
             data.get("features", []),
-            data.get("scaler"),  # May be None if no scaling was used
-            data.get("features_to_scale", []),
+            data.get("scaler"),  # Always None - not used (XGBoost doesn't require scaling)
+            data.get("features_to_scale", []),  # Always empty - not used
             data.get("features_to_keep", [])
         )
     # Legacy format (no scaler)
@@ -368,26 +372,48 @@ def generate_model_signals(
     """
     # Extract features
     available_features = [f for f in features if f in df.columns]
+    missing_features = [f for f in features if f not in df.columns]
+    
+    # Log missing features for debugging
+    if missing_features:
+        missing_pct = (len(missing_features) / len(features)) * 100
+        if missing_pct > 5:  # Log if more than 5% of features are missing
+            print(f"Warning: {len(missing_features)} features missing from data ({missing_pct:.1f}%): {', '.join(missing_features[:10])}{'...' if len(missing_features) > 10 else ''}")
+        else:
+            print(f"Note: {len(missing_features)} features missing from data, filling with 0.0")
+    
+    # Check if we have enough features (80% threshold)
     if len(available_features) < len(features) * 0.8:
+        # Return all False signals if too many features are missing
+        print(f"Error: Too many features missing ({len(missing_features)}/{len(features)} = {missing_pct:.1f}%). Need at least 80%. Returning no signals.")
         return pd.Series(False, index=df.index)
     
     X = df[available_features].copy()
     
-    # Fill missing features
-    for f in features:
-        if f not in X.columns:
-            X[f] = 0.0
+    # Fill missing features (columns that don't exist) with 0.0
+    for f in missing_features:
+        X[f] = 0.0
     
+    # Ensure we have all features in the correct order
     X = X[features]
     
-    # Apply scaling if scaler is provided
-    if scaler is not None and features_to_scale:
-        X_scaled = X.copy()
-        # Only scale features that were scaled during training
-        scale_cols = [f for f in features_to_scale if f in X.columns]
-        if scale_cols:
-            X_scaled[scale_cols] = scaler.transform(X[scale_cols])
-        X = X_scaled
+    # CRITICAL: Handle NaN and infinity values before prediction
+    # Many features (like sma200_ratio, sma200_slope) have NaN for first 200 days
+    # Replace infinities with NaN first, then fill all NaNs with 0.0
+    X = X.replace([np.inf, -np.inf], np.nan)
+    
+    # Count NaN values before filling (for debugging)
+    nan_counts = X.isna().sum()
+    total_nans = nan_counts.sum()
+    if total_nans > 0:
+        # Log warning if significant NaN values found (but still proceed)
+        nan_pct = (total_nans / (len(X) * len(X.columns))) * 100
+        if nan_pct > 10:  # More than 10% NaN values
+            print(f"Warning: {nan_pct:.1f}% NaN values in features before prediction. Filling with 0.0.")
+    
+    X = X.fillna(0.0)  # Fill NaN values with 0.0 (XGBoost can handle NaN, but filling is safer and consistent)
+    
+    # Note: XGBoost doesn't require feature scaling, so no scaling is applied
     
     # Make predictions
     try:
@@ -845,8 +871,7 @@ def main():
             print("ERROR: Model not found. Cannot run model strategy.")
             return
         print(f"Model loaded. Using {len(features)} features.")
-        if scaler is not None:
-            print(f"Scaler loaded. Will scale {len(features_to_scale)} features during prediction.")
+        # Note: XGBoost doesn't require feature scaling, so scaler is not used
     
     # Load tickers
     tickers_df = pd.read_csv(args.tickers_file, header=None)

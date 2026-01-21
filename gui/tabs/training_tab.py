@@ -541,7 +541,6 @@ class TrainingTab(QWidget):
         
         # Log the command being run (for debugging)
         import sys
-        from pathlib import Path
         scripts_dir = Path(__file__).parent.parent.parent / "src"
         train_script = scripts_dir / "train_model.py"
         cmd_preview = f"{sys.executable} {train_script}"
