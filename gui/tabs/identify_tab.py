@@ -16,7 +16,6 @@ import pandas as pd
 from typing import Optional, Dict, Tuple
 
 from gui.services import TradeIdentificationService, DataService
-from pathlib import Path
 from datetime import datetime
 
 # Project root for path resolution
@@ -48,6 +47,7 @@ class IdentifyTab(QWidget):
         self.data_service = DataService()
         self.current_opportunities = None
         self.worker = None
+        self.current_feature_set = "v1"  # Default feature set
         
         self.init_ui()
     
@@ -85,6 +85,7 @@ class IdentifyTab(QWidget):
         self.model_combo.setEditable(True)
         self.model_combo.setMinimumWidth(400)
         self.model_combo.lineEdit().setPlaceholderText("Select or enter model path...")
+        self.model_combo.currentTextChanged.connect(self.on_model_path_changed)
         model_row.addWidget(self.model_combo)
         
         browse_btn = QPushButton("Browse...")
@@ -304,6 +305,9 @@ class IdentifyTab(QWidget):
             self.model_status_label.setText(f"✓ {message}")
             self.model_status_label.setStyleSheet("color: #4caf50;")
             self.identify_btn.setEnabled(True)
+            
+            # Detect feature set from the loaded model and update selector
+            self._detect_feature_set_from_model(model_path)
         else:
             self.model_status_label.setText(f"✗ {message}")
             self.model_status_label.setStyleSheet("color: #f44336;")
@@ -332,10 +336,21 @@ class IdentifyTab(QWidget):
         if stoploss_mode == "None":
             stoploss_mode = None
         
+        # Determine data directory based on detected/selected feature set
+        feature_set = self.get_current_feature_set()
+        try:
+            from feature_set_manager import get_feature_set_data_path
+            data_dir = get_feature_set_data_path(feature_set)
+        except (ImportError, Exception):
+            data_dir = Path(self.data_service.get_data_dir())
+        if isinstance(data_dir, str):
+            data_dir = Path(data_dir)
+        data_dir = str(data_dir)
+        
         # Create worker thread
         self.worker = IdentifyWorker(
             self.service,
-            data_dir=self.data_service.get_data_dir(),
+            data_dir=data_dir,
             tickers_file=self.data_service.get_tickers_file(),
             min_probability=min_prob,
             top_n=top_n,
@@ -457,6 +472,94 @@ class IdentifyTab(QWidget):
                 QMessageBox.information(self, "Export Successful", f"Results exported to:\n{file_path}")
             except Exception as e:
                 QMessageBox.critical(self, "Export Error", f"Failed to export results:\n{str(e)}")
+
+    def on_model_path_changed(self, text: str):
+        """Handle model path text change - detect feature set from model path."""
+        model_path = text.strip()
+        if not model_path:
+            return
+        
+        # Resolve relative paths against project root
+        if not Path(model_path).is_absolute():
+            model_path = str(PROJECT_ROOT / model_path)
+        
+        self._detect_feature_set_from_model(model_path)
+
+    def _detect_feature_set_from_model(self, model_path: str):
+        """Detect feature set from model metadata or filename and update selector."""
+        try:
+            import joblib
+            path = Path(model_path)
+            if not path.exists():
+                return
+            
+            feature_set = None
+            
+            # Attempt to read metadata
+            model_data = joblib.load(path)
+            if isinstance(model_data, dict) and 'metadata' in model_data:
+                metadata = model_data['metadata']
+                feature_set = metadata.get('feature_set')
+            
+            # Fallback to filename parsing
+            if not feature_set:
+                filename = path.stem
+                if '_' in filename:
+                    parts = filename.split('_')
+                    
+                    # Strategy 1: look for v\d+ anywhere
+                    for part in parts:
+                        if part.startswith('v') and len(part) > 1 and part[1:].isdigit():
+                            feature_set = part
+                            break
+                    
+                    # Strategy 2: look for token after 'features' or 'feat'
+                    if not feature_set:
+                        for keyword in ['features', 'feat']:
+                            if keyword in parts:
+                                idx = parts.index(keyword)
+                                if idx + 1 < len(parts):
+                                    candidate = parts[idx + 1]
+                                    if candidate.replace('_', '').replace('-', '').isalnum() and not candidate.isdigit():
+                                        feature_set = candidate
+                                        break
+                    
+                    # Strategy 3: last token if it looks like a feature set (but not timestamp)
+                    if not feature_set and len(parts) >= 2:
+                        last_part = parts[-1]
+                        if (last_part.startswith('v') and last_part[1:].isdigit()) or \
+                           (len(last_part) <= 10 and last_part.replace('_', '').replace('-', '').isalnum() and not last_part.isdigit()):
+                            feature_set = last_part
+            
+            if not feature_set:
+                return
+            
+            # Update local state
+            self.current_feature_set = feature_set
+            
+            # Update global selector if available
+            try:
+                main_window = self.window()
+                if main_window and hasattr(main_window, 'feature_set_selector') and main_window.feature_set_selector:
+                    main_window.feature_set_selector.set_feature_set(feature_set)
+                    if hasattr(main_window, 'on_feature_set_changed'):
+                        main_window.on_feature_set_changed(feature_set)
+            except Exception:
+                # Ignore UI update failures; local state is enough
+                pass
+        except Exception:
+            # Silent failure; detection is optional
+            pass
+
+    def get_current_feature_set(self) -> str:
+        """Get current feature set from main window or stored value."""
+        try:
+            main_window = self.window()
+            if main_window and hasattr(main_window, 'feature_set_selector') and main_window.feature_set_selector:
+                return main_window.feature_set_selector.get_current_feature_set()
+        except (AttributeError, RuntimeError, TypeError):
+            pass
+        return getattr(self, 'current_feature_set', 'v1')
 
 
 
