@@ -5,21 +5,21 @@ features:
   price_vs_ma200: 1
   close_position_in_range: 1
   # BLOCK ML-1.2: Returns (8 features)
-  log_return_1d: 1
-  daily_return: 1
+  log_return_1d: 0
+  daily_return: 0
   gap_pct: 1
   weekly_return_5d: 1
-  monthly_return_21d: 1
+  monthly_return_21d: 0
   quarterly_return_63d: 1
   ytd_return: 1
-  weekly_return_1w: 1
+  weekly_return_1w: 0
   # BLOCK ML-1.3: 52-Week Position (3 features)
   dist_52w_high: 1
   dist_52w_low: 1
   pos_52w: 1
   # BLOCK ML-1.4: Basic Moving Averages (8 features)
-  sma20_ratio: 1
-  sma50_ratio: 1
+  sma20_ratio: 0
+  sma50_ratio: 0
   sma200_ratio: 1
   ema20_ratio: 1
   ema50_ratio: 1
@@ -27,43 +27,43 @@ features:
   sma20_sma50_ratio: 1
   sma50_sma200_ratio: 1
   # BLOCK ML-1.5: MA Slopes (4 features)
-  sma20_slope: 1
+  sma20_slope: 0
   sma50_slope: 1
   sma200_slope: 1
   ema20_slope: 1
   # BLOCK ML-1.6: Basic Volatility (3 features)
-  volatility_5d: 1
+  volatility_5d: 0
   volatility_21d: 1
   atr14_normalized: 1
   # BLOCK ML-2.1: Basic Volume (6 features)
   log_volume: 1
   log_avg_volume_20d: 1
-  relative_volume: 1
+  relative_volume: 0
   obv_momentum: 1
-  volume_trend: 1
-  volume_momentum: 1
+  volume_trend: 0
+  volume_momentum: 0
   # BLOCK ML-2.2: RSI Family (4 features)
-  rsi7: 1
+  rsi7: 0
   rsi14: 1
-  rsi21: 1
-  rsi_momentum: 1
+  rsi21: 0
+  rsi_momentum: 0
   # BLOCK ML-2.3: MACD Family (4 features)
-  macd_line: 1
+  macd_line: 0
   macd_signal: 1
   macd_histogram_normalized: 1
   macd_momentum: 1
   # BLOCK ML-2.4: ROC Family (4 features)
-  roc5: 1
-  roc10: 1
-  roc20: 1
-  momentum_10d: 1
+  roc5: 0
+  roc10: 0
+  roc20: 0
+  momentum_10d: 0
   # BLOCK ML-2.5: Stochastic Family (3 features)
-  stochastic_k14: 1
+  stochastic_k14: 0
   stochastic_d14: 1
-  stochastic_oscillator: 1
+  stochastic_oscillator: 0
   # BLOCK ML-2.6: Other Oscillators (9 features)
   cci20: 1
-  williams_r14: 1
+  williams_r14: 0
   ppo_histogram: 1
   dpo: 1
   kama_slope: 1
@@ -73,46 +73,46 @@ features:
   trend_residual: 1
   # BLOCK ML-3.1: Additional Momentum Oscillators (4 features)
   ultimate_oscillator: 1
-  awesome_oscillator: 1
-  momentum_20d: 1
+  awesome_oscillator: 0
+  momentum_20d: 0
   momentum_50d: 1
   # BLOCK ML-3.2: Momentum Quality Features (10 features)
   momentum_divergence: 1
-  momentum_consistency: 1
-  momentum_acceleration: 1
-  momentum_strength: 1
+  momentum_consistency: 0
+  momentum_acceleration: 0
+  momentum_strength: 0
   momentum_persistence: 1
-  momentum_exhaustion: 1
-  momentum_reversal_signal: 1
-  momentum_cross: 1
+  momentum_exhaustion: 0
+  momentum_reversal_signal: 0
+  momentum_cross: 0
   momentum_rank: 1
-  momentum_regime: 1
+  momentum_regime: 0
   # BLOCK ML-3.3: Additional Momentum Variants (4 features)
-  momentum_5d: 1
-  momentum_15d: 1
+  momentum_5d: 0
+  momentum_15d: 0
   momentum_30d: 1
-  momentum_vs_price: 1
+  momentum_vs_price: 0
   # BLOCK ML-4.1: Volatility Regime Detection (10 features)
   volatility_regime: 1
   volatility_trend: 1
-  bb_squeeze: 1
-  bb_expansion: 1
+  bb_squeeze: 0
+  bb_expansion: 0
   atr_ratio_20d: 1
   atr_ratio_252d: 1
   volatility_percentile_20d: 1
   volatility_percentile_252d: 1
-  high_volatility_flag: 1
-  low_volatility_flag: 1
+  high_volatility_flag: 0
+  low_volatility_flag: 0
   # BLOCK ML-4.2: Advanced Volatility Estimators (5 features)
   parkinson_volatility: 1
   garman_klass_volatility: 1
-  rogers_satchell_volatility: 1
+  rogers_satchell_volatility: 0
   yang_zhang_volatility: 1
   volatility_clustering: 1
   # BLOCK ML-4.3: Realized Volatility (3 features)
   realized_volatility_5d: 1
   realized_volatility_20d: 1
-  volatility_regime_change: 1
+  volatility_regime_change: 0
   # BLOCK ML-5.1: ADX & Trend Strength (5 features)
   adx14: 1
   adx20: 1
@@ -120,24 +120,24 @@ features:
   trend_strength_20d: 1
   trend_strength_50d: 1
   # BLOCK ML-5.2: MA Alignment & Crossovers (6 features)
-  ema_alignment: 1
-  ma_crossover_bullish: 1
-  ma_crossover_bearish: 1
-  price_vs_all_mas: 1
+  ema_alignment: 0
+  ma_crossover_bullish: 0
+  ma_crossover_bearish: 0
+  price_vs_all_mas: 0
   sma_slope_20d: 1
   sma_slope_50d: 1
   # BLOCK ML-5.3: EMA Slopes (2 features)
-  ema_slope_20d: 1
+  ema_slope_20d: 0
   ema_slope_50d: 1
   # BLOCK ML-5.4: Trend Quality Features (9 features)
   trend_consistency: 1
   trend_duration: 1
-  trend_reversal_signal: 1
+  trend_reversal_signal: 0
   trend_acceleration: 1
   trend_divergence: 1
-  trend_pullback_strength: 1
-  trend_breakout_strength: 1
-  trend_following_strength: 1
+  trend_pullback_strength: 0
+  trend_breakout_strength: 0
+  trend_following_strength: 0
   trend_regime: 1
   # BLOCK ML-6.1: Support/Resistance Levels (6 features)
   resistance_level_20d: 1
@@ -147,23 +147,23 @@ features:
   support_level_50d: 1
   support_level_100d: 1
   # BLOCK ML-6.2: Distance to S/R (4 features)
-  distance_to_resistance: 1
+  distance_to_resistance: 0
   distance_to_support: 1
-  price_near_resistance: 1
-  price_near_support: 1
+  price_near_resistance: 0
+  price_near_support: 0
   # BLOCK ML-6.3: S/R Strength (4 features)
   resistance_touches: 1
-  support_touches: 1
+  support_touches: 0
   support_resistance_strength: 1
-  donchian_position: 1
+  donchian_position: 0
   # BLOCK ML-6.4: Pivot & Fibonacci (4 features)
   pivot_point: 1
-  pivot_resistance_1: 1
-  pivot_support_1: 1
-  fibonacci_retracement: 1
+  pivot_resistance_1: 0
+  pivot_support_1: 0
+  fibonacci_retracement: 0
   # BLOCK ML-7.1: Volume Profile Approximations (6 features)
   volume_profile_poc: 1
-  volume_profile_vah: 1
+  volume_profile_vah: 0
   volume_profile_val: 1
   price_vs_poc: 1
   price_vs_vah: 1
@@ -172,32 +172,32 @@ features:
   volume_weighted_price: 1
   price_vs_vwap: 1
   vwap_slope: 1
-  vwap_distance_pct: 1
+  vwap_distance_pct: 0
   volume_profile_width: 1
   # BLOCK ML-7.3: Volume Analysis (9 features)
-  volume_distribution: 1
-  volume_climax: 1
-  volume_dry_up: 1
-  volume_breakout: 1
+  volume_distribution: 0
+  volume_climax: 0
+  volume_dry_up: 0
+  volume_breakout: 0
   volume_divergence: 1
   volume_autocorrelation: 1
   volume_imbalance: 1
   volume_at_price: 1
   volatility_ratio: 1
   # BLOCK ML-8.1: Weekly Returns (3 features)
-  weekly_return_2w: 1
-  weekly_return_4w: 1
+  weekly_return_2w: 0
+  weekly_return_4w: 0
   weekly_volume_ratio: 1
   # BLOCK ML-8.2: Weekly Moving Averages (6 features)
   weekly_sma_5w: 1
-  weekly_sma_10w: 1
+  weekly_sma_10w: 0
   weekly_sma_20w: 1
   weekly_ema_5w: 1
-  weekly_ema_10w: 1
-  weekly_ema_20w: 1
+  weekly_ema_10w: 0
+  weekly_ema_20w: 0
   # BLOCK ML-8.3: Weekly Indicators (6 features)
   weekly_rsi_14w: 1
-  weekly_rsi_7w: 1
+  weekly_rsi_7w: 0
   weekly_macd_histogram: 1
   weekly_macd_signal: 1
   weekly_adx: 1
@@ -207,62 +207,62 @@ features:
   close_vs_weekly_ema20: 1
   weekly_atr_pct: 1
   weekly_trend_strength: 1
-  weekly_momentum: 1
+  weekly_momentum: 0
   # BLOCK ML-9: Multi-Timeframe Monthly Features (5 features)
-  monthly_return_1m: 1
+  monthly_return_1m: 0
   monthly_return_3m: 1
   monthly_sma_3m: 1
   monthly_sma_6m: 1
   monthly_rsi: 1
   # BLOCK ML-10.1: Candlestick Components (4 features)
-  candle_body_pct: 1
-  candle_upper_wick_pct: 1
-  candle_lower_wick_pct: 1
-  candle_wicks_ratio: 1
+  candle_body_pct: 0
+  candle_upper_wick_pct: 0
+  candle_lower_wick_pct: 0
+  candle_wicks_ratio: 0
   # BLOCK ML-10.2: Reversal Patterns (8 features)
-  hanging_man: 1
-  inverted_hammer: 1
-  piercing_pattern: 1
-  dark_cloud_cover: 1
-  harami_bullish: 1
-  harami_bearish: 1
-  engulfing_bullish: 1
-  engulfing_bearish: 1
+  hanging_man: 0
+  inverted_hammer: 0
+  piercing_pattern: 0
+  dark_cloud_cover: 0
+  harami_bullish: 0
+  harami_bearish: 0
+  engulfing_bullish: 0
+  engulfing_bearish: 0
   # BLOCK ML-10.3: Continuation Patterns (5 features)
-  three_white_soldiers: 1
-  three_black_crows: 1
-  inside_bar: 1
-  outside_bar: 1
-  engulfing_strength: 1
+  three_white_soldiers: 0
+  three_black_crows: 0
+  inside_bar: 0
+  outside_bar: 0
+  engulfing_strength: 0
   # BLOCK ML-10.4: Single Candle Patterns (5 features)
-  doji: 1
-  hammer: 1
-  shooting_star: 1
-  marubozu: 1
-  spinning_top: 1
+  doji: 0
+  hammer: 0
+  shooting_star: 0
+  marubozu: 0
+  spinning_top: 0
   # BLOCK ML-10.5: Pattern Quality (3 features)
-  pattern_strength: 1
+  pattern_strength: 0
   pattern_confirmation: 1
-  pattern_divergence: 1
+  pattern_divergence: 0
   # BLOCK ML-11: Price Action - Consecutive Days & Swings (6 features)
-  consecutive_green_days: 1
-  consecutive_red_days: 1
-  higher_high_10d: 1
-  higher_low_10d: 1
+  consecutive_green_days: 0
+  consecutive_red_days: 0
+  higher_high_10d: 0
+  higher_low_10d: 0
   swing_low_10d: 1
-  pattern_cluster: 1
+  pattern_cluster: 0
   # BLOCK ML-12: Market Regime Indicators (SPY-based) (15 features)
   market_regime: 1
   regime_strength: 1
   regime_duration: 1
-  regime_change_probability: 1
-  trending_market_flag: 1
-  choppy_market_flag: 1
-  bull_market_flag: 1
+  regime_change_probability: 0
+  trending_market_flag: 0
+  choppy_market_flag: 0
+  bull_market_flag: 0
   bear_market_flag: 1
   market_volatility_regime: 1
   market_momentum_regime: 1
-  regime_transition: 1
+  regime_transition: 0
   regime_stability: 1
   market_sentiment: 1
   market_fear_greed: 1
@@ -286,8 +286,8 @@ features:
   rs_rank_20d: 1
   rs_rank_50d: 1
   rs_rank_100d: 1
-  rs_momentum: 1
-  outperformance_flag: 1
+  rs_momentum: 0
+  outperformance_flag: 0
   rs_vs_price: 1
   rs_consistency: 1
   rs_regime: 1
@@ -309,17 +309,17 @@ features:
   is_year_end: 1
   trading_day_of_year: 1
   # BLOCK ML-16: Statistical Features (15 features, volume_autocorrelation already exists)
-  price_skewness_20d: 1
+  price_skewness_20d: 0
   price_kurtosis_20d: 1
   returns_skewness_20d: 1
   returns_kurtosis_20d: 1
-  price_autocorrelation_1d: 1
-  price_autocorrelation_5d: 1
-  returns_autocorrelation: 1
+  price_autocorrelation_1d: 0
+  price_autocorrelation_5d: 0
+  returns_autocorrelation: 0
   # volume_autocorrelation: 1  # Already enabled from earlier block
   price_variance_ratio: 1
   price_half_life: 1
-  returns_half_life: 1
+  returns_half_life: 0
   price_stationarity: 1
   returns_stationarity: 1
   price_cointegration: 1
@@ -327,102 +327,102 @@ features:
   # BLOCK ML-17: Advanced Volatility Features (12 features)
   volatility_skewness: 1
   volatility_kurtosis: 1
-  volatility_autocorrelation: 1
+  volatility_autocorrelation: 0
   volatility_mean_reversion: 1
   volatility_of_volatility: 1
   volatility_regime_persistence: 1
   volatility_shock: 1
   volatility_normalized_returns: 1
   volatility_forecast: 1
-  volatility_term_structure: 1
+  volatility_term_structure: 0
   volatility_risk_premium: 1
   volatility_smoothness: 1
   # BLOCK ML-18: Advanced Technical Indicators (8 features)
   bollinger_band_width: 1
-  fractal_dimension_index: 1
+  fractal_dimension_index: 0
   hurst_exponent: 1
-  price_curvature: 1
-  aroon_up: 1
-  aroon_down: 1
+  price_curvature: 0
+  aroon_up: 0
+  aroon_down: 0
   aroon_oscillator: 1
-  donchian_breakout: 1
+  donchian_breakout: 0
   # BLOCK ML-19: Market Microstructure Proxies (8 features)
   liquidity_measure: 1
   price_impact_proxy: 1
   bid_ask_spread_proxy: 1
-  order_flow_imbalance: 1
-  market_depth_proxy: 1
-  price_efficiency: 1
-  transaction_cost_proxy: 1
-  market_quality: 1
+  order_flow_imbalance: 0
+  market_depth_proxy: 0
+  price_efficiency: 0
+  transaction_cost_proxy: 0
+  market_quality: 0
   # BLOCK ML-20: Feature Interactions - Core (20 features)
-  rsi_x_volume: 1
+  rsi_x_volume: 0
   rsi_x_atr: 1
   macd_x_volume: 1
   trend_x_momentum: 1
-  volume_x_momentum: 1
+  volume_x_momentum: 0
   rsi_x_trend_strength: 1
-  volatility_x_volume: 1
+  volatility_x_volume: 0
   volatility_x_trend: 1
   trend_x_volatility: 1
   volatility_x_regime_strength: 1
-  price_position_x_rsi: 1
+  price_position_x_rsi: 0
   support_resistance_x_momentum: 1
   rsi_x_support_distance: 1
-  volume_x_breakout: 1
+  volume_x_breakout: 0
   momentum_x_regime: 1
   volume_x_regime: 1
   rsi_x_relative_strength: 1
   trend_x_relative_strength: 1
-  momentum_x_time: 1
-  volume_x_time: 1
+  momentum_x_time: 0
+  volume_x_time: 0
   # BLOCK ML-21: Predictive Gain Features (15 features)
   historical_gain_probability: 1
   gain_probability_score: 1
   gain_regime: 1
   gain_consistency: 1
-  gain_timing: 1
-  gain_momentum: 1
-  gain_acceleration: 1
-  target_distance: 1
+  gain_timing: 0
+  gain_momentum: 0
+  gain_acceleration: 0
+  target_distance: 0
   gain_momentum_strength: 1
-  gain_breakout_signal: 1
+  gain_breakout_signal: 0
   gain_risk_ratio: 1
-  gain_volume_confirmation: 1
+  gain_volume_confirmation: 0
   gain_trend_alignment: 1
   gain_volatility_context: 1
   gain_support_level: 1
   # BLOCK ML-22: Accuracy-Enhancing Features (20 features)
   signal_quality_score: 1
-  signal_strength: 1
+  signal_strength: 0
   signal_consistency: 1
-  signal_confirmation: 1
-  signal_timing: 1
+  signal_confirmation: 0
+  signal_timing: 0
   signal_risk_reward: 1
-  signal_statistical_significance: 1
+  signal_statistical_significance: 0
   signal_historical_success: 1
-  signal_ensemble_score: 1
-  false_positive_risk: 1
+  signal_ensemble_score: 0
+  false_positive_risk: 0
   signal_divergence: 1
-  signal_volume_confirmation: 1
-  signal_trend_alignment: 1
+  signal_volume_confirmation: 0
+  signal_trend_alignment: 0
   signal_volatility_context: 1
   signal_regime_alignment: 1
-  signal_momentum_strength: 1
+  signal_momentum_strength: 0
   signal_support_resistance: 1
-  signal_relative_strength: 1
+  signal_relative_strength: 0
   signal_multi_timeframe: 1
-  signal_pattern_confirmation: 1
+  signal_pattern_confirmation: 0
   # BLOCK ML-23: Market Context (SPY-based) (3 features)
   mkt_spy_dist_sma200: 1
   mkt_spy_sma200_slope: 1
   beta_spy_252d: 1
   # BLOCK ML-24: Breakout & Channel Features (4 features)
   # Note: donchian_position and donchian_breakout already enabled above (ML-6.3)
-  ttm_squeeze_on: 1
-  ttm_squeeze_momentum: 1
+  ttm_squeeze_on: 0
+  ttm_squeeze_momentum: 0
   # BLOCK ML-25: Trend Exhaustion & Consolidation (4 features)
-  trend_consolidation: 1
-  trend_exhaustion: 1
+  trend_consolidation: 0
+  trend_exhaustion: 0
   trend_vs_mean_reversion: 1
   volatility_jump: 1
