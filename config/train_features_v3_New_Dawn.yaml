@@ -308,3 +308,121 @@ features:
   is_quarter_end: 1
   is_year_end: 1
   trading_day_of_year: 1
+  # BLOCK ML-16: Statistical Features (15 features, volume_autocorrelation already exists)
+  price_skewness_20d: 1
+  price_kurtosis_20d: 1
+  returns_skewness_20d: 1
+  returns_kurtosis_20d: 1
+  price_autocorrelation_1d: 1
+  price_autocorrelation_5d: 1
+  returns_autocorrelation: 1
+  # volume_autocorrelation: 1  # Already enabled from earlier block
+  price_variance_ratio: 1
+  price_half_life: 1
+  returns_half_life: 1
+  price_stationarity: 1
+  returns_stationarity: 1
+  price_cointegration: 1
+  statistical_regime: 1
+  # BLOCK ML-17: Advanced Volatility Features (12 features)
+  volatility_skewness: 1
+  volatility_kurtosis: 1
+  volatility_autocorrelation: 1
+  volatility_mean_reversion: 1
+  volatility_of_volatility: 1
+  volatility_regime_persistence: 1
+  volatility_shock: 1
+  volatility_normalized_returns: 1
+  volatility_forecast: 1
+  volatility_term_structure: 1
+  volatility_risk_premium: 1
+  volatility_smoothness: 1
+  # BLOCK ML-18: Advanced Technical Indicators (8 features)
+  bollinger_band_width: 1
+  fractal_dimension_index: 1
+  hurst_exponent: 1
+  price_curvature: 1
+  aroon_up: 1
+  aroon_down: 1
+  aroon_oscillator: 1
+  donchian_breakout: 1
+  # BLOCK ML-19: Market Microstructure Proxies (8 features)
+  liquidity_measure: 1
+  price_impact_proxy: 1
+  bid_ask_spread_proxy: 1
+  order_flow_imbalance: 1
+  market_depth_proxy: 1
+  price_efficiency: 1
+  transaction_cost_proxy: 1
+  market_quality: 1
+  # BLOCK ML-20: Feature Interactions - Core (20 features)
+  rsi_x_volume: 1
+  rsi_x_atr: 1
+  macd_x_volume: 1
+  trend_x_momentum: 1
+  volume_x_momentum: 1
+  rsi_x_trend_strength: 1
+  volatility_x_volume: 1
+  volatility_x_trend: 1
+  trend_x_volatility: 1
+  volatility_x_regime_strength: 1
+  price_position_x_rsi: 1
+  support_resistance_x_momentum: 1
+  rsi_x_support_distance: 1
+  volume_x_breakout: 1
+  momentum_x_regime: 1
+  volume_x_regime: 1
+  rsi_x_relative_strength: 1
+  trend_x_relative_strength: 1
+  momentum_x_time: 1
+  volume_x_time: 1
+  # BLOCK ML-21: Predictive Gain Features (15 features)
+  historical_gain_probability: 1
+  gain_probability_score: 1
+  gain_regime: 1
+  gain_consistency: 1
+  gain_timing: 1
+  gain_momentum: 1
+  gain_acceleration: 1
+  target_distance: 1
+  gain_momentum_strength: 1
+  gain_breakout_signal: 1
+  gain_risk_ratio: 1
+  gain_volume_confirmation: 1
+  gain_trend_alignment: 1
+  gain_volatility_context: 1
+  gain_support_level: 1
+  # BLOCK ML-22: Accuracy-Enhancing Features (20 features)
+  signal_quality_score: 1
+  signal_strength: 1
+  signal_consistency: 1
+  signal_confirmation: 1
+  signal_timing: 1
+  signal_risk_reward: 1
+  signal_statistical_significance: 1
+  signal_historical_success: 1
+  signal_ensemble_score: 1
+  false_positive_risk: 1
+  signal_divergence: 1
+  signal_volume_confirmation: 1
+  signal_trend_alignment: 1
+  signal_volatility_context: 1
+  signal_regime_alignment: 1
+  signal_momentum_strength: 1
+  signal_support_resistance: 1
+  signal_relative_strength: 1
+  signal_multi_timeframe: 1
+  signal_pattern_confirmation: 1
+  # BLOCK ML-23: Market Context (SPY-based) (3 features)
+  mkt_spy_dist_sma200: 1
+  mkt_spy_sma200_slope: 1
+  beta_spy_252d: 1
+  # BLOCK ML-24: Breakout & Channel Features (4 features)
+  # Note: donchian_position and donchian_breakout already enabled above (ML-6.3)
+  ttm_squeeze_on: 1
+  ttm_squeeze_momentum: 1
+  # BLOCK ML-25: Trend Exhaustion & Consolidation (4 features)
+  trend_consolidation: 1
+  trend_exhaustion: 1
+  trend_vs_mean_reversion: 1
+  volatility_jump: 1

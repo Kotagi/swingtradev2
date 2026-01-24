@@ -1452,10 +1452,7 @@ class TrainingService:
             
             while process.poll() is None:
                 # Update progress periodically even if we're not detecting stages
-                elapsed = time.time() - start_time
-                if elapsed > 3600:  # 1 hour timeout
-                    process.kill()
-                    return False, "Training timed out after 1 hour", {}
+                # No timeout - training can take as long as needed (user can cancel manually)
                 
                 # If we have output but haven't updated progress in a while, show we're working
                 if len(stdout_lines) > 0 and time.time() - last_progress_update > 10:

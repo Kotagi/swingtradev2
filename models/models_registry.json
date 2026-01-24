@@ -245,6 +245,170 @@
       },
       "shap_artifacts_path": null,
       "shap_metadata": null
+    },
+    {
+      "id": "model_20260123_145449",
+      "name": "XGBoost_20d_15%",
+      "file_path": "C:\\Users\\brand\\Documents\\Stocks\\SwingTradeApp\\SwingTradeV2\\models\\model_20d_15pct_v3_New_Dawn_371feat_notuned_nocv_20260123_143724.pkl",
+      "training_date": "2026-01-23T14:54:49.415754",
+      "metrics": {
+        "test": {
+          "roc_auc": 0.7558,
+          "average_precision": 0.275,
+          "f1_score": 0.2651,
+          "precision": 0.1606,
+          "recall": 0.7578,
+          "accuracy": 0.62
+        },
+        "validation": {
+          "roc_auc": 0.7795,
+          "average_precision": 0.2768,
+          "f1_score": 0.274,
+          "precision": 0.1631,
+          "recall": 0.8564,
+          "accuracy": 0.5645
+        }
+      },
+      "parameters": {
+        "horizon": 20,
+        "return_threshold": 0.15,
+        "feature_set": "v3_New_Dawn",
+        "tune": false,
+        "cv": false,
+        "imbalance_multiplier": 1.0,
+        "n_iter": null,
+        "cv_folds": null
+      },
+      "training_info": {
+        "training_time": 1034.3,
+        "feature_count": 371,
+        "total_features": 371
+      },
+      "shap_artifacts_path": null,
+      "shap_metadata": null
+    },
+    {
+      "id": "model_20260123_155310",
+      "name": "XGBoost_20d_15%",
+      "file_path": "C:\\Users\\brand\\Documents\\Stocks\\SwingTradeApp\\SwingTradeV2\\models\\model_20d_15pct_v3_New_Dawn_371feat_notuned_nocv_20260123_153616.pkl",
+      "training_date": "2026-01-23T15:53:10.187197",
+      "metrics": {
+        "test": {
+          "roc_auc": 0.7558,
+          "average_precision": 0.275,
+          "f1_score": 0.2651,
+          "precision": 0.1606,
+          "recall": 0.7578,
+          "accuracy": 0.62
+        },
+        "validation": {
+          "roc_auc": 0.7795,
+          "average_precision": 0.2768,
+          "f1_score": 0.274,
+          "precision": 0.1631,
+          "recall": 0.8564,
+          "accuracy": 0.5645
+        }
+      },
+      "parameters": {
+        "horizon": 20,
+        "return_threshold": 0.15,
+        "feature_set": "v3_New_Dawn",
+        "tune": false,
+        "cv": false,
+        "imbalance_multiplier": 1.0,
+        "n_iter": null,
+        "cv_folds": null
+      },
+      "training_info": {
+        "training_time": 1000.86,
+        "feature_count": 371,
+        "total_features": 371
+      },
+      "shap_artifacts_path": null,
+      "shap_metadata": null
+    },
+    {
+      "id": "model_20260123_193232",
+      "name": "XGBoost_20d_15%",
+      "file_path": "C:\\Users\\brand\\Documents\\Stocks\\SwingTradeApp\\SwingTradeV2\\models\\model_20d_15pct_v3_New_Dawn_371feat_tuned_cv3_20260123_174305.pkl",
+      "training_date": "2026-01-23T19:32:32.862458",
+      "metrics": {
+        "test": {
+          "roc_auc": 0.7703,
+          "average_precision": 0.292,
+          "f1_score": 0.2884,
+          "precision": 0.1789,
+          "recall": 0.7438,
+          "accuracy": 0.6681
+        },
+        "validation": {
+          "roc_auc": 0.7879,
+          "average_precision": 0.2958,
+          "f1_score": 0.285,
+          "precision": 0.1717,
+          "recall": 0.837,
+          "accuracy": 0.5969
+        }
+      },
+      "parameters": {
+        "horizon": 20,
+        "return_threshold": 0.15,
+        "feature_set": "v3_New_Dawn",
+        "tune": true,
+        "cv": true,
+        "imbalance_multiplier": 1.0,
+        "n_iter": 20,
+        "cv_folds": 3
+      },
+      "training_info": {
+        "training_time": 6554.42,
+        "feature_count": 371,
+        "total_features": 371
+      },
+      "shap_artifacts_path": null,
+      "shap_metadata": null
+    },
+    {
+      "id": "model_20260124_050953",
+      "name": "XGBoost_20d_15%",
+      "file_path": "C:\\Users\\brand\\Documents\\Stocks\\SwingTradeApp\\SwingTradeV2\\models\\model_20d_15pct_v3_New_Dawn_300feat_tuned_cv3_20260123_211945.pkl",
+      "training_date": "2026-01-24T05:09:53.917736",
+      "metrics": {
+        "test": {
+          "roc_auc": 0.7669,
+          "average_precision": 0.2908,
+          "f1_score": 0.2819,
+          "precision": 0.1739,
+          "recall": 0.7437,
+          "accuracy": 0.6573
+        },
+        "validation": {
+          "roc_auc": 0.7886,
+          "average_precision": 0.3012,
+          "f1_score": 0.2831,
+          "precision": 0.1702,
+          "recall": 0.8403,
+          "accuracy": 0.5916
+        }
+      },
+      "parameters": {
+        "horizon": 20,
+        "return_threshold": 0.15,
+        "feature_set": "v3_New_Dawn",
+        "tune": true,
+        "cv": true,
+        "imbalance_multiplier": 1.0,
+        "n_iter": 100,
+        "cv_folds": 3
+      },
+      "training_info": {
+        "training_time": 28197.68,
+        "feature_count": 300,
+        "total_features": 371
+      },
+      "shap_artifacts_path": null,
+      "shap_metadata": null
     }
   ],
   "version": "1.0"

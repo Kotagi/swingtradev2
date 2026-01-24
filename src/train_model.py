@@ -713,6 +713,12 @@ def main() -> None:
     X_val, y_val = X[val_mask], y[val_mask]
     X_test, y_test = X[test_mask], y[test_mask]
     
+    # Convert to float32 to reduce memory usage (50% reduction)
+    # This helps prevent ArrayMemoryError during parallel hyperparameter tuning
+    X_train = X_train.astype(np.float32)
+    X_val = X_val.astype(np.float32)
+    X_test = X_test.astype(np.float32)
+    
     print(f"\n=== DATA SPLITS ===")
     print(f"Training set:   {len(X_train):,} samples ({X_train.index.min()} to {X_train.index.max()})")
     print(f"Validation set: {len(X_val):,} samples ({X_val.index.min()} to {X_val.index.max()})")
@@ -836,7 +842,7 @@ def main() -> None:
             n_iter=args.n_iter,
             cv=cv,
             scoring='roc_auc',
-            n_jobs=-1,
+            n_jobs=2,  # Limited to 2 workers to prevent memory errors (Windows spawn backend creates full copies)
             random_state=42,
             verbose=2  # Show progress for each fit
         )
