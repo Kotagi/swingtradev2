@@ -252,13 +252,15 @@ class DataService:
             except Exception:
                 completed_count = 0
         
-        # If checkpoint exists, use it (might be more accurate for resume)
+        # If checkpoint exists, use it (might be more accurate for resume and incremental downloads)
         if checkpoint_file.exists() and not full:
             try:
                 with open(checkpoint_file, 'r') as f:
-                    completed = json.load(f)
-                    if isinstance(completed, list):
-                        checkpoint_count = len(completed)
+                    data = json.load(f)
+                    # Checkpoint format: {'completed': [...], 'timestamp': '...'}
+                    completed_list = data.get('completed', [])
+                    if isinstance(completed_list, list):
+                        checkpoint_count = len(completed_list)
                         # Use the higher of the two (checkpoint might lag behind file count)
                         completed_count = max(completed_count, checkpoint_count)
             except Exception:
@@ -517,6 +519,20 @@ class DataService:
         if failed_match:
             failed_count = int(failed_match.group(1))
         
+        # Extract failed ticker names
+        failed_tickers = []
+        failed_section_match = re.search(r'Failed Tickers\s*\(\d+\):(.*?)(?=\n\n|\nTickers with Data Gaps|$)', output, re.IGNORECASE | re.DOTALL)
+        if failed_section_match:
+            failed_section = failed_section_match.group(1)
+            # Extract ticker names from lines starting with "  - "
+            ticker_matches = re.findall(r'^\s*-\s*(\w+)', failed_section, re.MULTILINE)
+            failed_tickers.extend(ticker_matches)
+            # Check if there's a "... and X more" line
+            more_match = re.search(r'\.\.\.\s+and\s+(\d+)\s+more', failed_section, re.IGNORECASE)
+            if more_match:
+                more_count = int(more_match.group(1))
+                # Note: We already have the first 10, so we know there are more
+        
         # Calculate actual new downloads (completed minus skipped)
         # The "Successfully Completed" count includes both new downloads and skipped files
         actual_completed = max(0, total_completed - skipped_count) if total_completed > 0 else 0
@@ -528,7 +544,16 @@ class DataService:
         if skipped_count > 0:
             stats_parts.append(f"{skipped_count} Skipped")
         if failed_count > 0:
-            stats_parts.append(f"{failed_count} Failed")
+            failed_msg = f"{failed_count} Failed"
+            if failed_tickers:
+                # Show up to 5 ticker names, or all if less than 5
+                display_tickers = failed_tickers[:5]
+                ticker_list = ", ".join(display_tickers)
+                if len(failed_tickers) > 5 or (failed_count > len(failed_tickers)):
+                    failed_msg += f" ({ticker_list}, ...)"
+                else:
+                    failed_msg += f" ({ticker_list})"
+            stats_parts.append(failed_msg)
         
         if stats_parts:
             message = f"Download completed successfully ({', '.join(stats_parts)})"

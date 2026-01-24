@@ -427,6 +427,62 @@ def save_checkpoint(checkpoint_file: Path, completed: set):
         logging.warning(f"Error saving checkpoint: {e}")
 
 
+def find_most_recent_trading_day(raw_folder: str) -> Optional[str]:
+    """
+    Find the most recent trading day across all existing CSV files in raw_folder.
+    
+    Args:
+        raw_folder: Directory containing CSV files
+        
+    Returns:
+        Most recent trading day as string (YYYY-MM-DD) or None if no files exist
+    """
+    raw_path = Path(raw_folder)
+    if not raw_path.exists():
+        return None
+    
+    most_recent_date = None
+    csv_files = list(raw_path.glob("*.csv"))
+    
+    if not csv_files:
+        return None
+    
+    logging.info(f"Scanning {len(csv_files)} existing CSV files to find most recent trading day...")
+    
+    for csv_file in csv_files:
+        try:
+            # Skip checkpoint files and other non-data files
+            if csv_file.name.startswith('.'):
+                continue
+            
+            # Read CSV and find max date
+            df = pd.read_csv(csv_file, index_col=0, parse_dates=True)
+            
+            if df.empty:
+                continue
+            
+            # Get the maximum date from the index
+            if isinstance(df.index, pd.DatetimeIndex):
+                file_max_date = df.index.max()
+                if pd.notna(file_max_date):
+                    if most_recent_date is None or file_max_date > most_recent_date:
+                        most_recent_date = file_max_date
+        except Exception as e:
+            # Skip files that can't be read (corrupted, wrong format, etc.)
+            logging.debug(f"Skipping {csv_file.name}: {e}")
+            continue
+    
+    if most_recent_date is not None:
+        # Use the day after the most recent date to avoid re-downloading the last day
+        # This ensures we only download new data
+        next_date = most_recent_date + timedelta(days=1)
+        most_recent_str = next_date.strftime("%Y-%m-%d")
+        logging.info(f"Found most recent trading day: {most_recent_date.strftime('%Y-%m-%d')}, will download from: {most_recent_str}")
+        return most_recent_str
+    
+    return None
+
+
 def download_data(
     tickers: list,
     start_date: str,
@@ -448,6 +504,20 @@ def download_data(
     os.makedirs(raw_folder, exist_ok=True)
     sectors = []
     total = len(tickers)
+    
+    # For incremental downloads (not full refresh), find the most recent trading day
+    # and adjust start_date to only download from that point forward
+    if not full_refresh:
+        most_recent_date = find_most_recent_trading_day(raw_folder)
+        if most_recent_date:
+            # Use the most recent date as the start_date for download
+            # This ensures we only download new data, not everything from the original start_date
+            original_start_date = start_date
+            start_date = most_recent_date
+            logging.info(f"Incremental download: Adjusted start_date from {original_start_date} to {start_date} (most recent trading day)")
+        else:
+            logging.info(f"No existing data found, using original start_date: {start_date}")
+    
     # yfinance's end parameter is exclusive, so add 1 day to include today's data
     if end_date:
         yf_end = end_date
@@ -594,7 +664,9 @@ def download_data(
                         
                         # Update checkpoint
                         completed_tickers.add(symbol)
-                        if resume:
+                        # Save checkpoint for incremental downloads (needed for progress tracking)
+                        # and for resume operations
+                        if not full_refresh or resume:
                             save_checkpoint(checkpoint_file, completed_tickers)
                         
                         pbar.update(1)
