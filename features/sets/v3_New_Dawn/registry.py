@@ -468,6 +468,8 @@ from features.sets.v3_New_Dawn.technical import (
     feature_top_features_ensemble,
     feature_volatility_forecast_accuracy_weighted,
     feature_gain_probability_volatility_regime_interaction,
+    # Block ML-27: Precision-Enhancing Features (5 features)
+    feature_adr_percentage,
 )
 
 # Feature registry mapping
@@ -932,6 +934,8 @@ FEATURE_REGISTRY = {
     'top_features_ensemble': feature_top_features_ensemble,
     'volatility_forecast_accuracy_weighted': feature_volatility_forecast_accuracy_weighted,
     'gain_probability_volatility_regime_interaction': feature_gain_probability_volatility_regime_interaction,
+    # Block ML-27: Precision-Enhancing Features (5 features)
+    'adr_percentage': feature_adr_percentage,
 }
 
 

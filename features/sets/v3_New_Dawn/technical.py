@@ -11551,3 +11551,36 @@ def feature_gain_probability_volatility_regime_interaction(df: DataFrame, cached
     interaction = interaction.clip(0.0, 1.0)
     interaction.name = "gain_probability_volatility_regime_interaction"
     return interaction
+
+
+# ============================================================================
+# BLOCK ML-27: Precision-Enhancing Features (5 features)
+# ============================================================================
+
+def feature_adr_percentage(df: DataFrame) -> Series:
+    """
+    ADR (Average Daily Range) Percentage: Normal intraday swing of a stock.
+    
+    Measures the "normal" intraday price movement, distinct from volatility (standard deviation).
+    ADR provides a "Reality Check" for target expectations - if a stock normally moves 3% a day
+    but is trying to hit a 15% target in a low-volatility environment, the math doesn't work.
+    
+    Calculated as: 14-period SMA of ((High - Low) / Close).
+    Higher values = stock is more "active" (normal high intraday swings).
+    Lower values = stock is less active (tighter intraday ranges).
+    
+    Already in percentage terms (from division by Close). No normalization needed.
+    No clipping - let ML learn the distribution.
+    """
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    close = _get_close_series(df)
+    
+    # Daily range as percentage of close
+    daily_range_pct = (high - low) / close
+    
+    # 14-period SMA of daily range percentage
+    adr = daily_range_pct.rolling(window=14, min_periods=1).mean()
+    
+    adr.name = "adr_percentage"
+    return adr
