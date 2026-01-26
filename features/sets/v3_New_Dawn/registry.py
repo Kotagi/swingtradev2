@@ -435,6 +435,58 @@ from features.sets.v3_New_Dawn.technical import (
     feature_trend_exhaustion,
     feature_trend_vs_mean_reversion,
     feature_volatility_jump,
+    # Block ML-26.1: Enhanced Volatility Features (10 features)
+    feature_volatility_forecast_accuracy,
+    feature_volatility_forecast_error,
+    feature_volatility_forecast_trend,
+    feature_volatility_clustering_strength,
+    feature_volatility_regime_forecast,
+    feature_volatility_surprise,
+    feature_volatility_forecast_5d,
+    feature_volatility_forecast_ratio,
+    feature_volatility_realized_forecast_ratio,
+    feature_volatility_term_structure_rank,
+    # Block ML-26.2: Enhanced Gain Probability Features (5 features)
+    feature_gain_probability_rank,
+    feature_gain_probability_trend,
+    feature_gain_probability_consistency_rank,
+    feature_gain_probability_momentum,
+    feature_gain_probability_volatility_adjusted,
+    # Block ML-26.3: Distance-Based Rank Features (5 features)
+    feature_dist_52w_high_rank,
+    feature_dist_52w_low_rank,
+    feature_dist_ma200_rank,
+    feature_dist_resistance_rank,
+    feature_dist_support_rank,
+    # Block ML-26.4: Percentile/Rank Features (8 features)
+    feature_volatility_rank,
+    feature_volume_imbalance_rank,
+    feature_return_rank_3m,
+    feature_gain_momentum_strength_rank,
+    feature_volatility_jump_rank,
+    feature_momentum_rank_trend,
+    feature_momentum_volatility_adjusted,
+    feature_momentum_consistency_rank,
+    # Block ML-26.5: Volatility-Volume Interactions (4 features)
+    feature_volatility_volume_correlation,
+    feature_volatility_volume_divergence,
+    feature_volume_weighted_volatility,
+    feature_volatility_forecast_volume_confirmation,
+    # Block ML-26.6: Return-Volatility Interactions (3 features)
+    feature_return_volatility_ratio,
+    feature_return_volatility_rank,
+    feature_volatility_normalized_return_rank,
+    # Block ML-26.7: Regime Transition Features (3 features)
+    feature_volatility_regime_transition_probability,
+    feature_gain_regime_transition_probability,
+    feature_momentum_regime_transition,
+    # Block ML-26.8: Composite/Ensemble Features (6 features)
+    feature_volatility_gain_probability_interaction,
+    feature_volatility_momentum_interaction,
+    feature_volume_imbalance_volatility_interaction,
+    feature_top_features_ensemble,
+    feature_volatility_forecast_accuracy_weighted,
+    feature_gain_probability_volatility_regime_interaction,
 )
 
 # Feature registry mapping
@@ -866,6 +918,58 @@ FEATURE_REGISTRY = {
     'trend_exhaustion': feature_trend_exhaustion,
     'trend_vs_mean_reversion': feature_trend_vs_mean_reversion,
     'volatility_jump': feature_volatility_jump,
+    # Block ML-26.1: Enhanced Volatility Features (10 features)
+    'volatility_forecast_accuracy': feature_volatility_forecast_accuracy,
+    'volatility_forecast_error': feature_volatility_forecast_error,
+    'volatility_forecast_trend': feature_volatility_forecast_trend,
+    'volatility_clustering_strength': feature_volatility_clustering_strength,
+    'volatility_regime_forecast': feature_volatility_regime_forecast,
+    'volatility_surprise': feature_volatility_surprise,
+    'volatility_forecast_5d': feature_volatility_forecast_5d,
+    'volatility_forecast_ratio': feature_volatility_forecast_ratio,
+    'volatility_realized_forecast_ratio': feature_volatility_realized_forecast_ratio,
+    'volatility_term_structure_rank': feature_volatility_term_structure_rank,
+    # Block ML-26.2: Enhanced Gain Probability Features (5 features)
+    'gain_probability_rank': feature_gain_probability_rank,
+    'gain_probability_trend': feature_gain_probability_trend,
+    'gain_probability_consistency_rank': feature_gain_probability_consistency_rank,
+    'gain_probability_momentum': feature_gain_probability_momentum,
+    'gain_probability_volatility_adjusted': feature_gain_probability_volatility_adjusted,
+    # Block ML-26.3: Distance-Based Rank Features (5 features)
+    'dist_52w_high_rank': feature_dist_52w_high_rank,
+    'dist_52w_low_rank': feature_dist_52w_low_rank,
+    'dist_ma200_rank': feature_dist_ma200_rank,
+    'dist_resistance_rank': feature_dist_resistance_rank,
+    'dist_support_rank': feature_dist_support_rank,
+    # Block ML-26.4: Percentile/Rank Features (8 features)
+    'volatility_rank': feature_volatility_rank,
+    'volume_imbalance_rank': feature_volume_imbalance_rank,
+    'return_rank_3m': feature_return_rank_3m,
+    'gain_momentum_strength_rank': feature_gain_momentum_strength_rank,
+    'volatility_jump_rank': feature_volatility_jump_rank,
+    'momentum_rank_trend': feature_momentum_rank_trend,
+    'momentum_volatility_adjusted': feature_momentum_volatility_adjusted,
+    'momentum_consistency_rank': feature_momentum_consistency_rank,
+    # Block ML-26.5: Volatility-Volume Interactions (4 features)
+    'volatility_volume_correlation': feature_volatility_volume_correlation,
+    'volatility_volume_divergence': feature_volatility_volume_divergence,
+    'volume_weighted_volatility': feature_volume_weighted_volatility,
+    'volatility_forecast_volume_confirmation': feature_volatility_forecast_volume_confirmation,
+    # Block ML-26.6: Return-Volatility Interactions (3 features)
+    'return_volatility_ratio': feature_return_volatility_ratio,
+    'return_volatility_rank': feature_return_volatility_rank,
+    'volatility_normalized_return_rank': feature_volatility_normalized_return_rank,
+    # Block ML-26.7: Regime Transition Features (3 features)
+    'volatility_regime_transition_probability': feature_volatility_regime_transition_probability,
+    'gain_regime_transition_probability': feature_gain_regime_transition_probability,
+    'momentum_regime_transition': feature_momentum_regime_transition,
+    # Block ML-26.8: Composite/Ensemble Features (6 features)
+    'volatility_gain_probability_interaction': feature_volatility_gain_probability_interaction,
+    'volatility_momentum_interaction': feature_volatility_momentum_interaction,
+    'volume_imbalance_volatility_interaction': feature_volume_imbalance_volatility_interaction,
+    'top_features_ensemble': feature_top_features_ensemble,
+    'volatility_forecast_accuracy_weighted': feature_volatility_forecast_accuracy_weighted,
+    'gain_probability_volatility_regime_interaction': feature_gain_probability_volatility_regime_interaction,
 }
 
 

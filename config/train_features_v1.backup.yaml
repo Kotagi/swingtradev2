@@ -1,0 +1,124 @@
+features:
+# config/features.yaml
+  # 1. Price
+  price: 0
+  # 2. Price Log
+  price_log: 1
+  # 3. Price vs MA200
+  price_vs_ma200: 1
+  # 4. Daily Return (%)
+  daily_return: 1
+  # 5. Gap % (Open - Previous Close)
+  gap_pct: 1
+  # 6. Weekly Return (5-day)
+  weekly_return_5d: 1
+  # 7. Monthly Return (21-day)
+  monthly_return_21d: 1
+  # 8. Quarterly Return (63-day)
+  quarterly_return_63d: 1
+  # 9. YTD Return
+  ytd_return: 1
+  # 10. 52-Week High Distance
+  dist_52w_high: 1
+  # 11. 52-Week Low Distance
+  dist_52w_low: 1
+  # 12. 52-Week Position (0=Low, 1=High)
+  pos_52w: 1
+  # 13. SMA20 Ratio
+  sma20_ratio: 1
+  # 14. SMA50 Ratio
+  sma50_ratio: 1
+  # 15. SMA200 Ratio
+  sma200_ratio: 1
+  # 16. SMA20 / SMA50
+  sma20_sma50_ratio: 1
+  # 17. SMA50 / SMA200
+  sma50_sma200_ratio: 1
+  # 18. SMA50 Slope
+  sma50_slope: 1
+  # 19. SMA200 Slope
+  sma200_slope: 1
+  # 20. 5-Day Volatility
+  volatility_5d: 1
+  # 21. 21-Day Volatility
+  volatility_21d: 1
+  # 22. Volatility Ratio (5d/21d)
+  volatility_ratio: 1
+  # 23. ATR14 (Normalized)
+  atr14_normalized: 1
+  # 24. Log Volume
+  log_volume: 1
+  # 25. Log Average Volume (20-day)
+  log_avg_volume_20d: 1
+  # 26. Relative Volume
+  relative_volume: 1
+  # 27. RSI14
+  rsi14: 1
+  # 28. Rolling Beta vs SPY
+  beta_spy_252d: 1
+  # 29. Body % of Candle
+  candle_body_pct: 1
+  # 30. Upper Wick %
+  candle_upper_wick_pct: 1
+  # 31. Lower Wick %
+  candle_lower_wick_pct: 1
+  # 32. Higher High (10-day)
+  higher_high_10d: 1
+  # 33. Higher Low (10-day)
+  higher_low_10d: 1
+  # 34. Swing Low (10-day)
+  swing_low_10d: 0
+  # 35. Trend Residual (Noise vs Trend)
+  trend_residual: 1
+  # 36. MACD Histogram (Normalized)
+  macd_histogram_normalized: 1
+  # 37. PPO Histogram (12/26/9)
+  ppo_histogram: 1
+  # 38. DPO (Detrended Price Oscillator, 20-period)
+  dpo: 1
+  # 39. ROC (Rate of Change) 10-period
+  roc10: 1
+  # 40. ROC (Rate of Change) 20-period
+  roc20: 1
+  # 41. Stochastic Oscillator %K (14-period)
+  stochastic_k14: 1
+  # 42. Bollinger Band Width (Log Normalized)
+  bollinger_band_width: 1
+  # 43. ADX (Average Directional Index) 14-period
+  adx14: 1
+  # 44. Chaikin Money Flow (20-period)
+  chaikin_money_flow: 1
+  # 45. Donchian Channel Position (20-period)
+  donchian_position: 1
+  # 46. Donchian Channel Breakout (20-period)
+  donchian_breakout: 1
+  # 47. TTM Squeeze On (20-period)
+  ttm_squeeze_on: 1
+  # 48. TTM Squeeze Momentum (20-period)
+  ttm_squeeze_momentum: 1
+  # 49. OBV Momentum (10-day ROC)
+  obv_momentum: 1
+  # 50. Aroon Up (25-period)
+  aroon_up: 1
+  # 51. Aroon Down (25-period)
+  aroon_down: 1
+  # 52. Aroon Oscillator (25-period)
+  aroon_oscillator: 1
+  # 53. CCI (20-period)
+  cci20: 1
+  # 54. Williams %R (14-period)
+  williams_r14: 1
+  # 55. KAMA Slope (10-period)
+  kama_slope: 1
+  # 56. Fractal Dimension Index (100-period)
+  fractal_dimension_index: 1
+  # 57. Hurst Exponent (100-period)
+  hurst_exponent: 1
+  # 58. Price Curvature (SMA20-based)
+  price_curvature: 1
+  # 59. Volatility-of-Volatility (VoV)
+  volatility_of_volatility: 1
+  # 60. SPY Distance from SMA200 (Market Context)
+  mkt_spy_dist_sma200: 1
+  # 61. SPY SMA200 Slope (Market Context)
+  mkt_spy_sma200_slope: 1

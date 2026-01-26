@@ -82,6 +82,9 @@ class FeaturesTab(QWidget):
                     # Insert the selector at the same position
                     self.featureset_row.insertWidget(i, selector)
                     break
+        # Update feature button text when selector is set
+        if hasattr(self, 'feature_selection_btn'):
+            self._update_feature_button_text()
     
     def init_ui(self):
         """Initialize the UI components."""
@@ -138,34 +141,15 @@ class FeaturesTab(QWidget):
         params_group.setLayout(params_layout)
         layout.addWidget(params_group)
         
-        # Paths group (optional)
-        paths_group = QGroupBox("Paths (Optional - Leave empty for defaults)")
-        paths_layout = QVBoxLayout()
-        
-        # Input dir
-        input_row = QHBoxLayout()
-        input_row.addWidget(QLabel("Input Directory:"))
-        self.input_dir_edit = QLineEdit()
-        self.input_dir_edit.setPlaceholderText("Leave empty for default (data/clean)")
-        input_row.addWidget(self.input_dir_edit)
-        browse_input_btn = QPushButton("Browse...")
-        browse_input_btn.clicked.connect(self.browse_input_dir)
-        input_row.addWidget(browse_input_btn)
-        paths_layout.addLayout(input_row)
-        
-        # Output dir
-        output_row = QHBoxLayout()
-        output_row.addWidget(QLabel("Output Directory:"))
-        self.output_dir_edit = QLineEdit()
-        self.output_dir_edit.setPlaceholderText("Leave empty for default (data/features_labeled)")
-        output_row.addWidget(self.output_dir_edit)
-        browse_output_btn = QPushButton("Browse...")
-        browse_output_btn.clicked.connect(self.browse_output_dir)
-        output_row.addWidget(browse_output_btn)
-        paths_layout.addLayout(output_row)
-        
-        paths_group.setLayout(paths_layout)
-        layout.addWidget(paths_group)
+        # Feature selection
+        feature_row = QHBoxLayout()
+        feature_row.addWidget(QLabel("Engineering Features:"))
+        self.feature_selection_btn = QPushButton("Select Features")
+        self.feature_selection_btn.clicked.connect(self.open_feature_selection)
+        self._update_feature_button_text()
+        feature_row.addWidget(self.feature_selection_btn)
+        feature_row.addStretch()
+        layout.addLayout(feature_row)
         
         # Build button
         self.build_btn = QPushButton("Build Features")
@@ -275,25 +259,43 @@ class FeaturesTab(QWidget):
         # Set main layout
         self.setLayout(main_layout)
     
-    def browse_input_dir(self):
-        """Browse for input directory."""
-        dir_path = QFileDialog.getExistingDirectory(
-            self,
-            "Select Input Directory",
-            str(Path(self.data_service.get_clean_dir()))
-        )
-        if dir_path:
-            self.input_dir_edit.setText(dir_path)
+    def open_feature_selection(self):
+        """Open the feature selection dialog for feature engineering."""
+        from gui.tabs.feature_selection_dialog import FeatureSelectionDialog
+        feature_set = self.get_current_feature_set()
+        dialog = FeatureSelectionDialog(self, feature_set=feature_set, config_type="features")
+        dialog.features_saved.connect(self._update_feature_button_text)
+        dialog.exec()
     
-    def browse_output_dir(self):
-        """Browse for output directory."""
-        dir_path = QFileDialog.getExistingDirectory(
-            self,
-            "Select Output Directory",
-            str(Path(self.data_service.get_data_dir()))
-        )
-        if dir_path:
-            self.output_dir_edit.setText(dir_path)
+    def _update_feature_button_text(self):
+        """Update the feature selection button text with enabled count."""
+        try:
+            feature_set = self.get_current_feature_set()
+            project_root = Path(__file__).parent.parent.parent
+            
+            # Determine config path
+            if feature_set and feature_set != "v1":
+                try:
+                    from feature_set_manager import get_feature_set_config_path
+                    config_path = get_feature_set_config_path(feature_set)
+                except (ImportError, Exception):
+                    config_path = project_root / "config" / f"features_{feature_set}.yaml"
+            else:
+                config_path = project_root / "config" / "features.yaml"
+            
+            # Load enabled count
+            if config_path.exists():
+                import yaml
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    cfg = yaml.safe_load(f) or {}
+                    flags = cfg.get("features", {})
+                    enabled_count = sum(1 for v in flags.values() if v == 1)
+                    total_count = len(flags)
+                    self.feature_selection_btn.setText(f"Select Features ({enabled_count} enabled)")
+            else:
+                self.feature_selection_btn.setText("Select Features")
+        except Exception:
+            self.feature_selection_btn.setText("Select Features")
     
     def build_features(self):
         """Start feature building."""
@@ -309,14 +311,9 @@ class FeaturesTab(QWidget):
         self.status_label.setStyleSheet("color: #ff9800;")
         self.log_text.append(f"[{datetime.now().strftime('%H:%M:%S')}] Starting feature building...")
         
-        # Get paths
-        input_dir = self.input_dir_edit.text().strip()
-        if not input_dir:
-            input_dir = self.data_service.get_clean_dir()
-        
-        output_dir = self.output_dir_edit.text().strip()
-        if not output_dir:
-            output_dir = self.service.get_output_dir()
+        # Use default paths
+        input_dir = self.data_service.get_clean_dir()
+        output_dir = self.service.get_output_dir()
         
         # Get total files for progress bar
         total_files = self.service.get_total_input_files(input_dir)
@@ -336,12 +333,6 @@ class FeaturesTab(QWidget):
         feature_set = self.get_current_feature_set()
         if feature_set:
             kwargs["feature_set"] = feature_set
-        
-        # Paths (only if specified)
-        if self.input_dir_edit.text().strip():
-            kwargs["input_dir"] = input_dir
-        if self.output_dir_edit.text().strip():
-            kwargs["output_dir"] = output_dir
         
         # Create worker
         self.worker = FeatureWorker(self.service, **kwargs)
@@ -365,11 +356,8 @@ class FeaturesTab(QWidget):
         """Delete all feature data from the output directory."""
         from pathlib import Path
         
-        # Get output directory
-        output_dir = self.output_dir_edit.text().strip()
-        if not output_dir:
-            output_dir = self.service.get_output_dir()
-        
+        # Get output directory (use default)
+        output_dir = self.service.get_output_dir()
         output_path = Path(output_dir)
         
         # Confirmation dialog
@@ -430,8 +418,8 @@ class FeaturesTab(QWidget):
             QMessageBox.warning(self, "Already Running", "A feature task is already in progress.")
             return
         
-        # Resolve clean input directory
-        input_dir = self.input_dir_edit.text().strip() or self.data_service.get_clean_dir()
+        # Resolve clean input directory (use default)
+        input_dir = self.data_service.get_clean_dir()
         input_path = Path(input_dir)
         if not input_path.exists():
             QMessageBox.warning(self, "Invalid Input", f"Input directory does not exist:\n{input_path}")
@@ -606,6 +594,9 @@ class FeaturesTab(QWidget):
         if hasattr(self, 'featureset_display') and self.featureset_display.parent():
             self.featureset_display.setText(f"{feature_set} {'(default)' if feature_set == 'v1' else ''}")
             self.featureset_display.setStyleSheet("color: #00d4aa; font-weight: bold;")
+        # Update feature button text when feature set changes
+        if hasattr(self, 'feature_selection_btn'):
+            self._update_feature_button_text()
     
     def on_build_finished(self, success: bool, message: str):
         """Handle completion of feature building."""

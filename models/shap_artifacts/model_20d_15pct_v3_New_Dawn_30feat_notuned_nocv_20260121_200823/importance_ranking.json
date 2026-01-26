@@ -1,0 +1,182 @@
+[
+  {
+    "feature": "atr14_normalized",
+    "importance": 1.2539997100830078,
+    "importance_pct": 70.54121398925781,
+    "rank": 1
+  },
+  {
+    "feature": "gap_pct",
+    "importance": 0.3005577325820923,
+    "importance_pct": 16.90726661682129,
+    "rank": 2
+  },
+  {
+    "feature": "dist_52w_high",
+    "importance": 0.0904870480298996,
+    "importance_pct": 5.090166091918945,
+    "rank": 3
+  },
+  {
+    "feature": "volatility_21d",
+    "importance": 0.04515580087900162,
+    "importance_pct": 2.5401482582092285,
+    "rank": 4
+  },
+  {
+    "feature": "dist_52w_low",
+    "importance": 0.025022873654961586,
+    "importance_pct": 1.4076111316680908,
+    "rank": 5
+  },
+  {
+    "feature": "close_position_in_range",
+    "importance": 0.018061432987451553,
+    "importance_pct": 1.0160093307495117,
+    "rank": 6
+  },
+  {
+    "feature": "price",
+    "importance": 0.011192127130925655,
+    "importance_pct": 0.6295904517173767,
+    "rank": 7
+  },
+  {
+    "feature": "volatility_5d",
+    "importance": 0.006805733777582645,
+    "importance_pct": 0.3828427791595459,
+    "rank": 8
+  },
+  {
+    "feature": "quarterly_return_63d",
+    "importance": 0.0035260014701634645,
+    "importance_pct": 0.19834807515144348,
+    "rank": 9
+  },
+  {
+    "feature": "price_log",
+    "importance": 0.003230916801840067,
+    "importance_pct": 0.18174868822097778,
+    "rank": 10
+  },
+  {
+    "feature": "ema20_slope",
+    "importance": 0.0023715170100331306,
+    "importance_pct": 0.1334048956632614,
+    "rank": 11
+  },
+  {
+    "feature": "sma20_sma50_ratio",
+    "importance": 0.0018945776391774416,
+    "importance_pct": 0.1065756306052208,
+    "rank": 12
+  },
+  {
+    "feature": "sma200_slope",
+    "importance": 0.0018500734586268663,
+    "importance_pct": 0.10407214611768723,
+    "rank": 13
+  },
+  {
+    "feature": "ema200_ratio",
+    "importance": 0.0017726951045915484,
+    "importance_pct": 0.09971937537193298,
+    "rank": 14
+  },
+  {
+    "feature": "sma50_slope",
+    "importance": 0.001419459586031735,
+    "importance_pct": 0.07984882593154907,
+    "rank": 15
+  },
+  {
+    "feature": "ytd_return",
+    "importance": 0.0011467812582850456,
+    "importance_pct": 0.06450985372066498,
+    "rank": 16
+  },
+  {
+    "feature": "pos_52w",
+    "importance": 0.0010495723690837622,
+    "importance_pct": 0.05904156714677811,
+    "rank": 17
+  },
+  {
+    "feature": "sma50_sma200_ratio",
+    "importance": 0.0010094235185533762,
+    "importance_pct": 0.056783076375722885,
+    "rank": 18
+  },
+  {
+    "feature": "sma50_ratio",
+    "importance": 0.000987951410934329,
+    "importance_pct": 0.055575206875801086,
+    "rank": 19
+  },
+  {
+    "feature": "sma20_ratio",
+    "importance": 0.0009810830233618617,
+    "importance_pct": 0.05518883839249611,
+    "rank": 20
+  },
+  {
+    "feature": "log_return_1d",
+    "importance": 0.000978778232820332,
+    "importance_pct": 0.05505919083952904,
+    "rank": 21
+  },
+  {
+    "feature": "weekly_return_5d",
+    "importance": 0.0009034163667820394,
+    "importance_pct": 0.05081985890865326,
+    "rank": 22
+  },
+  {
+    "feature": "ema20_ratio",
+    "importance": 0.0006981565966270864,
+    "importance_pct": 0.03927338868379593,
+    "rank": 23
+  },
+  {
+    "feature": "daily_return",
+    "importance": 0.000571065756957978,
+    "importance_pct": 0.032124146819114685,
+    "rank": 24
+  },
+  {
+    "feature": "sma200_ratio",
+    "importance": 0.0005460567190311849,
+    "importance_pct": 0.030717315152287483,
+    "rank": 25
+  },
+  {
+    "feature": "price_vs_ma200",
+    "importance": 0.0004724349710159004,
+    "importance_pct": 0.02657587081193924,
+    "rank": 26
+  },
+  {
+    "feature": "sma20_slope",
+    "importance": 0.00033629743847995996,
+    "importance_pct": 0.018917731940746307,
+    "rank": 27
+  },
+  {
+    "feature": "weekly_return_1w",
+    "importance": 0.0003359925758559257,
+    "importance_pct": 0.018900582566857338,
+    "rank": 28
+  },
+  {
+    "feature": "ema50_ratio",
+    "importance": 0.0002157974522560835,
+    "importance_pct": 0.012139249593019485,
+    "rank": 29
+  },
+  {
+    "feature": "monthly_return_21d",
+    "importance": 0.00010316033876733854,
+    "importance_pct": 0.005803076084703207,
+    "rank": 30
+  }
+]

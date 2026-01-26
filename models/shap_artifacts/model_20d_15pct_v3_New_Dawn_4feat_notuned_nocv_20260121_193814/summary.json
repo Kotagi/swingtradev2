@@ -1,0 +1,41 @@
+{
+  "importance_ranking": [
+    {
+      "feature": "close_position_in_range",
+      "importance": 0.5065937638282776,
+      "importance_pct": 47.89573669433594,
+      "rank": 1
+    },
+    {
+      "feature": "price",
+      "importance": 0.3226025402545929,
+      "importance_pct": 30.500349044799805,
+      "rank": 2
+    },
+    {
+      "feature": "price_log",
+      "importance": 0.1702595204114914,
+      "importance_pct": 16.097129821777344,
+      "rank": 3
+    },
+    {
+      "feature": "price_vs_ma200",
+      "importance": 0.05824538692831993,
+      "importance_pct": 5.506790637969971,
+      "rank": 4
+    }
+  ],
+  "global_mean_abs_shap": {
+    "price": 0.3226025402545929,
+    "price_log": 0.1702595204114914,
+    "price_vs_ma200": 0.05824538692831993,
+    "close_position_in_range": 0.5065937638282776
+  },
+  "statistics": {
+    "total_importance": 1.0577011108398438,
+    "mean_importance": 0.26442527770996094,
+    "std_importance": 0.16838015615940094,
+    "max_importance": 0.5065937638282776,
+    "min_importance": 0.05824538692831993
+  }
+}

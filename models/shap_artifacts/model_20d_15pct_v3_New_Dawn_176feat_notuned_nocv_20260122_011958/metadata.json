@@ -1,0 +1,14 @@
+{
+  "model_id": "model_20d_15pct_v3_New_Dawn_176feat_notuned_nocv_20260122_011958",
+  "computation_date": "2026-01-22T01:20:30.559604",
+  "data_split": "validation",
+  "sample_size": 1000,
+  "total_samples_available": 7500,
+  "n_features": 176,
+  "feature_list_hash": "5d46a10bd838d8190b715881e23ea534",
+  "top_n_concentration": {
+    "n": 10,
+    "percentage": 89.09977716207504
+  },
+  "shap_version": "0.50.0"
+}

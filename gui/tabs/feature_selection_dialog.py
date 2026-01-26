@@ -19,39 +19,71 @@ from gui.utils.feature_descriptions import get_feature_description, get_feature_
 
 
 class FeatureSelectionDialog(QDialog):
-    """Dialog for selecting features for training."""
+    """Dialog for selecting features for training or feature engineering."""
     
     # Signal emitted when features are saved
     features_saved = pyqtSignal()
     
-    def __init__(self, parent=None, feature_set: str = None):
+    def __init__(self, parent=None, feature_set: str = None, config_type: str = "train_features"):
+        """
+        Initialize the feature selection dialog.
+        
+        Args:
+            parent: Parent widget
+            feature_set: Feature set name (e.g., "v1", "v2")
+            config_type: Either "train_features" (for training) or "features" (for feature engineering)
+        """
         super().__init__(parent)
         # Feature set (if provided, use feature set-specific configs)
         self.feature_set = feature_set
-        if feature_set:
-            self.setWindowTitle(f"Select Features for Training - {feature_set}")
+        self.config_type = config_type  # "train_features" or "features"
+        
+        # Set window title based on config type
+        if config_type == "features":
+            if feature_set:
+                self.setWindowTitle(f"Select Features for Engineering - {feature_set}")
+            else:
+                self.setWindowTitle("Select Features for Engineering")
         else:
-            self.setWindowTitle("Select Features for Training")
+            if feature_set:
+                self.setWindowTitle(f"Select Features for Training - {feature_set}")
+            else:
+                self.setWindowTitle("Select Features for Training")
+        
         self.setMinimumSize(700, 600)
         self.setModal(True)
         
         # Paths
         self.project_root = Path(__file__).parent.parent.parent
         
-        # Determine config paths based on feature set
+        # Determine config paths based on feature set and config type
         if self.feature_set:
             try:
                 from feature_set_manager import get_feature_set_config_path, get_train_features_config_path
-                self.train_config_path = get_train_features_config_path(self.feature_set)
-                self.features_config_path = get_feature_set_config_path(self.feature_set)
+                if config_type == "features":
+                    # For feature engineering, we modify features.yaml directly
+                    self.target_config_path = get_feature_set_config_path(self.feature_set)
+                    self.features_config_path = get_feature_set_config_path(self.feature_set)
+                else:
+                    # For training, we modify train_features.yaml
+                    self.target_config_path = get_train_features_config_path(self.feature_set)
+                    self.features_config_path = get_feature_set_config_path(self.feature_set)
             except (ImportError, Exception):
                 # Fallback to default paths
-                self.train_config_path = self.project_root / "config" / f"train_features_{self.feature_set}.yaml"
-                self.features_config_path = self.project_root / "config" / f"features_{self.feature_set}.yaml"
+                if config_type == "features":
+                    self.target_config_path = self.project_root / "config" / f"features_{self.feature_set}.yaml"
+                    self.features_config_path = self.project_root / "config" / f"features_{self.feature_set}.yaml"
+                else:
+                    self.target_config_path = self.project_root / "config" / f"train_features_{self.feature_set}.yaml"
+                    self.features_config_path = self.project_root / "config" / f"features_{self.feature_set}.yaml"
         else:
             # Default paths
-            self.train_config_path = self.project_root / "config" / "train_features.yaml"
-            self.features_config_path = self.project_root / "config" / "features.yaml"
+            if config_type == "features":
+                self.target_config_path = self.project_root / "config" / "features.yaml"
+                self.features_config_path = self.project_root / "config" / "features.yaml"
+            else:
+                self.target_config_path = self.project_root / "config" / "train_features.yaml"
+                self.features_config_path = self.project_root / "config" / "features.yaml"
         
         self.presets_dir = self.project_root / "config" / "feature_presets"
         self.presets_dir.mkdir(parents=True, exist_ok=True)
@@ -79,14 +111,19 @@ class FeatureSelectionDialog(QDialog):
                 features_cfg = yaml.safe_load(f) or {}
                 self.all_features = features_cfg.get("features", {})
         
-        # Load current enabled/disabled flags from train_features.yaml
-        if self.train_config_path.exists():
-            with open(self.train_config_path, 'r', encoding='utf-8') as f:
-                train_cfg = yaml.safe_load(f) or {}
-                self.current_flags = train_cfg.get("features", {})
+        # Load current enabled/disabled flags from target config file
+        if self.target_config_path.exists():
+            with open(self.target_config_path, 'r', encoding='utf-8') as f:
+                target_cfg = yaml.safe_load(f) or {}
+                self.current_flags = target_cfg.get("features", {})
         else:
-            # If train_features.yaml doesn't exist, enable all features by default
-            self.current_flags = {name: 1 for name in self.all_features.keys()}
+            # If target config doesn't exist, use features.yaml as default
+            # (for features config type, this is the same file)
+            if self.config_type == "features":
+                self.current_flags = self.all_features.copy()
+            else:
+                # For train_features, enable all features by default
+                self.current_flags = {name: 1 for name in self.all_features.keys()}
         
         # Categorize features
         self._categorize_features()
@@ -127,7 +164,11 @@ class FeatureSelectionDialog(QDialog):
         layout.setContentsMargins(15, 15, 15, 15)
         
         # Title
-        title = QLabel("Select Features for Training")
+        if self.config_type == "features":
+            title_text = "Select Features for Engineering"
+        else:
+            title_text = "Select Features for Training"
+        title = QLabel(title_text)
         title.setStyleSheet("font-size: 18px; font-weight: bold; color: #00d4aa;")
         layout.addWidget(title)
         
@@ -400,34 +441,42 @@ class FeatureSelectionDialog(QDialog):
         
         # Validate at least one feature is enabled
         if sum(enabled_features.values()) == 0:
+            config_type_text = "engineering" if self.config_type == "features" else "training"
             QMessageBox.warning(self, "No Features Selected", 
-                              "Please select at least one feature for training.")
+                              f"Please select at least one feature for {config_type_text}.")
             return
         
         # Backup existing config
-        if self.train_config_path.exists():
-            backup_path = self.train_config_path.parent / f"{self.train_config_path.stem}.backup.yaml"
+        if self.target_config_path.exists():
+            backup_path = self.target_config_path.parent / f"{self.target_config_path.stem}.backup.yaml"
             import shutil
-            shutil.copy2(self.train_config_path, backup_path)
+            shutil.copy2(self.target_config_path, backup_path)
         
-        # Save to train_features.yaml
+        # Save to target config file
         # Use the same structure as features.yaml to preserve order and comments
         try:
-            # Read features.yaml to get the structure
-            features_yaml_lines = []
-            if self.features_config_path.exists():
-                with open(self.features_config_path, 'r', encoding='utf-8') as f:
-                    features_yaml_lines = f.readlines()
+            # Read features.yaml to get the structure (or target config if it's the same file)
+            source_yaml_lines = []
+            if self.config_type == "features":
+                # For features config, we're modifying features.yaml directly
+                source_path = self.features_config_path
+            else:
+                # For train_features, use features.yaml as template
+                source_path = self.features_config_path
             
-            # Write new config following features.yaml structure
-            with open(self.train_config_path, 'w', encoding='utf-8') as f:
+            if source_path.exists():
+                with open(source_path, 'r', encoding='utf-8') as f:
+                    source_yaml_lines = f.readlines()
+            
+            # Write new config following source structure
+            with open(self.target_config_path, 'w', encoding='utf-8') as f:
                 f.write("features:\n")
                 
                 # Track which features we've written
                 written_features = set()
                 
-                # Write features following features.yaml structure
-                for line in features_yaml_lines:
+                # Write features following source structure
+                for line in source_yaml_lines:
                     line_stripped = line.strip()
                     # Preserve comments
                     if line_stripped.startswith("#"):
