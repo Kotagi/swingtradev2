@@ -427,54 +427,35 @@ features:
   trend_vs_mean_reversion: 1
   volatility_jump: 1
   # BLOCK ML-26.1: Enhanced Volatility Features (10 features)
+  # KEEP FOR FILTERING: volatility_forecast_accuracy, volatility_forecast_error, volatility_forecast_trend, volatility_surprise
   volatility_forecast_accuracy: 1
   volatility_forecast_error: 1
   volatility_forecast_trend: 1
   volatility_clustering_strength: 1
-  volatility_regime_forecast: 1
-  volatility_surprise: 1
-  volatility_forecast_5d: 1
-  volatility_forecast_ratio: 1
-  volatility_realized_forecast_ratio: 1
-  volatility_term_structure_rank: 1
+  volatility_regime_forecast: 0  # DISABLED: Experimental
+  volatility_surprise: 1  # KEEP FOR FILTERING
+  volatility_realized_forecast_ratio: 0  # DISABLED: Experimental
   # BLOCK ML-26.2: Enhanced Gain Probability Features (5 features)
-  gain_probability_rank: 1
-  gain_probability_trend: 1
+  gain_probability_trend: 1  # KEEP FOR FILTERING
   gain_probability_consistency_rank: 1
-  gain_probability_momentum: 1
   gain_probability_volatility_adjusted: 1
   # BLOCK ML-26.3: Distance-Based Rank Features (5 features)
-  dist_52w_high_rank: 1
-  dist_52w_low_rank: 1
-  dist_ma200_rank: 1
-  dist_resistance_rank: 1
   dist_support_rank: 1
   # BLOCK ML-26.4: Percentile/Rank Features (8 features)
   volatility_rank: 1
-  volume_imbalance_rank: 1
-  return_rank_3m: 1
-  gain_momentum_strength_rank: 1
-  volatility_jump_rank: 1
-  momentum_rank_trend: 1
-  momentum_volatility_adjusted: 1
-  momentum_consistency_rank: 1
+  return_rank_3m: 1  # KEEP FOR FILTERING
+  momentum_rank_trend: 0  # DISABLED: Experimental
   # BLOCK ML-26.5: Volatility-Volume Interactions (4 features)
-  volatility_volume_correlation: 1
-  volatility_volume_divergence: 1
-  volume_weighted_volatility: 1
-  volatility_forecast_volume_confirmation: 1
+  volatility_volume_correlation: 0  # DISABLED: Experimental
+  volatility_volume_divergence: 0  # DISABLED: Experimental
+  volatility_forecast_volume_confirmation: 0  # DISABLED: Experimental
   # BLOCK ML-26.6: Return-Volatility Interactions (3 features)
   return_volatility_ratio: 1
-  return_volatility_rank: 1
-  volatility_normalized_return_rank: 1
   # BLOCK ML-26.7: Regime Transition Features (3 features)
-  volatility_regime_transition_probability: 1
-  gain_regime_transition_probability: 1
-  momentum_regime_transition: 1
+  volatility_regime_transition_probability: 0  # DISABLED: Experimental
+  gain_regime_transition_probability: 0  # DISABLED: Experimental
+  momentum_regime_transition: 0  # DISABLED: Experimental
   # BLOCK ML-26.8: Composite/Ensemble Features (6 features)
-  volatility_gain_probability_interaction: 1
-  volatility_momentum_interaction: 1
-  volume_imbalance_volatility_interaction: 1
   top_features_ensemble: 1
-  volatility_forecast_accuracy_weighted: 1
-  gain_probability_volatility_regime_interaction: 1
+  volatility_forecast_accuracy_weighted: 0  # DISABLED: Experimental
+  gain_probability_volatility_regime_interaction: 0  # DISABLED: Experimental

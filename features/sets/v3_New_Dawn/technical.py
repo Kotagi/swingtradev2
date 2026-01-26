@@ -11029,54 +11029,6 @@ def feature_volatility_surprise(df: DataFrame) -> Series:
     return surprise
 
 
-def feature_volatility_forecast_5d(df: DataFrame) -> Series:
-    """
-    Volatility Forecast 5d: 5-day volatility forecast (short-term).
-    
-    Short-term volatility forecast using same GARCH-like method but with shorter horizon.
-    Calculated as: EWMA of squared returns with α=0.90 (more reactive).
-    No clipping - let ML learn the distribution.
-    """
-    close = _get_close_series(df)
-    returns = close.pct_change()
-    
-    # Short-term GARCH-like forecast: more reactive (lower alpha)
-    alpha = 0.90  # More reactive than long-term forecast
-    squared_returns = returns ** 2
-    
-    forecast = pd.Series(index=df.index, dtype=float)
-    forecast.iloc[0] = squared_returns.iloc[0] if not pd.isna(squared_returns.iloc[0]) else 0.0
-    
-    for i in range(1, len(df)):
-        if pd.isna(squared_returns.iloc[i]):
-            forecast.iloc[i] = forecast.iloc[i-1]
-            continue
-        
-        forecast.iloc[i] = alpha * forecast.iloc[i-1] + (1 - alpha) * squared_returns.iloc[i]
-    
-    # Convert to volatility (square root)
-    forecast_vol = np.sqrt(forecast)
-    forecast_vol.name = "volatility_forecast_5d"
-    return forecast_vol
-
-
-def feature_volatility_forecast_ratio(df: DataFrame) -> Series:
-    """
-    Volatility Forecast Ratio: Short-term / long-term forecast ratio.
-    
-    Compares short-term vs long-term volatility forecasts.
-    Calculated as: forecast_5d / forecast.
-    >1 = short-term higher (stress), <1 = long-term higher (stability).
-    No clipping - let ML learn the distribution.
-    """
-    forecast_short = feature_volatility_forecast_5d(df)
-    forecast_long = feature_volatility_forecast(df)
-    
-    ratio = forecast_short / (forecast_long + 1e-10)
-    ratio.name = "volatility_forecast_ratio"
-    return ratio
-
-
 def feature_volatility_realized_forecast_ratio(df: DataFrame) -> Series:
     """
     Volatility Realized Forecast Ratio: Realized / forecast ratio.
@@ -11094,32 +11046,11 @@ def feature_volatility_realized_forecast_ratio(df: DataFrame) -> Series:
     return ratio
 
 
-def feature_volatility_term_structure_rank(df: DataFrame) -> Series:
-    """
-    Volatility Term Structure Rank: Percentile rank of volatility term structure.
-    
-    Percentile rank of volatility_term_structure vs last 252 days.
-    Values: 0.0 = lowest term structure, 1.0 = highest.
-    Normalized to [0, 1]. Clipped for safety.
-    """
-    term_structure = feature_volatility_term_structure(df)
-    
-    # Percentile rank over 252 days
-    # Optimized: Use vectorized rank instead of .apply() with lambda
-    rank = term_structure.rolling(window=252, min_periods=20).rank(pct=True, method='average')
-    rank = rank.fillna(0.5)
-    
-    rank = rank.fillna(0.5).clip(0.0, 1.0)
-    rank.name = "volatility_term_structure_rank"
-    return rank
-
-
 # ============================================================================
 # BLOCK ML-26.2: Enhanced Gain Probability Features (5 features)
 # ============================================================================
 
-
-def feature_gain_probability_rank(df: DataFrame, cached_gain_prob_score: Optional[Series] = None) -> Series:
+def feature_gain_probability_trend(df: DataFrame, cached_gain_prob_score: Optional[Series] = None) -> Series:
     """
     Gain Probability Rank: Percentile rank of gain probability (like momentum_rank).
     
@@ -11195,26 +11126,6 @@ def feature_gain_probability_consistency_rank(df: DataFrame, cached_gain_consist
     return rank
 
 
-def feature_gain_probability_momentum(df: DataFrame, cached_gain_prob_score: Optional[Series] = None) -> Series:
-    """
-    Gain Probability Momentum: Momentum of probability (rate of change).
-    
-    Rate of change of gain_probability_score.
-    Calculated as: (current - previous) / previous.
-    Positive = increasing, negative = decreasing.
-    No clipping - let ML learn the distribution.
-    """
-    if cached_gain_prob_score is not None:
-        gain_prob = cached_gain_prob_score
-    else:
-        gain_prob = feature_gain_probability_score(df)
-    
-    momentum = gain_prob.pct_change()
-    momentum = momentum.fillna(0.0)
-    momentum.name = "gain_probability_momentum"
-    return momentum
-
-
 def feature_gain_probability_volatility_adjusted(df: DataFrame, cached_gain_prob_score: Optional[Series] = None) -> Series:
     """
     Gain Probability Volatility Adjusted: Risk-adjusted opportunity.
@@ -11237,89 +11148,6 @@ def feature_gain_probability_volatility_adjusted(df: DataFrame, cached_gain_prob
 # ============================================================================
 # BLOCK ML-26.3: Distance-Based Rank Features (5 features)
 # ============================================================================
-
-
-def feature_dist_52w_high_rank(df: DataFrame) -> Series:
-    """
-    Distance to 52w High Rank: Percentile rank of distance to 52w high.
-    
-    Percentile rank of dist_52w_high vs last 252 days.
-    Values: 0.0 = closest to 52w high, 1.0 = farthest from 52w high.
-    Normalized to [0, 1]. Clipped for safety.
-    """
-    dist = feature_dist_52w_high(df)
-    
-    # Percentile rank over 252 days
-    # Optimized: Use vectorized rank instead of .apply() with lambda
-    rank = dist.rolling(window=252, min_periods=20).rank(pct=True, method='average')
-    rank = rank.fillna(0.5)
-    
-    rank = rank.fillna(0.5).clip(0.0, 1.0)
-    rank.name = "dist_52w_high_rank"
-    return rank
-
-
-def feature_dist_52w_low_rank(df: DataFrame) -> Series:
-    """
-    Distance to 52w Low Rank: Percentile rank of distance to 52w low.
-    
-    Percentile rank of dist_52w_low vs last 252 days.
-    Values: 0.0 = closest to 52w low, 1.0 = farthest from 52w low.
-    Normalized to [0, 1]. Clipped for safety.
-    """
-    dist = feature_dist_52w_low(df)
-    
-    # Percentile rank over 252 days
-    # Optimized: Use vectorized rank instead of .apply() with lambda
-    rank = dist.rolling(window=252, min_periods=20).rank(pct=True, method='average')
-    rank = rank.fillna(0.5)
-    
-    rank = rank.fillna(0.5).clip(0.0, 1.0)
-    rank.name = "dist_52w_low_rank"
-    return rank
-
-
-def feature_dist_ma200_rank(df: DataFrame) -> Series:
-    """
-    Distance to MA200 Rank: Percentile rank of distance to MA200.
-    
-    Percentile rank of price_vs_ma200 vs last 252 days.
-    Note: price_vs_ma200 is already a ratio, so we rank the absolute distance.
-    Values: 0.0 = closest to MA200, 1.0 = farthest from MA200.
-    Normalized to [0, 1]. Clipped for safety.
-    """
-    price_vs_ma = feature_price_vs_ma200(df)
-    # Convert ratio to distance: |1 - ratio|
-    dist = (1.0 - price_vs_ma).abs()
-    
-    # Percentile rank over 252 days
-    # Optimized: Use vectorized rank instead of .apply() with lambda
-    rank = dist.rolling(window=252, min_periods=20).rank(pct=True, method='average')
-    rank = rank.fillna(0.5)
-    
-    rank = rank.fillna(0.5).clip(0.0, 1.0)
-    rank.name = "dist_ma200_rank"
-    return rank
-
-
-def feature_dist_resistance_rank(df: DataFrame) -> Series:
-    """
-    Distance to Resistance Rank: Percentile rank of distance to resistance.
-    
-    Percentile rank of distance_to_resistance vs last 252 days.
-    Values: 0.0 = closest to resistance, 1.0 = farthest from resistance.
-    Normalized to [0, 1]. Clipped for safety.
-    """
-    dist = feature_distance_to_resistance(df)
-    
-    # Percentile rank over 252 days
-    # Optimized: Use vectorized rank instead of .apply() with lambda
-    rank = dist.rolling(window=252, min_periods=20).rank(pct=True, method='average')
-    rank = rank.fillna(0.5)
-    
-    rank = rank.fillna(0.5).clip(0.0, 1.0)
-    rank.name = "dist_resistance_rank"
-    return rank
 
 
 def feature_dist_support_rank(df: DataFrame) -> Series:
@@ -11367,26 +11195,6 @@ def feature_volatility_rank(df: DataFrame) -> Series:
     return rank
 
 
-def feature_volume_imbalance_rank(df: DataFrame) -> Series:
-    """
-    Volume Imbalance Rank: Percentile rank of volume imbalance.
-    
-    Percentile rank of volume_imbalance vs last 252 days.
-    Values: 0.0 = lowest imbalance, 1.0 = highest imbalance.
-    Normalized to [0, 1]. Clipped for safety.
-    """
-    imbalance = feature_volume_imbalance(df)
-    
-    # Percentile rank over 252 days
-    # Optimized: Use vectorized rank instead of .apply() with lambda
-    rank = imbalance.rolling(window=252, min_periods=20).rank(pct=True, method='average')
-    rank = rank.fillna(0.5)
-    
-    rank = rank.fillna(0.5).clip(0.0, 1.0)
-    rank.name = "volume_imbalance_rank"
-    return rank
-
-
 def feature_return_rank_3m(df: DataFrame) -> Series:
     """
     Return Rank 3m: Percentile rank of 3-month return.
@@ -11404,46 +11212,6 @@ def feature_return_rank_3m(df: DataFrame) -> Series:
     
     rank = rank.fillna(0.5).clip(0.0, 1.0)
     rank.name = "return_rank_3m"
-    return rank
-
-
-def feature_gain_momentum_strength_rank(df: DataFrame) -> Series:
-    """
-    Gain Momentum Strength Rank: Percentile rank of gain_momentum_strength.
-    
-    Percentile rank of gain_momentum_strength vs last 252 days.
-    Values: 0.0 = lowest strength, 1.0 = highest strength.
-    Normalized to [0, 1]. Clipped for safety.
-    """
-    strength = feature_gain_momentum_strength(df)
-    
-    # Percentile rank over 252 days
-    # Optimized: Use vectorized rank instead of .apply() with lambda
-    rank = strength.rolling(window=252, min_periods=20).rank(pct=True, method='average')
-    rank = rank.fillna(0.5)
-    
-    rank = rank.fillna(0.5).clip(0.0, 1.0)
-    rank.name = "gain_momentum_strength_rank"
-    return rank
-
-
-def feature_volatility_jump_rank(df: DataFrame) -> Series:
-    """
-    Volatility Jump Rank: Percentile rank of volatility jumps.
-    
-    Percentile rank of volatility_jump vs last 252 days.
-    Values: 0.0 = smallest jump, 1.0 = largest jump.
-    Normalized to [0, 1]. Clipped for safety.
-    """
-    vol_jump = feature_volatility_jump(df)
-    
-    # Percentile rank over 252 days
-    # Optimized: Use vectorized rank instead of .apply() with lambda
-    rank = vol_jump.rolling(window=252, min_periods=20).rank(pct=True, method='average')
-    rank = rank.fillna(0.5)
-    
-    rank = rank.fillna(0.5).clip(0.0, 1.0)
-    rank.name = "volatility_jump_rank"
     return rank
 
 
@@ -11472,42 +11240,6 @@ def feature_momentum_rank_trend(df: DataFrame) -> Series:
     trend_norm = trend_norm.fillna(0.5).clip(0.0, 1.0)
     trend_norm.name = "momentum_rank_trend"
     return trend_norm
-
-
-def feature_momentum_volatility_adjusted(df: DataFrame) -> Series:
-    """
-    Momentum Volatility Adjusted: Volatility-adjusted momentum.
-    
-    Calculated as: momentum_rank / volatility_rank.
-    Higher values = better momentum relative to volatility.
-    No clipping - let ML learn the distribution.
-    """
-    momentum = feature_momentum_rank(df)
-    volatility = feature_volatility_rank(df)
-    
-    adjusted = momentum / (volatility + 1e-10)
-    adjusted.name = "momentum_volatility_adjusted"
-    return adjusted
-
-
-def feature_momentum_consistency_rank(df: DataFrame) -> Series:
-    """
-    Momentum Consistency Rank: Rank of momentum consistency.
-    
-    Percentile rank of momentum_consistency vs last 252 days.
-    Values: 0.0 = lowest consistency, 1.0 = highest consistency.
-    Normalized to [0, 1]. Clipped for safety.
-    """
-    consistency = feature_momentum_consistency(df)
-    
-    # Percentile rank over 252 days
-    # Optimized: Use vectorized rank instead of .apply() with lambda
-    rank = consistency.rolling(window=252, min_periods=20).rank(pct=True, method='average')
-    rank = rank.fillna(0.5)
-    
-    rank = rank.fillna(0.5).clip(0.0, 1.0)
-    rank.name = "momentum_consistency_rank"
-    return rank
 
 
 # ============================================================================
@@ -11554,27 +11286,6 @@ def feature_volatility_volume_divergence(df: DataFrame) -> Series:
     return divergence
 
 
-def feature_volume_weighted_volatility(df: DataFrame) -> Series:
-    """
-    Volume Weighted Volatility: Volume-weighted volatility (higher weight on high-volume days).
-    
-    Calculates volatility with higher weight on high-volume days.
-    Calculated as: weighted average of volatility, weights = volume.
-    No clipping - let ML learn the distribution.
-    """
-    volatility = feature_volatility_21d(df)
-    volume = _get_volume_series(df)
-    
-    # Volume-weighted volatility over 20-day window
-    weighted_vol = (volatility * volume).rolling(window=20, min_periods=1).sum() / (
-        volume.rolling(window=20, min_periods=1).sum() + 1e-10
-    )
-    
-    weighted_vol = weighted_vol.fillna(volatility)
-    weighted_vol.name = "volume_weighted_volatility"
-    return weighted_vol
-
-
 def feature_volatility_forecast_volume_confirmation(df: DataFrame) -> Series:
     """
     Volatility Forecast Volume Confirmation: Volume confirms volatility forecast (interaction).
@@ -11611,46 +11322,6 @@ def feature_return_volatility_ratio(df: DataFrame) -> Series:
     ratio = return_3m / (volatility + 1e-10)
     ratio.name = "return_volatility_ratio"
     return ratio
-
-
-def feature_return_volatility_rank(df: DataFrame) -> Series:
-    """
-    Return Volatility Rank: Rank of return/volatility ratio.
-    
-    Percentile rank of return_volatility_ratio vs last 252 days.
-    Values: 0.0 = lowest ratio, 1.0 = highest ratio.
-    Normalized to [0, 1]. Clipped for safety.
-    """
-    ratio = feature_return_volatility_ratio(df)
-    
-    # Percentile rank over 252 days
-    # Optimized: Use vectorized rank instead of .apply() with lambda
-    rank = ratio.rolling(window=252, min_periods=20).rank(pct=True, method='average')
-    rank = rank.fillna(0.5)
-    
-    rank = rank.fillna(0.5).clip(0.0, 1.0)
-    rank.name = "return_volatility_rank"
-    return rank
-
-
-def feature_volatility_normalized_return_rank(df: DataFrame) -> Series:
-    """
-    Volatility Normalized Return Rank: Rank of volatility-normalized returns.
-    
-    Percentile rank of volatility_normalized_returns vs last 252 days.
-    Values: 0.0 = lowest normalized return, 1.0 = highest.
-    Normalized to [0, 1]. Clipped for safety.
-    """
-    normalized_returns = feature_volatility_normalized_returns(df)
-    
-    # Percentile rank over 252 days
-    # Optimized: Use vectorized rank instead of .apply() with lambda
-    rank = normalized_returns.rolling(window=252, min_periods=20).rank(pct=True, method='average')
-    rank = rank.fillna(0.5)
-    
-    rank = rank.fillna(0.5).clip(0.0, 1.0)
-    rank.name = "volatility_normalized_return_rank"
-    return rank
 
 
 # ============================================================================
@@ -11772,57 +11443,6 @@ def feature_momentum_regime_transition(df: DataFrame) -> Series:
 # ============================================================================
 # BLOCK ML-26.8: Composite/Ensemble Features (6 features)
 # ============================================================================
-
-
-def feature_volatility_gain_probability_interaction(df: DataFrame, cached_gain_prob_score: Optional[Series] = None) -> Series:
-    """
-    Volatility Gain Probability Interaction: volatility_forecast × gain_probability_score.
-    
-    Interaction feature combining volatility forecast and gain probability.
-    Higher values = high volatility forecast AND high gain probability.
-    No clipping - let ML learn the distribution.
-    """
-    vol_forecast = feature_volatility_forecast(df)
-    if cached_gain_prob_score is not None:
-        gain_prob = cached_gain_prob_score
-    else:
-        gain_prob = feature_gain_probability_score(df)
-    
-    interaction = vol_forecast * gain_prob
-    interaction.name = "volatility_gain_probability_interaction"
-    return interaction
-
-
-def feature_volatility_momentum_interaction(df: DataFrame) -> Series:
-    """
-    Volatility Momentum Interaction: volatility_forecast × momentum_rank.
-    
-    Interaction feature combining volatility forecast and momentum rank.
-    Higher values = high volatility forecast AND high momentum.
-    No clipping - let ML learn the distribution.
-    """
-    vol_forecast = feature_volatility_forecast(df)
-    momentum = feature_momentum_rank(df)
-    
-    interaction = vol_forecast * momentum
-    interaction.name = "volatility_momentum_interaction"
-    return interaction
-
-
-def feature_volume_imbalance_volatility_interaction(df: DataFrame) -> Series:
-    """
-    Volume Imbalance Volatility Interaction: volume_imbalance × volatility_forecast.
-    
-    Interaction feature combining volume imbalance and volatility forecast.
-    Higher values = high volume imbalance AND high volatility forecast.
-    No clipping - let ML learn the distribution.
-    """
-    volume_imbalance = feature_volume_imbalance(df)
-    vol_forecast = feature_volatility_forecast(df)
-    
-    interaction = volume_imbalance * vol_forecast
-    interaction.name = "volume_imbalance_volatility_interaction"
-    return interaction
 
 
 def feature_top_features_ensemble(df: DataFrame, cached_gain_prob_score: Optional[Series] = None) -> Series:
