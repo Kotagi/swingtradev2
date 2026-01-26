@@ -465,3 +465,4 @@ features:
   distance_from_monthly_vwap: 1
   atr_channel_position: 1
   vpt_divergence: 1
+  relative_strength_vs_sector: 1

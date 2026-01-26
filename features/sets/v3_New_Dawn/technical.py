@@ -11714,3 +11714,67 @@ def feature_vpt_divergence(df: DataFrame) -> Series:
     divergence = divergence.fillna(0.5).clip(0.0, 1.0)
     divergence.name = "vpt_divergence"
     return divergence
+
+
+def feature_relative_strength_vs_sector(df: DataFrame) -> Series:
+    """
+    Relative Strength vs. Sector: Stock return vs sector ETF return over 20 days.
+    
+    If AAPL is up 5% but the Tech sector (XLK) is up 10%, AAPL is actually showing weakness.
+    True "New Dawn" breakouts usually lead their sector. This filters out "beta-driven" moves.
+    If the whole market is volatile, the model might signal BUYS everywhere. This feature
+    forces the model to look for the leaders specifically.
+    
+    Calculated as: (Stock_Return_20d - Sector_ETF_Return_20d).
+    Positive values = stock outperforming sector (leader).
+    Negative values = stock underperforming sector (laggard).
+    
+    Implementation:
+    - Currently uses SPY as sector proxy (sector ETF data can be added later)
+    - Future enhancement: Load actual sector ETF data based on stock's sector mapping
+    - Sector ETFs: XLF (Financials), XLK (Tech), XLE (Energy), XLV (Healthcare), etc.
+    
+    No clipping - let ML learn the distribution.
+    """
+    close = _get_close_series(df)
+    
+    # Calculate stock 20-day return
+    stock_return_20d = close.pct_change(periods=20)
+    
+    # Load sector ETF data (currently SPY as proxy)
+    # Future: Can be enhanced to load actual sector ETF based on stock's sector
+    spy_data = _load_spy_data()
+    
+    if spy_data is None:
+        # If no SPY data available, return zeros (can't calculate relative strength)
+        relative_strength = pd.Series(0.0, index=df.index)
+        relative_strength.name = "relative_strength_vs_sector"
+        return relative_strength
+    
+    # Get SPY close prices (try different column names)
+    spy_close = None
+    for col in ['Close', 'close', 'Adj Close', 'AdjClose', 'Price']:
+        if col in spy_data.columns:
+            spy_close = spy_data[col]
+            break
+    
+    if spy_close is None:
+        # If can't find close column, return zeros
+        relative_strength = pd.Series(0.0, index=df.index)
+        relative_strength.name = "relative_strength_vs_sector"
+        return relative_strength
+    
+    # Align SPY data with stock data by date
+    spy_close_aligned = spy_close.reindex(df.index, method='ffill')
+    
+    # Calculate sector ETF 20-day return
+    sector_return_20d = spy_close_aligned.pct_change(periods=20)
+    
+    # Relative strength = Stock return - Sector return
+    relative_strength = stock_return_20d - sector_return_20d
+    
+    # Fill NaN values (early periods where 20-day return can't be calculated)
+    relative_strength = relative_strength.fillna(0.0)
+    
+    relative_strength.name = "relative_strength_vs_sector"
+    return relative_strength

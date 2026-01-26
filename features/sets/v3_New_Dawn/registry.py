@@ -473,6 +473,7 @@ from features.sets.v3_New_Dawn.technical import (
     feature_distance_from_monthly_vwap,
     feature_atr_channel_position,
     feature_vpt_divergence,
+    feature_relative_strength_vs_sector,
 )
 
 # Feature registry mapping
@@ -942,6 +943,7 @@ FEATURE_REGISTRY = {
     'distance_from_monthly_vwap': feature_distance_from_monthly_vwap,
     'atr_channel_position': feature_atr_channel_position,
     'vpt_divergence': feature_vpt_divergence,
+    'relative_strength_vs_sector': feature_relative_strength_vs_sector,
 }
 
 
