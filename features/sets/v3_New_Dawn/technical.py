@@ -11615,3 +11615,54 @@ def feature_distance_from_monthly_vwap(df: DataFrame) -> Series:
     
     distance.name = "distance_from_monthly_vwap"
     return distance
+
+
+def feature_atr_channel_position(df: DataFrame) -> Series:
+    """
+    ATR Channel Position: Position within Keltner Channel (volatility envelope).
+    
+    Contextualizes volatility_forecast by showing where price is relative to volatility bands.
+    If a stock is at the +3 ATR level, its probability of an immediate 15% further gain is low
+    (it's overbought). If it's at the -1 ATR level and starting to turn, the 15% upside is
+    much more likely. This will directly improve Precision.
+    
+    Calculated as: (Close - Keltner_Lower_Band) / (Keltner_Upper_Band - Keltner_Lower_Band).
+    Values: 0.0 = at lower band, 0.5 = at middle (EMA), 1.0 = at upper band.
+    Values > 1.0 = above upper band (overbought), < 0.0 = below lower band (oversold).
+    
+    Keltner Channel:
+    - Mid-line: EMA(20)
+    - Upper Band: EMA(20) + 1.5 * ATR(20)
+    - Lower Band: EMA(20) - 1.5 * ATR(20)
+    
+    Normalized to [0, 1] range for typical positions, but allows >1 and <0 for extreme cases.
+    Clipped to [-1, 2] for safety (allows some extreme values but prevents outliers).
+    """
+    close = _get_close_series(df)
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    
+    # Mid-line: EMA(20)
+    mid = close.ewm(span=20, adjust=False).mean()
+    
+    # Calculate True Range
+    tr1 = high - low
+    tr2 = (high - close.shift(1)).abs()
+    tr3 = (low - close.shift(1)).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    
+    # Calculate ATR(20)
+    atr = tr.rolling(window=20, min_periods=1).mean()
+    
+    # Keltner Channels
+    upper_kc = mid + 1.5 * atr
+    lower_kc = mid - 1.5 * atr
+    
+    # Channel position: (Close - Lower) / (Upper - Lower)
+    channel_width = upper_kc - lower_kc
+    position = (close - lower_kc) / (channel_width + 1e-10)
+    
+    # Clip to reasonable range but allow some extremes
+    position = position.clip(-1.0, 2.0)
+    position.name = "atr_channel_position"
+    return position

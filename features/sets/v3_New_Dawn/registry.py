@@ -471,6 +471,7 @@ from features.sets.v3_New_Dawn.technical import (
     # Block ML-27: Precision-Enhancing Features (5 features)
     feature_adr_percentage,
     feature_distance_from_monthly_vwap,
+    feature_atr_channel_position,
 )
 
 # Feature registry mapping
@@ -938,6 +939,7 @@ FEATURE_REGISTRY = {
     # Block ML-27: Precision-Enhancing Features (5 features)
     'adr_percentage': feature_adr_percentage,
     'distance_from_monthly_vwap': feature_distance_from_monthly_vwap,
+    'atr_channel_position': feature_atr_channel_position,
 }
 
 

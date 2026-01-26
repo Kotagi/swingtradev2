@@ -463,3 +463,4 @@ features:
   # BLOCK ML-27: Precision-Enhancing Features (5 features)
   adr_percentage: 1
   distance_from_monthly_vwap: 1
+  atr_channel_position: 1
