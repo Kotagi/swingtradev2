@@ -43,7 +43,7 @@ from feature_set_manager import (
     feature_set_exists,
     DEFAULT_FEATURE_SET
 )
-from features.shared.utils import _load_spy_data
+from features.shared.utils import _load_spy_data, compute_shared_intermediates
 
 
 def load_enabled_features_for_set(config_path: str, feature_set: str = None) -> dict:
@@ -119,6 +119,8 @@ def apply_features(
 ) -> Tuple[pd.DataFrame, Dict[str, List[str]]]:
     """
     Apply each enabled feature function to the DataFrame with validation.
+    
+    Now uses shared intermediate calculations to avoid redundant computations.
 
     Args:
         df: DataFrame of cleaned OHLCV data.
@@ -135,15 +137,108 @@ def apply_features(
     validation_issues = {}
     feature_dict = {}  # Collect all features first
     
+    # Pre-compute shared intermediates once (Strategy 1: Shared Intermediate Cache)
+    intermediates = compute_shared_intermediates(df)
+    
+    # Strategy 1 (Gain Probability): Cache expensive gain_probability features
+    # Check if any gain_probability features are enabled
+    gain_probability_feature_names = [
+        'historical_gain_probability',
+        'gain_probability_score',
+        'gain_regime',
+        'gain_consistency',
+        'gain_probability_rank',
+        'gain_probability_trend',
+        'gain_probability_momentum',
+        'gain_probability_volatility_adjusted',
+        'gain_probability_consistency_rank',
+        'gain_regime_transition_probability',
+        'volatility_gain_probability_interaction',
+        'gain_probability_volatility_regime_interaction',
+        'top_features_ensemble',
+    ]
+    
+    gain_probability_cache = {}
+    has_gain_probability_features = any(name in enabled_features for name in gain_probability_feature_names)
+    
+    if has_gain_probability_features:
+        # Import here to avoid circular imports
+        from features.sets.v3_New_Dawn.technical import (
+            feature_historical_gain_probability,
+            feature_gain_probability_score,
+        )
+        
+        # Compute historical_gain_probability once (expensive - 58 seconds)
+        logger.debug("Computing historical_gain_probability (cached for reuse)")
+        gain_probability_cache['historical_gain_probability'] = feature_historical_gain_probability(df, target_gain=0.15, horizon=20)
+        
+        # Compute gain_probability_score once (depends on historical_gain_probability)
+        # Use cached historical_gain_probability to avoid recomputing
+        logger.debug("Computing gain_probability_score (cached for reuse)")
+        gain_probability_cache['gain_probability_score'] = feature_gain_probability_score(
+            df, target_gain=0.15, horizon=20, 
+            cached_historical_prob=gain_probability_cache['historical_gain_probability']
+        )
+    
     for name, func in enabled_features.items():
         try:
-            # Check if feature function accepts spy_data parameter
+            # Check function signature to determine which parameters to pass
             sig = inspect.signature(func)
-            if 'spy_data' in sig.parameters:
-                # Pass spy_data to features that need it
-                feature_series = func(df, spy_data=spy_data)
+            params = sig.parameters
+            
+            # Build arguments based on what the function accepts
+            kwargs = {}
+            if 'spy_data' in params:
+                kwargs['spy_data'] = spy_data
+            if 'intermediates' in params:
+                kwargs['intermediates'] = intermediates
+            
+            # Pass cached gain_probability features if available
+            if has_gain_probability_features:
+                # Pass cached historical_gain_probability
+                if 'cached_historical_prob' in params and 'historical_gain_probability' in gain_probability_cache:
+                    kwargs['cached_historical_prob'] = gain_probability_cache['historical_gain_probability']
+                if 'cached_result' in params:
+                    # For historical_gain_probability itself, pass cached_result
+                    if name == 'historical_gain_probability' and 'historical_gain_probability' in gain_probability_cache:
+                        kwargs['cached_result'] = gain_probability_cache['historical_gain_probability']
+                
+                # Pass cached gain_probability_score
+                if 'cached_gain_prob_score' in params and 'gain_probability_score' in gain_probability_cache:
+                    kwargs['cached_gain_prob_score'] = gain_probability_cache['gain_probability_score']
+                if 'cached_result' in params:
+                    # For gain_probability_score itself, pass cached_result
+                    if name == 'gain_probability_score' and 'gain_probability_score' in gain_probability_cache:
+                        kwargs['cached_result'] = gain_probability_cache['gain_probability_score']
+                
+                # Pass cached gain_regime (needed for gain_regime_transition_probability)
+                if 'cached_gain_regime' in params:
+                    # Compute gain_regime if not already cached
+                    if 'gain_regime' not in gain_probability_cache:
+                        from features.sets.v3_New_Dawn.technical import feature_gain_regime
+                        logger.debug("Computing gain_regime (cached for reuse)")
+                        gain_probability_cache['gain_regime'] = feature_gain_regime(
+                            df, target_gain=0.15, horizon=20,
+                            cached_gain_prob_score=gain_probability_cache.get('gain_probability_score')
+                        )
+                    kwargs['cached_gain_regime'] = gain_probability_cache['gain_regime']
+                
+                # Pass cached gain_consistency (needed for gain_probability_consistency_rank)
+                if 'cached_gain_consistency' in params:
+                    # Compute gain_consistency if not already cached
+                    if 'gain_consistency' not in gain_probability_cache:
+                        from features.sets.v3_New_Dawn.technical import feature_gain_consistency
+                        logger.debug("Computing gain_consistency (cached for reuse)")
+                        gain_probability_cache['gain_consistency'] = feature_gain_consistency(
+                            df, target_gain=0.15, horizon=20,
+                            cached_historical_prob=gain_probability_cache.get('historical_gain_probability')
+                        )
+                    kwargs['cached_gain_consistency'] = gain_probability_cache['gain_consistency']
+            
+            # Call feature function with appropriate arguments
+            if kwargs:
+                feature_series = func(df, **kwargs)
             else:
-                # Call normally for features that don't need SPY data
                 feature_series = func(df)
             
             # Validate feature output

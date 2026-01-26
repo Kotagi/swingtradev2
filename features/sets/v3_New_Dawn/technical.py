@@ -24,6 +24,7 @@ from features.shared.utils import (
     _get_volume_series,
     _rolling_percentile_rank,
     _trend_residual_window,
+    _compute_rsi,
 )
 
 # ============================================================================
@@ -154,7 +155,7 @@ def feature_price_log(df: DataFrame) -> Series:
     return price_log
 
 
-def feature_price_vs_ma200(df: DataFrame) -> Series:
+def feature_price_vs_ma200(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     Price vs MA200: Price normalized to 200-day moving average (close / SMA200).
     
@@ -214,9 +215,13 @@ def feature_price_vs_ma200(df: DataFrame) -> Series:
     Returns:
         Series named 'price_vs_ma200' containing price / SMA(200) ratios.
     """
-    close = _get_close_series(df)
-    # Calculate 200-day SMA (includes current bar - standard practice)
-    sma200 = close.rolling(window=200, min_periods=1).mean()
+    if intermediates:
+        close = intermediates['_close']
+        sma200 = intermediates['_sma200']
+    else:
+        close = _get_close_series(df)
+        # Calculate 200-day SMA (includes current bar - standard practice)
+        sma200 = close.rolling(window=200, min_periods=1).mean()
     # Compute ratio
     ratio = close / sma200
     # Set NaN for insufficient data (first 200 days)
@@ -810,7 +815,7 @@ def feature_weekly_return_1w(df: DataFrame) -> Series:
 # ============================================================================
 
 
-def feature_dist_52w_high(df: DataFrame) -> Series:
+def feature_dist_52w_high(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     Distance to 52-Week High: (close / high_52w) - 1.
     
@@ -867,10 +872,13 @@ def feature_dist_52w_high(df: DataFrame) -> Series:
     Returns:
         Series named 'dist_52w_high' containing distance to 52-week high.
     """
-    close = _get_close_series(df)
-    
-    # Calculate 52-week (252 trading days) high
-    high_52 = close.rolling(window=252, min_periods=1).max()
+    if intermediates:
+        close = intermediates['_close']
+        high_52 = intermediates['_high_52w']
+    else:
+        close = _get_close_series(df)
+        # Calculate 52-week (252 trading days) high
+        high_52 = close.rolling(window=252, min_periods=1).max()
     
     # Calculate distance: (current_price / 52w_high) - 1
     dist_52_high = (close / high_52) - 1
@@ -879,7 +887,7 @@ def feature_dist_52w_high(df: DataFrame) -> Series:
     return dist_52_high
 
 
-def feature_dist_52w_low(df: DataFrame) -> Series:
+def feature_dist_52w_low(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     Distance to 52-Week Low: (close / low_52w) - 1.
     
@@ -936,10 +944,13 @@ def feature_dist_52w_low(df: DataFrame) -> Series:
     Returns:
         Series named 'dist_52w_low' containing distance to 52-week low.
     """
-    close = _get_close_series(df)
-    
-    # Calculate 52-week (252 trading days) low
-    low_52 = close.rolling(window=252, min_periods=1).min()
+    if intermediates:
+        close = intermediates['_close']
+        low_52 = intermediates['_low_52w']
+    else:
+        close = _get_close_series(df)
+        # Calculate 52-week (252 trading days) low
+        low_52 = close.rolling(window=252, min_periods=1).min()
     
     # Calculate distance: (current_price / 52w_low) - 1
     dist_52_low = (close / low_52) - 1
@@ -948,7 +959,7 @@ def feature_dist_52w_low(df: DataFrame) -> Series:
     return dist_52_low
 
 
-def feature_pos_52w(df: DataFrame) -> Series:
+def feature_pos_52w(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     52-Week Position: (close - low_52) / (high_52 - low_52).
     
@@ -1007,11 +1018,15 @@ def feature_pos_52w(df: DataFrame) -> Series:
     Returns:
         Series named 'pos_52w' containing normalized 52-week position [0, 1].
     """
-    close = _get_close_series(df)
-    
-    # Calculate 52-week (252 trading days) high and low
-    high_52 = close.rolling(window=252, min_periods=1).max()
-    low_52 = close.rolling(window=252, min_periods=1).min()
+    if intermediates:
+        close = intermediates['_close']
+        high_52 = intermediates['_high_52w']
+        low_52 = intermediates['_low_52w']
+    else:
+        close = _get_close_series(df)
+        # Calculate 52-week (252 trading days) high and low
+        high_52 = close.rolling(window=252, min_periods=1).max()
+        low_52 = close.rolling(window=252, min_periods=1).min()
     
     # Calculate position: (current_price - low) / (high - low)
     range_52 = high_52 - low_52
@@ -1032,7 +1047,7 @@ def feature_pos_52w(df: DataFrame) -> Series:
 # ============================================================================
 
 
-def feature_sma20_ratio(df: DataFrame) -> Series:
+def feature_sma20_ratio(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     SMA20 Ratio: close / SMA(20).
     
@@ -1040,14 +1055,18 @@ def feature_sma20_ratio(df: DataFrame) -> Series:
     Values: 1.0 = at MA, >1.0 = above (bullish), <1.0 = below (bearish).
     No clipping - let ML learn the distribution.
     """
-    close = _get_close_series(df)
-    sma20 = close.rolling(window=20, min_periods=1).mean()
+    if intermediates:
+        close = intermediates['_close']
+        sma20 = intermediates['_sma20']
+    else:
+        close = _get_close_series(df)
+        sma20 = close.rolling(window=20, min_periods=1).mean()
     ratio = close / sma20
     ratio.name = "sma20_ratio"
     return ratio
 
 
-def feature_sma50_ratio(df: DataFrame) -> Series:
+def feature_sma50_ratio(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     SMA50 Ratio: close / SMA(50).
     
@@ -1055,14 +1074,18 @@ def feature_sma50_ratio(df: DataFrame) -> Series:
     Values: 1.0 = at MA, >1.0 = above (bullish), <1.0 = below (bearish).
     No clipping - let ML learn the distribution.
     """
-    close = _get_close_series(df)
-    sma50 = close.rolling(window=50, min_periods=1).mean()
+    if intermediates:
+        close = intermediates['_close']
+        sma50 = intermediates['_sma50']
+    else:
+        close = _get_close_series(df)
+        sma50 = close.rolling(window=50, min_periods=1).mean()
     ratio = close / sma50
     ratio.name = "sma50_ratio"
     return ratio
 
 
-def feature_sma200_ratio(df: DataFrame) -> Series:
+def feature_sma200_ratio(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     SMA200 Ratio: close / SMA(200).
     
@@ -1070,14 +1093,18 @@ def feature_sma200_ratio(df: DataFrame) -> Series:
     Values: 1.0 = at MA, >1.0 = above (bullish long-term), <1.0 = below (bearish).
     No clipping - let ML learn the distribution.
     """
-    close = _get_close_series(df)
-    sma200 = close.rolling(window=200, min_periods=1).mean()
+    if intermediates:
+        close = intermediates['_close']
+        sma200 = intermediates['_sma200']
+    else:
+        close = _get_close_series(df)
+        sma200 = close.rolling(window=200, min_periods=1).mean()
     ratio = close / sma200
     ratio.name = "sma200_ratio"
     return ratio
 
 
-def feature_ema20_ratio(df: DataFrame) -> Series:
+def feature_ema20_ratio(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     EMA20 Ratio: close / EMA(20).
     
@@ -1086,14 +1113,18 @@ def feature_ema20_ratio(df: DataFrame) -> Series:
     Values: 1.0 = at MA, >1.0 = above (bullish), <1.0 = below (bearish).
     No clipping - let ML learn the distribution.
     """
-    close = _get_close_series(df)
-    ema20 = close.ewm(span=20, adjust=False).mean()
+    if intermediates:
+        close = intermediates['_close']
+        ema20 = intermediates['_ema20']
+    else:
+        close = _get_close_series(df)
+        ema20 = close.ewm(span=20, adjust=False).mean()
     ratio = close / ema20
     ratio.name = "ema20_ratio"
     return ratio
 
 
-def feature_ema50_ratio(df: DataFrame) -> Series:
+def feature_ema50_ratio(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     EMA50 Ratio: close / EMA(50).
     
@@ -1102,14 +1133,18 @@ def feature_ema50_ratio(df: DataFrame) -> Series:
     Values: 1.0 = at MA, >1.0 = above (bullish), <1.0 = below (bearish).
     No clipping - let ML learn the distribution.
     """
-    close = _get_close_series(df)
-    ema50 = close.ewm(span=50, adjust=False).mean()
+    if intermediates:
+        close = intermediates['_close']
+        ema50 = intermediates['_ema50']
+    else:
+        close = _get_close_series(df)
+        ema50 = close.ewm(span=50, adjust=False).mean()
     ratio = close / ema50
     ratio.name = "ema50_ratio"
     return ratio
 
 
-def feature_ema200_ratio(df: DataFrame) -> Series:
+def feature_ema200_ratio(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     EMA200 Ratio: close / EMA(200).
     
@@ -1118,14 +1153,18 @@ def feature_ema200_ratio(df: DataFrame) -> Series:
     Values: 1.0 = at MA, >1.0 = above (bullish long-term), <1.0 = below (bearish).
     No clipping - let ML learn the distribution.
     """
-    close = _get_close_series(df)
-    ema200 = close.ewm(span=200, adjust=False).mean()
+    if intermediates:
+        close = intermediates['_close']
+        ema200 = intermediates['_ema200']
+    else:
+        close = _get_close_series(df)
+        ema200 = close.ewm(span=200, adjust=False).mean()
     ratio = close / ema200
     ratio.name = "ema200_ratio"
     return ratio
 
 
-def feature_sma20_sma50_ratio(df: DataFrame) -> Series:
+def feature_sma20_sma50_ratio(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     SMA20/SMA50 Ratio: SMA(20) / SMA(50).
     
@@ -1134,15 +1173,19 @@ def feature_sma20_sma50_ratio(df: DataFrame) -> Series:
     Values: 1.0 = equal, >1.0 = SMA20 above SMA50 (bullish crossover), <1.0 = bearish.
     No clipping - let ML learn the distribution.
     """
-    close = _get_close_series(df)
-    sma20 = close.rolling(window=20, min_periods=1).mean()
-    sma50 = close.rolling(window=50, min_periods=1).mean()
+    if intermediates:
+        sma20 = intermediates['_sma20']
+        sma50 = intermediates['_sma50']
+    else:
+        close = _get_close_series(df)
+        sma20 = close.rolling(window=20, min_periods=1).mean()
+        sma50 = close.rolling(window=50, min_periods=1).mean()
     ratio = sma20 / sma50
     ratio.name = "sma20_sma50_ratio"
     return ratio
 
 
-def feature_sma50_sma200_ratio(df: DataFrame) -> Series:
+def feature_sma50_sma200_ratio(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     SMA50/SMA200 Ratio: SMA(50) / SMA(200).
     
@@ -1151,9 +1194,13 @@ def feature_sma50_sma200_ratio(df: DataFrame) -> Series:
     Values: 1.0 = equal, >1.0 = Golden Cross (bullish), <1.0 = Death Cross (bearish).
     No clipping - let ML learn the distribution.
     """
-    close = _get_close_series(df)
-    sma50 = close.rolling(window=50, min_periods=1).mean()
-    sma200 = close.rolling(window=200, min_periods=1).mean()
+    if intermediates:
+        sma50 = intermediates['_sma50']
+        sma200 = intermediates['_sma200']
+    else:
+        close = _get_close_series(df)
+        sma50 = close.rolling(window=50, min_periods=1).mean()
+        sma200 = close.rolling(window=200, min_periods=1).mean()
     ratio = sma50 / sma200
     ratio.name = "sma50_sma200_ratio"
     return ratio
@@ -1164,7 +1211,7 @@ def feature_sma50_sma200_ratio(df: DataFrame) -> Series:
 # ============================================================================
 
 
-def feature_sma20_slope(df: DataFrame) -> Series:
+def feature_sma20_slope(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     SMA20 Slope: sma20.diff(5) / close.
     
@@ -1173,14 +1220,18 @@ def feature_sma20_slope(df: DataFrame) -> Series:
     Values: 0.0 = flat, >0.0 = rising (bullish), <0.0 = falling (bearish).
     No clipping - let ML learn the distribution.
     """
-    close = _get_close_series(df)
-    sma20 = close.rolling(window=20, min_periods=1).mean()
+    if intermediates:
+        close = intermediates['_close']
+        sma20 = intermediates['_sma20']
+    else:
+        close = _get_close_series(df)
+        sma20 = close.rolling(window=20, min_periods=1).mean()
     slope = sma20.diff(5) / close
     slope.name = "sma20_slope"
     return slope
 
 
-def feature_sma50_slope(df: DataFrame) -> Series:
+def feature_sma50_slope(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     SMA50 Slope: sma50.diff(5) / close.
     
@@ -1189,14 +1240,18 @@ def feature_sma50_slope(df: DataFrame) -> Series:
     Values: 0.0 = flat, >0.0 = rising (bullish), <0.0 = falling (bearish).
     No clipping - let ML learn the distribution.
     """
-    close = _get_close_series(df)
-    sma50 = close.rolling(window=50, min_periods=1).mean()
+    if intermediates:
+        close = intermediates['_close']
+        sma50 = intermediates['_sma50']
+    else:
+        close = _get_close_series(df)
+        sma50 = close.rolling(window=50, min_periods=1).mean()
     slope = sma50.diff(5) / close
     slope.name = "sma50_slope"
     return slope
 
 
-def feature_sma200_slope(df: DataFrame) -> Series:
+def feature_sma200_slope(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     SMA200 Slope: sma200.diff(10) / close.
     
@@ -1205,14 +1260,18 @@ def feature_sma200_slope(df: DataFrame) -> Series:
     Values: 0.0 = flat, >0.0 = rising (bullish), <0.0 = falling (bearish).
     No clipping - let ML learn the distribution.
     """
-    close = _get_close_series(df)
-    sma200 = close.rolling(window=200, min_periods=1).mean()
+    if intermediates:
+        close = intermediates['_close']
+        sma200 = intermediates['_sma200']
+    else:
+        close = _get_close_series(df)
+        sma200 = close.rolling(window=200, min_periods=1).mean()
     slope = sma200.diff(10) / close
     slope.name = "sma200_slope"
     return slope
 
 
-def feature_ema20_slope(df: DataFrame) -> Series:
+def feature_ema20_slope(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     EMA20 Slope: ema20.diff(5) / close.
     
@@ -1221,8 +1280,12 @@ def feature_ema20_slope(df: DataFrame) -> Series:
     Values: 0.0 = flat, >0.0 = rising (bullish), <0.0 = falling (bearish).
     No clipping - let ML learn the distribution.
     """
-    close = _get_close_series(df)
-    ema20 = close.ewm(span=20, adjust=False).mean()
+    if intermediates:
+        close = intermediates['_close']
+        ema20 = intermediates['_ema20']
+    else:
+        close = _get_close_series(df)
+        ema20 = close.ewm(span=20, adjust=False).mean()
     slope = ema20.diff(5) / close
     slope.name = "ema20_slope"
     return slope
@@ -1261,7 +1324,7 @@ def feature_volatility_21d(df: DataFrame) -> Series:
     return vol_21
 
 
-def feature_atr14_normalized(df: DataFrame) -> Series:
+def feature_atr14_normalized(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     Normalized ATR14: ATR(14) / close.
     
@@ -1270,20 +1333,24 @@ def feature_atr14_normalized(df: DataFrame) -> Series:
     True Range = max(high-low, abs(high-prev_close), abs(low-prev_close)).
     No clipping - let ML learn the distribution.
     """
-    close = _get_close_series(df)
-    high = _get_high_series(df)
-    low = _get_low_series(df)
-    
-    # Calculate True Range components
-    tr1 = high - low
-    tr2 = (high - close.shift(1)).abs()
-    tr3 = (low - close.shift(1)).abs()
-    
-    # True Range is the maximum of the three components
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    
-    # Calculate ATR14 (14-day rolling mean of True Range)
-    atr14 = tr.rolling(window=14, min_periods=1).mean()
+    if intermediates:
+        close = intermediates['_close']
+        atr14 = intermediates['_atr14']
+    else:
+        close = _get_close_series(df)
+        high = _get_high_series(df)
+        low = _get_low_series(df)
+        
+        # Calculate True Range components
+        tr1 = high - low
+        tr2 = (high - close.shift(1)).abs()
+        tr3 = (low - close.shift(1)).abs()
+        
+        # True Range is the maximum of the three components
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        
+        # Calculate ATR14 (14-day rolling mean of True Range)
+        atr14 = tr.rolling(window=14, min_periods=1).mean()
     
     # Normalize by current price
     atr_norm = atr14 / close
@@ -1398,67 +1465,58 @@ def feature_volume_momentum(df: DataFrame) -> Series:
 # ============================================================================
 
 
-def feature_rsi7(df: DataFrame) -> Series:
+def feature_rsi7(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     RSI7: Relative Strength Index (7-period), centered to [-1, +1].
     
     Shorter-term momentum indicator. Calculated same as RSI14 but with 7-period window.
     Centered: (rsi - 50) / 50. No clipping - let ML learn the distribution.
     """
-    close = _get_close_series(df)
-    delta = close.diff()
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
-    avg_gain = gain.rolling(window=7, min_periods=1).mean()
-    avg_loss = loss.rolling(window=7, min_periods=1).mean().replace(0, 1e-10)
-    rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
+    if intermediates:
+        rsi = intermediates['_rsi7']
+    else:
+        close = _get_close_series(df)
+        rsi = _compute_rsi(close, period=7)
     rsi_centered = (rsi - 50) / 50
     rsi_centered.name = "rsi7"
     return rsi_centered
 
 
-def feature_rsi14(df: DataFrame) -> Series:
+def feature_rsi14(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     RSI14: Relative Strength Index (14-period), centered to [-1, +1].
     
     Standard momentum indicator. Centered: (rsi - 50) / 50.
     No clipping - let ML learn the distribution.
     """
-    close = _get_close_series(df)
-    delta = close.diff()
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
-    avg_gain = gain.rolling(window=14, min_periods=1).mean()
-    avg_loss = loss.rolling(window=14, min_periods=1).mean().replace(0, 1e-10)
-    rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
+    if intermediates:
+        rsi = intermediates['_rsi14']
+    else:
+        close = _get_close_series(df)
+        rsi = _compute_rsi(close, period=14)
     rsi_centered = (rsi - 50) / 50
     rsi_centered.name = "rsi14"
     return rsi_centered
 
 
-def feature_rsi21(df: DataFrame) -> Series:
+def feature_rsi21(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     RSI21: Relative Strength Index (21-period), centered to [-1, +1].
     
     Longer-term momentum indicator. Calculated same as RSI14 but with 21-period window.
     Centered: (rsi - 50) / 50. No clipping - let ML learn the distribution.
     """
-    close = _get_close_series(df)
-    delta = close.diff()
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
-    avg_gain = gain.rolling(window=21, min_periods=1).mean()
-    avg_loss = loss.rolling(window=21, min_periods=1).mean().replace(0, 1e-10)
-    rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
+    if intermediates:
+        rsi = intermediates['_rsi21']
+    else:
+        close = _get_close_series(df)
+        rsi = _compute_rsi(close, period=21)
     rsi_centered = (rsi - 50) / 50
     rsi_centered.name = "rsi21"
     return rsi_centered
 
 
-def feature_rsi_momentum(df: DataFrame) -> Series:
+def feature_rsi_momentum(df: DataFrame, intermediates: Optional[dict] = None) -> Series:
     """
     RSI Momentum: Rate of change of RSI14 (rsi14.diff(5)).
     
@@ -1466,7 +1524,7 @@ def feature_rsi_momentum(df: DataFrame) -> Series:
     Positive = momentum accelerating, negative = momentum decelerating.
     No clipping - let ML learn the distribution.
     """
-    rsi14 = feature_rsi14(df)
+    rsi14 = feature_rsi14(df, intermediates=intermediates)
     rsi_mom = rsi14.diff(5)
     rsi_mom.name = "rsi_momentum"
     return rsi_mom
@@ -9119,7 +9177,7 @@ def feature_volume_x_time(df: DataFrame) -> Series:
 # Target gain and horizon are configurable but default to typical swing trading values
 
 
-def feature_historical_gain_probability(df: DataFrame, target_gain: float = 0.15, horizon: int = 20) -> Series:
+def feature_historical_gain_probability(df: DataFrame, target_gain: float = 0.15, horizon: int = 20, cached_result: Optional[Series] = None) -> Series:
     """
     Historical Gain Probability: Historical probability of X% gain in Y days.
     
@@ -9129,6 +9187,10 @@ def feature_historical_gain_probability(df: DataFrame, target_gain: float = 0.15
     NOTE: Uses historical lookback only - no future data (lookahead-safe).
     Already normalized to [0, 1]. Clipped for safety.
     """
+    # Return cached result if provided (optimization: Strategy 1)
+    if cached_result is not None:
+        return cached_result.copy()
+    
     close = _get_close_series(df)
     high = _get_high_series(df)
     
@@ -9170,7 +9232,7 @@ def feature_historical_gain_probability(df: DataFrame, target_gain: float = 0.15
     return probability
 
 
-def feature_gain_probability_score(df: DataFrame, target_gain: float = 0.15, horizon: int = 20) -> Series:
+def feature_gain_probability_score(df: DataFrame, target_gain: float = 0.15, horizon: int = 20, cached_historical_prob: Optional[Series] = None, cached_result: Optional[Series] = None) -> Series:
     """
     Gain Probability Score: Combined score for gain probability.
     
@@ -9179,8 +9241,15 @@ def feature_gain_probability_score(df: DataFrame, target_gain: float = 0.15, hor
     Higher values = higher probability of achieving target gain.
     Normalized to [0, 1]. Clipped for safety.
     """
+    # Return cached result if provided (optimization: Strategy 1)
+    if cached_result is not None:
+        return cached_result.copy()
+    
     # Get component features
-    historical_prob = feature_historical_gain_probability(df, target_gain, horizon)
+    if cached_historical_prob is not None:
+        historical_prob = cached_historical_prob
+    else:
+        historical_prob = feature_historical_gain_probability(df, target_gain, horizon)
     momentum = feature_momentum_20d(df)
     trend = feature_trend_strength_20d(df)
     volume_ratio = feature_relative_volume(df)
@@ -9202,7 +9271,7 @@ def feature_gain_probability_score(df: DataFrame, target_gain: float = 0.15, hor
     return score
 
 
-def feature_gain_regime(df: DataFrame, target_gain: float = 0.15, horizon: int = 20) -> Series:
+def feature_gain_regime(df: DataFrame, target_gain: float = 0.15, horizon: int = 20, cached_gain_prob_score: Optional[Series] = None) -> Series:
     """
     Gain Regime: Gain regime (high/low probability), normalized.
     
@@ -9212,7 +9281,10 @@ def feature_gain_regime(df: DataFrame, target_gain: float = 0.15, horizon: int =
     - 1.0 = High probability regime
     Normalized to [0, 1]. Clipped for safety.
     """
-    probability_score = feature_gain_probability_score(df, target_gain, horizon)
+    if cached_gain_prob_score is not None:
+        probability_score = cached_gain_prob_score
+    else:
+        probability_score = feature_gain_probability_score(df, target_gain, horizon)
     
     # Classify regime based on percentile
     regime = probability_score.rolling(window=252, min_periods=50).apply(
@@ -9225,7 +9297,7 @@ def feature_gain_regime(df: DataFrame, target_gain: float = 0.15, horizon: int =
     return regime
 
 
-def feature_gain_consistency(df: DataFrame, target_gain: float = 0.15, horizon: int = 20) -> Series:
+def feature_gain_consistency(df: DataFrame, target_gain: float = 0.15, horizon: int = 20, cached_historical_prob: Optional[Series] = None) -> Series:
     """
     Gain Consistency: Consistency of gain achievement.
     
@@ -9236,7 +9308,10 @@ def feature_gain_consistency(df: DataFrame, target_gain: float = 0.15, horizon: 
     Normalized to [0, 1]. Clipped for safety.
     """
     # Use historical probability to calculate consistency
-    historical_prob = feature_historical_gain_probability(df, target_gain, horizon)
+    if cached_historical_prob is not None:
+        historical_prob = cached_historical_prob
+    else:
+        historical_prob = feature_historical_gain_probability(df, target_gain, horizon)
     
     # Calculate consistency as inverse of variance in probability
     variance = historical_prob.rolling(window=252, min_periods=50).var()
@@ -10554,3 +10629,1067 @@ def feature_volatility_jump(df: DataFrame) -> Series:
     vol_jump_norm = vol_jump_norm.fillna(0.5).clip(0.0, 1.0)
     vol_jump_norm.name = "volatility_jump"
     return vol_jump_norm
+
+
+# ============================================================================
+# BLOCK ML-26.1: Enhanced Volatility Features (10 features)
+# ============================================================================
+
+
+def feature_volatility_forecast_accuracy(df: DataFrame) -> Series:
+    """
+    Volatility Forecast Accuracy: How accurate recent volatility forecasts were.
+    
+    Compares volatility forecast vs realized volatility over recent period.
+    Calculated as: 1 - |realized - forecast| / (realized + 1e-10).
+    Higher values = more accurate forecasts.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    forecast = feature_volatility_forecast(df)
+    realized = feature_realized_volatility_20d(df)
+    
+    # Calculate accuracy over rolling window (20 days)
+    accuracy = pd.Series(index=df.index, dtype=float)
+    for i in range(len(df)):
+        if i < 20:
+            accuracy.iloc[i] = 0.5  # Default for early periods
+            continue
+        
+        start_idx = max(0, i - 20)
+        window_forecast = forecast.iloc[start_idx:i+1]
+        window_realized = realized.iloc[start_idx:i+1]
+        
+        # Mean absolute error
+        mae = (window_realized - window_forecast).abs().mean()
+        mean_realized = window_realized.mean()
+        
+        # Accuracy: 1 - normalized error
+        if mean_realized > 0:
+            normalized_error = mae / (mean_realized + 1e-10)
+            acc = 1.0 - normalized_error
+        else:
+            acc = 0.5
+        
+        accuracy.iloc[i] = acc
+    
+    accuracy = accuracy.fillna(0.5).clip(0.0, 1.0)
+    accuracy.name = "volatility_forecast_accuracy"
+    return accuracy
+
+
+def feature_volatility_forecast_error(df: DataFrame) -> Series:
+    """
+    Volatility Forecast Error: Forecast error magnitude.
+    
+    Calculated as: |realized - forecast| / forecast.
+    Higher values = larger forecast errors.
+    No clipping - let ML learn the distribution.
+    """
+    forecast = feature_volatility_forecast(df)
+    realized = feature_realized_volatility_20d(df)
+    
+    error = (realized - forecast).abs() / (forecast + 1e-10)
+    error.name = "volatility_forecast_error"
+    return error
+
+
+def feature_volatility_forecast_trend(df: DataFrame) -> Series:
+    """
+    Volatility Forecast Trend: Trend in forecast (slope over 5-10 days).
+    
+    Measures whether volatility forecast is increasing or decreasing.
+    Calculated as: slope of forecast over 7-day window.
+    Positive = increasing forecast, negative = decreasing.
+    No clipping - let ML learn the distribution.
+    """
+    forecast = feature_volatility_forecast(df)
+    
+    # Calculate slope over 7-day window
+    trend = forecast.rolling(window=7, min_periods=2).apply(
+        lambda x: np.polyfit(range(len(x)), x.values, 1)[0] if len(x) >= 2 else 0.0,
+        raw=False
+    )
+    
+    trend = trend.fillna(0.0)
+    trend.name = "volatility_forecast_trend"
+    return trend
+
+
+def feature_volatility_clustering_strength(df: DataFrame) -> Series:
+    """
+    Volatility Clustering Strength: Strength of volatility clustering (autocorrelation).
+    
+    Measures how much volatility clusters (high vol followed by high vol).
+    Calculated as: autocorrelation of volatility at lag 1.
+    Higher values = stronger clustering.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    volatility = feature_volatility_21d(df)
+    
+    # Calculate autocorrelation at lag 1 over rolling window
+    clustering = pd.Series(index=df.index, dtype=float)
+    for i in range(len(df)):
+        if i < 50:
+            clustering.iloc[i] = 0.5
+            continue
+        
+        start_idx = max(0, i - 50)
+        window_vol = volatility.iloc[start_idx:i+1]
+        
+        if len(window_vol) >= 2 and window_vol.std() > 0:
+            # Autocorrelation at lag 1
+            vol_shifted = window_vol.shift(1)
+            corr = window_vol.corr(vol_shifted)
+            clustering.iloc[i] = corr if not pd.isna(corr) else 0.5
+        else:
+            clustering.iloc[i] = 0.5
+    
+    # Normalize from [-1, 1] to [0, 1]
+    clustering = (clustering + 1.0) / 2.0
+    clustering = clustering.fillna(0.5).clip(0.0, 1.0)
+    clustering.name = "volatility_clustering_strength"
+    return clustering
+
+
+def feature_volatility_regime_forecast(df: DataFrame) -> Series:
+    """
+    Volatility Regime Forecast: Forecast of volatility regime (high/low based on trajectory).
+    
+    Predicts whether volatility regime will be high or low based on forecast trajectory.
+    Calculated as: combination of forecast trend and current regime.
+    Values: 0.0 = low regime forecast, 1.0 = high regime forecast.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    forecast = feature_volatility_forecast(df)
+    current_regime = feature_volatility_regime(df)
+    forecast_trend = feature_volatility_forecast_trend(df)
+    
+    # Normalize forecast trend to [0, 1]
+    trend_norm = (forecast_trend - forecast_trend.rolling(window=252, min_periods=1).min()) / (
+        forecast_trend.rolling(window=252, min_periods=1).max() - 
+        forecast_trend.rolling(window=252, min_periods=1).min() + 1e-10
+    )
+    trend_norm = trend_norm.fillna(0.5).clip(0.0, 1.0)
+    
+    # Normalize current regime to [0, 1] (it's already 0-100)
+    regime_norm = current_regime / 100.0
+    
+    # Combine: 60% current regime, 40% trend
+    regime_forecast = (regime_norm * 0.6 + trend_norm * 0.4)
+    regime_forecast = regime_forecast.clip(0.0, 1.0)
+    regime_forecast.name = "volatility_regime_forecast"
+    return regime_forecast
+
+
+def feature_volatility_surprise(df: DataFrame) -> Series:
+    """
+    Volatility Surprise: Volatility surprise (realized vs expected).
+    
+    Measures how much realized volatility differs from forecast (surprise).
+    Calculated as: (realized - forecast) / forecast.
+    Positive = realized higher than expected (positive surprise), negative = lower.
+    No clipping - let ML learn the distribution.
+    """
+    forecast = feature_volatility_forecast(df)
+    realized = feature_realized_volatility_20d(df)
+    
+    surprise = (realized - forecast) / (forecast + 1e-10)
+    surprise.name = "volatility_surprise"
+    return surprise
+
+
+def feature_volatility_forecast_5d(df: DataFrame) -> Series:
+    """
+    Volatility Forecast 5d: 5-day volatility forecast (short-term).
+    
+    Short-term volatility forecast using same GARCH-like method but with shorter horizon.
+    Calculated as: EWMA of squared returns with α=0.90 (more reactive).
+    No clipping - let ML learn the distribution.
+    """
+    close = _get_close_series(df)
+    returns = close.pct_change()
+    
+    # Short-term GARCH-like forecast: more reactive (lower alpha)
+    alpha = 0.90  # More reactive than long-term forecast
+    squared_returns = returns ** 2
+    
+    forecast = pd.Series(index=df.index, dtype=float)
+    forecast.iloc[0] = squared_returns.iloc[0] if not pd.isna(squared_returns.iloc[0]) else 0.0
+    
+    for i in range(1, len(df)):
+        if pd.isna(squared_returns.iloc[i]):
+            forecast.iloc[i] = forecast.iloc[i-1]
+            continue
+        
+        forecast.iloc[i] = alpha * forecast.iloc[i-1] + (1 - alpha) * squared_returns.iloc[i]
+    
+    # Convert to volatility (square root)
+    forecast_vol = np.sqrt(forecast)
+    forecast_vol.name = "volatility_forecast_5d"
+    return forecast_vol
+
+
+def feature_volatility_forecast_ratio(df: DataFrame) -> Series:
+    """
+    Volatility Forecast Ratio: Short-term / long-term forecast ratio.
+    
+    Compares short-term vs long-term volatility forecasts.
+    Calculated as: forecast_5d / forecast.
+    >1 = short-term higher (stress), <1 = long-term higher (stability).
+    No clipping - let ML learn the distribution.
+    """
+    forecast_short = feature_volatility_forecast_5d(df)
+    forecast_long = feature_volatility_forecast(df)
+    
+    ratio = forecast_short / (forecast_long + 1e-10)
+    ratio.name = "volatility_forecast_ratio"
+    return ratio
+
+
+def feature_volatility_realized_forecast_ratio(df: DataFrame) -> Series:
+    """
+    Volatility Realized Forecast Ratio: Realized / forecast ratio.
+    
+    Compares realized volatility to forecast.
+    Calculated as: realized_volatility_20d / volatility_forecast.
+    >1 = realized higher than forecast, <1 = realized lower.
+    No clipping - let ML learn the distribution.
+    """
+    realized = feature_realized_volatility_20d(df)
+    forecast = feature_volatility_forecast(df)
+    
+    ratio = realized / (forecast + 1e-10)
+    ratio.name = "volatility_realized_forecast_ratio"
+    return ratio
+
+
+def feature_volatility_term_structure_rank(df: DataFrame) -> Series:
+    """
+    Volatility Term Structure Rank: Percentile rank of volatility term structure.
+    
+    Percentile rank of volatility_term_structure vs last 252 days.
+    Values: 0.0 = lowest term structure, 1.0 = highest.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    term_structure = feature_volatility_term_structure(df)
+    
+    # Percentile rank over 252 days
+    rank = term_structure.rolling(window=252, min_periods=20).apply(
+        lambda x: (x.iloc[-1] > x.iloc[:-1]).sum() / len(x.iloc[:-1]) if len(x) > 1 else 0.5,
+        raw=False
+    )
+    
+    rank = rank.fillna(0.5).clip(0.0, 1.0)
+    rank.name = "volatility_term_structure_rank"
+    return rank
+
+
+# ============================================================================
+# BLOCK ML-26.2: Enhanced Gain Probability Features (5 features)
+# ============================================================================
+
+
+def feature_gain_probability_rank(df: DataFrame, cached_gain_prob_score: Optional[Series] = None) -> Series:
+    """
+    Gain Probability Rank: Percentile rank of gain probability (like momentum_rank).
+    
+    Percentile rank of gain_probability_score vs last 252 days.
+    Values: 0.0 = lowest probability, 1.0 = highest probability.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    if cached_gain_prob_score is not None:
+        gain_prob = cached_gain_prob_score
+    else:
+        gain_prob = feature_gain_probability_score(df)
+    
+    # Percentile rank over 252 days
+    rank = gain_prob.rolling(window=252, min_periods=20).apply(
+        lambda x: (x.iloc[-1] > x.iloc[:-1]).sum() / len(x.iloc[:-1]) if len(x) > 1 else 0.5,
+        raw=False
+    )
+    
+    rank = rank.fillna(0.5).clip(0.0, 1.0)
+    rank.name = "gain_probability_rank"
+    return rank
+
+
+def feature_gain_probability_trend(df: DataFrame, cached_gain_prob_score: Optional[Series] = None) -> Series:
+    """
+    Gain Probability Trend: Trend in gain probability (increasing/decreasing).
+    
+    Measures whether gain probability is increasing or decreasing.
+    Calculated as: slope of gain_probability_score over 10-day window.
+    Positive = increasing, negative = decreasing.
+    Normalized to [-1, 1] then to [0, 1]. Clipped for safety.
+    """
+    if cached_gain_prob_score is not None:
+        gain_prob = cached_gain_prob_score
+    else:
+        gain_prob = feature_gain_probability_score(df)
+    
+    # Calculate slope over 10-day window
+    trend = gain_prob.rolling(window=10, min_periods=2).apply(
+        lambda x: np.polyfit(range(len(x)), x.values, 1)[0] if len(x) >= 2 else 0.0,
+        raw=False
+    )
+    
+    # Normalize to [0, 1]
+    trend_norm = (trend - trend.rolling(window=252, min_periods=1).min()) / (
+        trend.rolling(window=252, min_periods=1).max() - 
+        trend.rolling(window=252, min_periods=1).min() + 1e-10
+    )
+    trend_norm = trend_norm.fillna(0.5).clip(0.0, 1.0)
+    trend_norm.name = "gain_probability_trend"
+    return trend_norm
+
+
+def feature_gain_probability_consistency_rank(df: DataFrame, cached_gain_consistency: Optional[Series] = None) -> Series:
+    """
+    Gain Probability Consistency Rank: Rank of gain consistency.
+    
+    Percentile rank of gain_consistency vs last 252 days.
+    Values: 0.0 = lowest consistency, 1.0 = highest consistency.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    if cached_gain_consistency is not None:
+        gain_consistency = cached_gain_consistency
+    else:
+        gain_consistency = feature_gain_consistency(df)
+    
+    # Percentile rank over 252 days
+    rank = gain_consistency.rolling(window=252, min_periods=20).apply(
+        lambda x: (x.iloc[-1] > x.iloc[:-1]).sum() / len(x.iloc[:-1]) if len(x) > 1 else 0.5,
+        raw=False
+    )
+    
+    rank = rank.fillna(0.5).clip(0.0, 1.0)
+    rank.name = "gain_probability_consistency_rank"
+    return rank
+
+
+def feature_gain_probability_momentum(df: DataFrame, cached_gain_prob_score: Optional[Series] = None) -> Series:
+    """
+    Gain Probability Momentum: Momentum of probability (rate of change).
+    
+    Rate of change of gain_probability_score.
+    Calculated as: (current - previous) / previous.
+    Positive = increasing, negative = decreasing.
+    No clipping - let ML learn the distribution.
+    """
+    if cached_gain_prob_score is not None:
+        gain_prob = cached_gain_prob_score
+    else:
+        gain_prob = feature_gain_probability_score(df)
+    
+    momentum = gain_prob.pct_change()
+    momentum = momentum.fillna(0.0)
+    momentum.name = "gain_probability_momentum"
+    return momentum
+
+
+def feature_gain_probability_volatility_adjusted(df: DataFrame, cached_gain_prob_score: Optional[Series] = None) -> Series:
+    """
+    Gain Probability Volatility Adjusted: Risk-adjusted opportunity.
+    
+    Calculated as: gain_probability / volatility_forecast.
+    Higher values = better risk-adjusted opportunity.
+    No clipping - let ML learn the distribution.
+    """
+    if cached_gain_prob_score is not None:
+        gain_prob = cached_gain_prob_score
+    else:
+        gain_prob = feature_gain_probability_score(df)
+    vol_forecast = feature_volatility_forecast(df)
+    
+    adjusted = gain_prob / (vol_forecast + 1e-10)
+    adjusted.name = "gain_probability_volatility_adjusted"
+    return adjusted
+
+
+# ============================================================================
+# BLOCK ML-26.3: Distance-Based Rank Features (5 features)
+# ============================================================================
+
+
+def feature_dist_52w_high_rank(df: DataFrame) -> Series:
+    """
+    Distance to 52w High Rank: Percentile rank of distance to 52w high.
+    
+    Percentile rank of dist_52w_high vs last 252 days.
+    Values: 0.0 = closest to 52w high, 1.0 = farthest from 52w high.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    dist = feature_dist_52w_high(df)
+    
+    # Percentile rank over 252 days
+    rank = dist.rolling(window=252, min_periods=20).apply(
+        lambda x: (x.iloc[-1] > x.iloc[:-1]).sum() / len(x.iloc[:-1]) if len(x) > 1 else 0.5,
+        raw=False
+    )
+    
+    rank = rank.fillna(0.5).clip(0.0, 1.0)
+    rank.name = "dist_52w_high_rank"
+    return rank
+
+
+def feature_dist_52w_low_rank(df: DataFrame) -> Series:
+    """
+    Distance to 52w Low Rank: Percentile rank of distance to 52w low.
+    
+    Percentile rank of dist_52w_low vs last 252 days.
+    Values: 0.0 = closest to 52w low, 1.0 = farthest from 52w low.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    dist = feature_dist_52w_low(df)
+    
+    # Percentile rank over 252 days
+    rank = dist.rolling(window=252, min_periods=20).apply(
+        lambda x: (x.iloc[-1] > x.iloc[:-1]).sum() / len(x.iloc[:-1]) if len(x) > 1 else 0.5,
+        raw=False
+    )
+    
+    rank = rank.fillna(0.5).clip(0.0, 1.0)
+    rank.name = "dist_52w_low_rank"
+    return rank
+
+
+def feature_dist_ma200_rank(df: DataFrame) -> Series:
+    """
+    Distance to MA200 Rank: Percentile rank of distance to MA200.
+    
+    Percentile rank of price_vs_ma200 vs last 252 days.
+    Note: price_vs_ma200 is already a ratio, so we rank the absolute distance.
+    Values: 0.0 = closest to MA200, 1.0 = farthest from MA200.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    price_vs_ma = feature_price_vs_ma200(df)
+    # Convert ratio to distance: |1 - ratio|
+    dist = (1.0 - price_vs_ma).abs()
+    
+    # Percentile rank over 252 days
+    rank = dist.rolling(window=252, min_periods=20).apply(
+        lambda x: (x.iloc[-1] > x.iloc[:-1]).sum() / len(x.iloc[:-1]) if len(x) > 1 else 0.5,
+        raw=False
+    )
+    
+    rank = rank.fillna(0.5).clip(0.0, 1.0)
+    rank.name = "dist_ma200_rank"
+    return rank
+
+
+def feature_dist_resistance_rank(df: DataFrame) -> Series:
+    """
+    Distance to Resistance Rank: Percentile rank of distance to resistance.
+    
+    Percentile rank of distance_to_resistance vs last 252 days.
+    Values: 0.0 = closest to resistance, 1.0 = farthest from resistance.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    dist = feature_distance_to_resistance(df)
+    
+    # Percentile rank over 252 days
+    rank = dist.rolling(window=252, min_periods=20).apply(
+        lambda x: (x.iloc[-1] > x.iloc[:-1]).sum() / len(x.iloc[:-1]) if len(x) > 1 else 0.5,
+        raw=False
+    )
+    
+    rank = rank.fillna(0.5).clip(0.0, 1.0)
+    rank.name = "dist_resistance_rank"
+    return rank
+
+
+def feature_dist_support_rank(df: DataFrame) -> Series:
+    """
+    Distance to Support Rank: Percentile rank of distance to support.
+    
+    Percentile rank of distance_to_support vs last 252 days.
+    Values: 0.0 = closest to support, 1.0 = farthest from support.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    dist = feature_distance_to_support(df)
+    
+    # Percentile rank over 252 days
+    rank = dist.rolling(window=252, min_periods=20).apply(
+        lambda x: (x.iloc[-1] > x.iloc[:-1]).sum() / len(x.iloc[:-1]) if len(x) > 1 else 0.5,
+        raw=False
+    )
+    
+    rank = rank.fillna(0.5).clip(0.0, 1.0)
+    rank.name = "dist_support_rank"
+    return rank
+
+
+# ============================================================================
+# BLOCK ML-26.4: Percentile/Rank Features (8 features)
+# ============================================================================
+
+
+def feature_volatility_rank(df: DataFrame) -> Series:
+    """
+    Volatility Rank: Percentile rank of volatility (volatility_21d vs historical).
+    
+    Percentile rank of volatility_21d vs last 252 days.
+    Values: 0.0 = lowest volatility, 1.0 = highest volatility.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    volatility = feature_volatility_21d(df)
+    
+    # Percentile rank over 252 days
+    rank = volatility.rolling(window=252, min_periods=20).apply(
+        lambda x: (x.iloc[-1] > x.iloc[:-1]).sum() / len(x.iloc[:-1]) if len(x) > 1 else 0.5,
+        raw=False
+    )
+    
+    rank = rank.fillna(0.5).clip(0.0, 1.0)
+    rank.name = "volatility_rank"
+    return rank
+
+
+def feature_volume_imbalance_rank(df: DataFrame) -> Series:
+    """
+    Volume Imbalance Rank: Percentile rank of volume imbalance.
+    
+    Percentile rank of volume_imbalance vs last 252 days.
+    Values: 0.0 = lowest imbalance, 1.0 = highest imbalance.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    imbalance = feature_volume_imbalance(df)
+    
+    # Percentile rank over 252 days
+    rank = imbalance.rolling(window=252, min_periods=20).apply(
+        lambda x: (x.iloc[-1] > x.iloc[:-1]).sum() / len(x.iloc[:-1]) if len(x) > 1 else 0.5,
+        raw=False
+    )
+    
+    rank = rank.fillna(0.5).clip(0.0, 1.0)
+    rank.name = "volume_imbalance_rank"
+    return rank
+
+
+def feature_return_rank_3m(df: DataFrame) -> Series:
+    """
+    Return Rank 3m: Percentile rank of 3-month return.
+    
+    Percentile rank of monthly_return_3m vs last 252 days.
+    Values: 0.0 = lowest return, 1.0 = highest return.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    return_3m = feature_monthly_return_3m(df)
+    
+    # Percentile rank over 252 days
+    rank = return_3m.rolling(window=252, min_periods=20).apply(
+        lambda x: (x.iloc[-1] > x.iloc[:-1]).sum() / len(x.iloc[:-1]) if len(x) > 1 else 0.5,
+        raw=False
+    )
+    
+    rank = rank.fillna(0.5).clip(0.0, 1.0)
+    rank.name = "return_rank_3m"
+    return rank
+
+
+def feature_gain_momentum_strength_rank(df: DataFrame) -> Series:
+    """
+    Gain Momentum Strength Rank: Percentile rank of gain_momentum_strength.
+    
+    Percentile rank of gain_momentum_strength vs last 252 days.
+    Values: 0.0 = lowest strength, 1.0 = highest strength.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    strength = feature_gain_momentum_strength(df)
+    
+    # Percentile rank over 252 days
+    rank = strength.rolling(window=252, min_periods=20).apply(
+        lambda x: (x.iloc[-1] > x.iloc[:-1]).sum() / len(x.iloc[:-1]) if len(x) > 1 else 0.5,
+        raw=False
+    )
+    
+    rank = rank.fillna(0.5).clip(0.0, 1.0)
+    rank.name = "gain_momentum_strength_rank"
+    return rank
+
+
+def feature_volatility_jump_rank(df: DataFrame) -> Series:
+    """
+    Volatility Jump Rank: Percentile rank of volatility jumps.
+    
+    Percentile rank of volatility_jump vs last 252 days.
+    Values: 0.0 = smallest jump, 1.0 = largest jump.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    vol_jump = feature_volatility_jump(df)
+    
+    # Percentile rank over 252 days
+    rank = vol_jump.rolling(window=252, min_periods=20).apply(
+        lambda x: (x.iloc[-1] > x.iloc[:-1]).sum() / len(x.iloc[:-1]) if len(x) > 1 else 0.5,
+        raw=False
+    )
+    
+    rank = rank.fillna(0.5).clip(0.0, 1.0)
+    rank.name = "volatility_jump_rank"
+    return rank
+
+
+def feature_momentum_rank_trend(df: DataFrame) -> Series:
+    """
+    Momentum Rank Trend: Trend in momentum rank (improving/deteriorating).
+    
+    Measures whether momentum rank is improving or deteriorating.
+    Calculated as: slope of momentum_rank over 10-day window.
+    Positive = improving, negative = deteriorating.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    momentum_rank = feature_momentum_rank(df)
+    
+    # Calculate slope over 10-day window
+    trend = momentum_rank.rolling(window=10, min_periods=2).apply(
+        lambda x: np.polyfit(range(len(x)), x.values, 1)[0] if len(x) >= 2 else 0.0,
+        raw=False
+    )
+    
+    # Normalize to [0, 1]
+    trend_norm = (trend - trend.rolling(window=252, min_periods=1).min()) / (
+        trend.rolling(window=252, min_periods=1).max() - 
+        trend.rolling(window=252, min_periods=1).min() + 1e-10
+    )
+    trend_norm = trend_norm.fillna(0.5).clip(0.0, 1.0)
+    trend_norm.name = "momentum_rank_trend"
+    return trend_norm
+
+
+def feature_momentum_volatility_adjusted(df: DataFrame) -> Series:
+    """
+    Momentum Volatility Adjusted: Volatility-adjusted momentum.
+    
+    Calculated as: momentum_rank / volatility_rank.
+    Higher values = better momentum relative to volatility.
+    No clipping - let ML learn the distribution.
+    """
+    momentum = feature_momentum_rank(df)
+    volatility = feature_volatility_rank(df)
+    
+    adjusted = momentum / (volatility + 1e-10)
+    adjusted.name = "momentum_volatility_adjusted"
+    return adjusted
+
+
+def feature_momentum_consistency_rank(df: DataFrame) -> Series:
+    """
+    Momentum Consistency Rank: Rank of momentum consistency.
+    
+    Percentile rank of momentum_consistency vs last 252 days.
+    Values: 0.0 = lowest consistency, 1.0 = highest consistency.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    consistency = feature_momentum_consistency(df)
+    
+    # Percentile rank over 252 days
+    rank = consistency.rolling(window=252, min_periods=20).apply(
+        lambda x: (x.iloc[-1] > x.iloc[:-1]).sum() / len(x.iloc[:-1]) if len(x) > 1 else 0.5,
+        raw=False
+    )
+    
+    rank = rank.fillna(0.5).clip(0.0, 1.0)
+    rank.name = "momentum_consistency_rank"
+    return rank
+
+
+# ============================================================================
+# BLOCK ML-26.5: Volatility-Volume Interactions (4 features)
+# ============================================================================
+
+
+def feature_volatility_volume_correlation(df: DataFrame) -> Series:
+    """
+    Volatility Volume Correlation: Rolling correlation between volatility and volume.
+    
+    Measures correlation between volatility and volume over rolling window.
+    Calculated as: rolling correlation(volatility_21d, volume) over 20 days.
+    Values: -1 to 1, normalized to [0, 1]. Clipped for safety.
+    """
+    volatility = feature_volatility_21d(df)
+    volume = _get_volume_series(df)
+    
+    # Rolling correlation over 20 days
+    correlation = volatility.rolling(window=20, min_periods=5).corr(volume)
+    
+    # Normalize from [-1, 1] to [0, 1]
+    correlation_norm = (correlation + 1.0) / 2.0
+    correlation_norm = correlation_norm.fillna(0.5).clip(0.0, 1.0)
+    correlation_norm.name = "volatility_volume_correlation"
+    return correlation_norm
+
+
+def feature_volatility_volume_divergence(df: DataFrame) -> Series:
+    """
+    Volatility Volume Divergence: Divergence between volatility and volume.
+    
+    Measures when volatility and volume move in opposite directions.
+    Calculated as: -correlation (negative correlation = divergence).
+    Higher values = more divergence.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    correlation = feature_volatility_volume_correlation(df)
+    
+    # Divergence = 1 - correlation (inverse)
+    divergence = 1.0 - correlation
+    divergence = divergence.clip(0.0, 1.0)
+    divergence.name = "volatility_volume_divergence"
+    return divergence
+
+
+def feature_volume_weighted_volatility(df: DataFrame) -> Series:
+    """
+    Volume Weighted Volatility: Volume-weighted volatility (higher weight on high-volume days).
+    
+    Calculates volatility with higher weight on high-volume days.
+    Calculated as: weighted average of volatility, weights = volume.
+    No clipping - let ML learn the distribution.
+    """
+    volatility = feature_volatility_21d(df)
+    volume = _get_volume_series(df)
+    
+    # Volume-weighted volatility over 20-day window
+    weighted_vol = (volatility * volume).rolling(window=20, min_periods=1).sum() / (
+        volume.rolling(window=20, min_periods=1).sum() + 1e-10
+    )
+    
+    weighted_vol = weighted_vol.fillna(volatility)
+    weighted_vol.name = "volume_weighted_volatility"
+    return weighted_vol
+
+
+def feature_volatility_forecast_volume_confirmation(df: DataFrame) -> Series:
+    """
+    Volatility Forecast Volume Confirmation: Volume confirms volatility forecast (interaction).
+    
+    Interaction feature: volatility_forecast × volume_ratio.
+    Higher values = volume confirms high volatility forecast.
+    No clipping - let ML learn the distribution.
+    """
+    vol_forecast = feature_volatility_forecast(df)
+    volume_ratio = feature_relative_volume(df)
+    
+    # Interaction: forecast × volume ratio
+    interaction = vol_forecast * volume_ratio
+    interaction.name = "volatility_forecast_volume_confirmation"
+    return interaction
+
+
+# ============================================================================
+# BLOCK ML-26.6: Return-Volatility Interactions (3 features)
+# ============================================================================
+
+
+def feature_return_volatility_ratio(df: DataFrame) -> Series:
+    """
+    Return Volatility Ratio: Return / volatility ratio (risk-adjusted return).
+    
+    Calculated as: monthly_return_3m / volatility_21d.
+    Higher values = better risk-adjusted returns.
+    No clipping - let ML learn the distribution.
+    """
+    return_3m = feature_monthly_return_3m(df)
+    volatility = feature_volatility_21d(df)
+    
+    ratio = return_3m / (volatility + 1e-10)
+    ratio.name = "return_volatility_ratio"
+    return ratio
+
+
+def feature_return_volatility_rank(df: DataFrame) -> Series:
+    """
+    Return Volatility Rank: Rank of return/volatility ratio.
+    
+    Percentile rank of return_volatility_ratio vs last 252 days.
+    Values: 0.0 = lowest ratio, 1.0 = highest ratio.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    ratio = feature_return_volatility_ratio(df)
+    
+    # Percentile rank over 252 days
+    rank = ratio.rolling(window=252, min_periods=20).apply(
+        lambda x: (x.iloc[-1] > x.iloc[:-1]).sum() / len(x.iloc[:-1]) if len(x) > 1 else 0.5,
+        raw=False
+    )
+    
+    rank = rank.fillna(0.5).clip(0.0, 1.0)
+    rank.name = "return_volatility_rank"
+    return rank
+
+
+def feature_volatility_normalized_return_rank(df: DataFrame) -> Series:
+    """
+    Volatility Normalized Return Rank: Rank of volatility-normalized returns.
+    
+    Percentile rank of volatility_normalized_returns vs last 252 days.
+    Values: 0.0 = lowest normalized return, 1.0 = highest.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    normalized_returns = feature_volatility_normalized_returns(df)
+    
+    # Percentile rank over 252 days
+    rank = normalized_returns.rolling(window=252, min_periods=20).apply(
+        lambda x: (x.iloc[-1] > x.iloc[:-1]).sum() / len(x.iloc[:-1]) if len(x) > 1 else 0.5,
+        raw=False
+    )
+    
+    rank = rank.fillna(0.5).clip(0.0, 1.0)
+    rank.name = "volatility_normalized_return_rank"
+    return rank
+
+
+# ============================================================================
+# BLOCK ML-26.7: Regime Transition Features (3 features)
+# ============================================================================
+
+
+def feature_volatility_regime_transition_probability(df: DataFrame) -> Series:
+    """
+    Volatility Regime Transition Probability: Probability of volatility regime change.
+    
+    Estimates probability that volatility regime will change soon.
+    Calculated as: combination of regime duration and recent volatility changes.
+    Values: 0.0 = low probability, 1.0 = high probability.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    regime = feature_volatility_regime(df)
+    regime_duration = pd.Series(index=df.index, dtype=float)
+    
+    # Calculate regime duration (days in current regime)
+    current_regime = None
+    duration = 0
+    for i in range(len(df)):
+        if pd.isna(regime.iloc[i]):
+            regime_duration.iloc[i] = 0
+            continue
+        
+        if current_regime is None or abs(regime.iloc[i] - current_regime) > 10:  # Regime change threshold
+            current_regime = regime.iloc[i]
+            duration = 1
+        else:
+            duration += 1
+        
+        regime_duration.iloc[i] = duration
+    
+    # Recent volatility change
+    vol_change = regime.diff().abs()
+    
+    # Transition probability: longer duration + recent changes = higher probability
+    duration_norm = regime_duration / (regime_duration.rolling(window=252, min_periods=1).max() + 1e-10)
+    change_norm = vol_change / (vol_change.rolling(window=252, min_periods=1).max() + 1e-10)
+    
+    # Combine: 60% duration, 40% recent change
+    transition_prob = (duration_norm * 0.6 + change_norm * 0.4)
+    transition_prob = transition_prob.fillna(0.5).clip(0.0, 1.0)
+    transition_prob.name = "volatility_regime_transition_probability"
+    return transition_prob
+
+
+def feature_gain_regime_transition_probability(df: DataFrame, cached_gain_regime: Optional[Series] = None, cached_gain_prob_score: Optional[Series] = None) -> Series:
+    """
+    Gain Regime Transition Probability: Probability of gain regime change.
+    
+    Estimates probability that gain regime will change soon.
+    Calculated as: combination of regime duration and recent gain probability changes.
+    Values: 0.0 = low probability, 1.0 = high probability.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    if cached_gain_regime is not None:
+        gain_regime = cached_gain_regime
+    else:
+        gain_regime = feature_gain_regime(df)
+    
+    if cached_gain_prob_score is not None:
+        gain_prob = cached_gain_prob_score
+    else:
+        gain_prob = feature_gain_probability_score(df)
+    
+    # Calculate regime duration
+    regime_duration = pd.Series(index=df.index, dtype=float)
+    current_regime = None
+    duration = 0
+    for i in range(len(df)):
+        if pd.isna(gain_regime.iloc[i]):
+            regime_duration.iloc[i] = 0
+            continue
+        
+        if current_regime is None or abs(gain_regime.iloc[i] - current_regime) > 0.2:  # Regime change threshold
+            current_regime = gain_regime.iloc[i]
+            duration = 1
+        else:
+            duration += 1
+        
+        regime_duration.iloc[i] = duration
+    
+    # Recent gain probability change
+    prob_change = gain_prob.diff().abs()
+    
+    # Transition probability
+    duration_norm = regime_duration / (regime_duration.rolling(window=252, min_periods=1).max() + 1e-10)
+    change_norm = prob_change / (prob_change.rolling(window=252, min_periods=1).max() + 1e-10)
+    
+    transition_prob = (duration_norm * 0.6 + change_norm * 0.4)
+    transition_prob = transition_prob.fillna(0.5).clip(0.0, 1.0)
+    transition_prob.name = "gain_regime_transition_probability"
+    return transition_prob
+
+
+def feature_momentum_regime_transition(df: DataFrame) -> Series:
+    """
+    Momentum Regime Transition: Momentum regime transition detection.
+    
+    Detects when momentum regime is transitioning.
+    Calculated as: binary signal when momentum_regime changes.
+    Values: 0.0 = no transition, 1.0 = transition detected.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    momentum_regime = feature_momentum_regime(df)
+    
+    # Detect regime changes (significant change in regime value)
+    regime_change = momentum_regime.diff().abs()
+    transition = (regime_change > 0.3).astype(float)  # Threshold for transition
+    
+    transition = transition.fillna(0.0).clip(0.0, 1.0)
+    transition.name = "momentum_regime_transition"
+    return transition
+
+
+# ============================================================================
+# BLOCK ML-26.8: Composite/Ensemble Features (6 features)
+# ============================================================================
+
+
+def feature_volatility_gain_probability_interaction(df: DataFrame, cached_gain_prob_score: Optional[Series] = None) -> Series:
+    """
+    Volatility Gain Probability Interaction: volatility_forecast × gain_probability_score.
+    
+    Interaction feature combining volatility forecast and gain probability.
+    Higher values = high volatility forecast AND high gain probability.
+    No clipping - let ML learn the distribution.
+    """
+    vol_forecast = feature_volatility_forecast(df)
+    if cached_gain_prob_score is not None:
+        gain_prob = cached_gain_prob_score
+    else:
+        gain_prob = feature_gain_probability_score(df)
+    
+    interaction = vol_forecast * gain_prob
+    interaction.name = "volatility_gain_probability_interaction"
+    return interaction
+
+
+def feature_volatility_momentum_interaction(df: DataFrame) -> Series:
+    """
+    Volatility Momentum Interaction: volatility_forecast × momentum_rank.
+    
+    Interaction feature combining volatility forecast and momentum rank.
+    Higher values = high volatility forecast AND high momentum.
+    No clipping - let ML learn the distribution.
+    """
+    vol_forecast = feature_volatility_forecast(df)
+    momentum = feature_momentum_rank(df)
+    
+    interaction = vol_forecast * momentum
+    interaction.name = "volatility_momentum_interaction"
+    return interaction
+
+
+def feature_volume_imbalance_volatility_interaction(df: DataFrame) -> Series:
+    """
+    Volume Imbalance Volatility Interaction: volume_imbalance × volatility_forecast.
+    
+    Interaction feature combining volume imbalance and volatility forecast.
+    Higher values = high volume imbalance AND high volatility forecast.
+    No clipping - let ML learn the distribution.
+    """
+    volume_imbalance = feature_volume_imbalance(df)
+    vol_forecast = feature_volatility_forecast(df)
+    
+    interaction = volume_imbalance * vol_forecast
+    interaction.name = "volume_imbalance_volatility_interaction"
+    return interaction
+
+
+def feature_top_features_ensemble(df: DataFrame, cached_gain_prob_score: Optional[Series] = None) -> Series:
+    """
+    Top Features Ensemble: Weighted ensemble of top 5 features.
+    
+    Combines top-performing features based on analysis:
+    - volatility_forecast (18.1%)
+    - volatility_21d (13.5%)
+    - volume_imbalance (2.8%)
+    - gain_probability_score (1.5%)
+    - momentum_rank (estimated)
+    
+    Weighted combination normalized to [0, 1]. Clipped for safety.
+    """
+    vol_forecast = feature_volatility_forecast(df)
+    vol_21d = feature_volatility_21d(df)
+    vol_imbalance = feature_volume_imbalance(df)
+    if cached_gain_prob_score is not None:
+        gain_prob = cached_gain_prob_score
+    else:
+        gain_prob = feature_gain_probability_score(df)
+    momentum = feature_momentum_rank(df)
+    
+    # Normalize each feature to [0, 1] for combination
+    vol_forecast_norm = (vol_forecast - vol_forecast.rolling(window=252, min_periods=1).min()) / (
+        vol_forecast.rolling(window=252, min_periods=1).max() - 
+        vol_forecast.rolling(window=252, min_periods=1).min() + 1e-10
+    )
+    vol_21d_norm = (vol_21d - vol_21d.rolling(window=252, min_periods=1).min()) / (
+        vol_21d.rolling(window=252, min_periods=1).max() - 
+        vol_21d.rolling(window=252, min_periods=1).min() + 1e-10
+    )
+    vol_imbalance_norm = (vol_imbalance - vol_imbalance.rolling(window=252, min_periods=1).min()) / (
+        vol_imbalance.rolling(window=252, min_periods=1).max() - 
+        vol_imbalance.rolling(window=252, min_periods=1).min() + 1e-10
+    )
+    
+    # Weighted combination (based on importance percentages)
+    ensemble = (vol_forecast_norm * 0.40 +  # volatility_forecast: 18.1% / 45% total
+                vol_21d_norm * 0.30 +        # volatility_21d: 13.5% / 45%
+                vol_imbalance_norm * 0.15 +  # volume_imbalance: 2.8% / 45%
+                gain_prob * 0.10 +           # gain_probability_score: 1.5% / 45%
+                momentum * 0.05)             # momentum_rank: estimated
+    
+    ensemble = ensemble.fillna(0.5).clip(0.0, 1.0)
+    ensemble.name = "top_features_ensemble"
+    return ensemble
+
+
+def feature_volatility_forecast_accuracy_weighted(df: DataFrame) -> Series:
+    """
+    Volatility Forecast Accuracy Weighted: Accuracy-weighted volatility forecast.
+    
+    Adjusts volatility forecast by its recent accuracy.
+    Calculated as: volatility_forecast × volatility_forecast_accuracy.
+    Higher accuracy = more weight on forecast.
+    No clipping - let ML learn the distribution.
+    """
+    vol_forecast = feature_volatility_forecast(df)
+    accuracy = feature_volatility_forecast_accuracy(df)
+    
+    weighted = vol_forecast * accuracy
+    weighted.name = "volatility_forecast_accuracy_weighted"
+    return weighted
+
+
+def feature_gain_probability_volatility_regime_interaction(df: DataFrame, cached_gain_prob_score: Optional[Series] = None) -> Series:
+    """
+    Gain Probability Volatility Regime Interaction: gain_probability × volatility_regime.
+    
+    Interaction feature combining gain probability and volatility regime.
+    Higher values = high gain probability AND high volatility regime.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    if cached_gain_prob_score is not None:
+        gain_prob = cached_gain_prob_score
+    else:
+        gain_prob = feature_gain_probability_score(df)
+    vol_regime = feature_volatility_regime(df) / 100.0  # Normalize from 0-100 to 0-1
+    
+    interaction = gain_prob * vol_regime
+    interaction = interaction.clip(0.0, 1.0)
+    interaction.name = "gain_probability_volatility_regime_interaction"
+    return interaction
