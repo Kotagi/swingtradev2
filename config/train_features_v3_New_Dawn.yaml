@@ -1,6 +1,6 @@
 features:
   # BLOCK ML-1.1: Price & Normalization (4 features)
-  price: 1
+  price: 0
   price_log: 1
   price_vs_ma200: 1
   close_position_in_range: 1
@@ -430,32 +430,33 @@ features:
   # KEEP FOR FILTERING: volatility_forecast_accuracy, volatility_forecast_error, volatility_forecast_trend, volatility_surprise
   volatility_forecast_accuracy: 1
   volatility_forecast_error: 1
+  volatility_forecast_error_true: 1  # True forecast accuracy (past forecast vs present outcome)
   volatility_forecast_trend: 1
   volatility_clustering_strength: 1
-  volatility_regime_forecast: 0  # DISABLED: Experimental
-  volatility_surprise: 1  # KEEP FOR FILTERING
-  volatility_realized_forecast_ratio: 0  # DISABLED: Experimental
+  volatility_regime_forecast: 0
+  volatility_surprise: 1
+  volatility_realized_forecast_ratio: 0
   # BLOCK ML-26.2: Enhanced Gain Probability Features (5 features)
-  gain_probability_trend: 1  # KEEP FOR FILTERING
+  gain_probability_trend: 1
   gain_probability_consistency_rank: 1
   gain_probability_volatility_adjusted: 1
   # BLOCK ML-26.3: Distance-Based Rank Features (5 features)
   dist_support_rank: 1
   # BLOCK ML-26.4: Percentile/Rank Features (8 features)
   volatility_rank: 1
-  return_rank_3m: 1  # KEEP FOR FILTERING
-  momentum_rank_trend: 0  # DISABLED: Experimental
+  return_rank_3m: 1
+  momentum_rank_trend: 0
   # BLOCK ML-26.5: Volatility-Volume Interactions (4 features)
-  volatility_volume_correlation: 0  # DISABLED: Experimental
-  volatility_volume_divergence: 0  # DISABLED: Experimental
-  volatility_forecast_volume_confirmation: 0  # DISABLED: Experimental
+  volatility_volume_correlation: 0
+  volatility_volume_divergence: 0
+  volatility_forecast_volume_confirmation: 0
   # BLOCK ML-26.6: Return-Volatility Interactions (3 features)
   return_volatility_ratio: 1
   # BLOCK ML-26.7: Regime Transition Features (3 features)
-  volatility_regime_transition_probability: 0  # DISABLED: Experimental
-  gain_regime_transition_probability: 0  # DISABLED: Experimental
-  momentum_regime_transition: 0  # DISABLED: Experimental
+  volatility_regime_transition_probability: 0
+  gain_regime_transition_probability: 0
+  momentum_regime_transition: 0
   # BLOCK ML-26.8: Composite/Ensemble Features (6 features)
   top_features_ensemble: 1
-  volatility_forecast_accuracy_weighted: 0  # DISABLED: Experimental
-  gain_probability_volatility_regime_interaction: 0  # DISABLED: Experimental
+  volatility_forecast_accuracy_weighted: 0
+  gain_probability_volatility_regime_interaction: 0

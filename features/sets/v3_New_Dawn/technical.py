@@ -2650,7 +2650,7 @@ def feature_garman_klass_volatility(df: DataFrame) -> Series:
     
     Uses open, high, low, close for more efficient volatility estimation.
     Formula: 0.5 * (ln(high/low))^2 - (2*ln(2)-1) * (ln(close/open))^2
-    Normalized by dividing by close price.
+    Already scale-invariant (uses log ratios), no normalization needed.
     No clipping - let ML learn the distribution.
     """
     high = _get_high_series(df)
@@ -2664,10 +2664,9 @@ def feature_garman_klass_volatility(df: DataFrame) -> Series:
     gk = hl_term - co_term
     gk = np.sqrt(np.maximum(gk, 0))  # Ensure non-negative
     
-    # Normalize by price
-    gk_norm = gk / close
-    gk_norm.name = "garman_klass_volatility"
-    return gk_norm
+    # Already scale-invariant from log ratios - no need to divide by close
+    gk.name = "garman_klass_volatility"
+    return gk
 
 
 def feature_rogers_satchell_volatility(df: DataFrame) -> Series:
@@ -2676,7 +2675,7 @@ def feature_rogers_satchell_volatility(df: DataFrame) -> Series:
     
     Accounts for drift in price movements.
     Formula: sqrt(ln(high/close) * ln(high/open) + ln(low/close) * ln(low/open))
-    Normalized by dividing by close price.
+    Already scale-invariant (uses log ratios), no normalization needed.
     No clipping - let ML learn the distribution.
     """
     high = _get_high_series(df)
@@ -2690,10 +2689,9 @@ def feature_rogers_satchell_volatility(df: DataFrame) -> Series:
     rs = term1 + term2
     rs = np.sqrt(np.maximum(rs, 0))  # Ensure non-negative
     
-    # Normalize by price
-    rs_norm = rs / close
-    rs_norm.name = "rogers_satchell_volatility"
-    return rs_norm
+    # Already scale-invariant from log ratios - no need to divide by close
+    rs.name = "rogers_satchell_volatility"
+    return rs
 
 
 def feature_yang_zhang_volatility(df: DataFrame) -> Series:
@@ -2703,7 +2701,7 @@ def feature_yang_zhang_volatility(df: DataFrame) -> Series:
     Combines overnight (close-to-open) and intraday (open-to-close) volatility.
     Formula: sqrt(overnight_vol^2 + k * intraday_vol^2 + (1-k) * rogers_satchell^2)
     where k = 0.34 (optimal for daily data).
-    Normalized by dividing by close price.
+    Already scale-invariant (uses log returns), no normalization needed.
     No clipping - let ML learn the distribution.
     """
     high = _get_high_series(df)
@@ -2731,10 +2729,9 @@ def feature_yang_zhang_volatility(df: DataFrame) -> Series:
     yz_var = overnight_var + k * intraday_var + (1 - k) * rs_var
     yz = np.sqrt(np.maximum(yz_var, 0))
     
-    # Normalize by price
-    yz_norm = yz / close
-    yz_norm.name = "yang_zhang_volatility"
-    return yz_norm
+    # Already scale-invariant from log returns - no need to divide by close
+    yz.name = "yang_zhang_volatility"
+    return yz
 
 
 def feature_volatility_clustering(df: DataFrame) -> Series:
@@ -2786,7 +2783,7 @@ def feature_realized_volatility_5d(df: DataFrame) -> Series:
     
     Sum of squared returns over 5 days, annualized.
     Calculated as: sqrt(sum(returns^2) * 252 / 5).
-    Normalized by dividing by close price.
+    Already in percentage terms (from percentage returns), no normalization needed.
     No clipping - let ML learn the distribution.
     """
     close = _get_close_series(df)
@@ -2800,10 +2797,9 @@ def feature_realized_volatility_5d(df: DataFrame) -> Series:
     # Annualize (252 trading days per year)
     realized_vol = np.sqrt(realized_var * 252 / 5)
     
-    # Normalize by price
-    realized_vol_norm = realized_vol / close
-    realized_vol_norm.name = "realized_volatility_5d"
-    return realized_vol_norm
+    # Already in percentage terms - no need to divide by close
+    realized_vol.name = "realized_volatility_5d"
+    return realized_vol
 
 
 def feature_realized_volatility_20d(df: DataFrame) -> Series:
@@ -2812,7 +2808,7 @@ def feature_realized_volatility_20d(df: DataFrame) -> Series:
     
     Sum of squared returns over 20 days, annualized.
     Calculated as: sqrt(sum(returns^2) * 252 / 20).
-    Normalized by dividing by close price.
+    Already in percentage terms (from percentage returns), no normalization needed.
     No clipping - let ML learn the distribution.
     """
     close = _get_close_series(df)
@@ -2826,10 +2822,9 @@ def feature_realized_volatility_20d(df: DataFrame) -> Series:
     # Annualize (252 trading days per year)
     realized_vol = np.sqrt(realized_var * 252 / 20)
     
-    # Normalize by price
-    realized_vol_norm = realized_vol / close
-    realized_vol_norm.name = "realized_volatility_20d"
-    return realized_vol_norm
+    # Already in percentage terms - no need to divide by close
+    realized_vol.name = "realized_volatility_20d"
+    return realized_vol
 
 
 def feature_volatility_regime_change(df: DataFrame) -> Series:
@@ -10869,51 +10864,63 @@ def feature_volatility_jump(df: DataFrame) -> Series:
 
 def feature_volatility_forecast_accuracy(df: DataFrame) -> Series:
     """
-    Volatility Forecast Accuracy: How accurate recent volatility forecasts were.
+    Volatility Estimation Consistency: Consistency between EWMA and rolling sum volatility estimates.
     
-    Compares volatility forecast vs realized volatility over recent period.
-    Calculated as: 1 - |realized - forecast| / (realized + 1e-10).
-    Higher values = more accurate forecasts.
+    NOTE: Despite the name "accuracy", this does NOT measure true forecast accuracy (comparing
+    past forecasts to present outcomes). Instead, it measures the consistency/divergence between
+    two different volatility estimation methods:
+    - EWMA (exponentially weighted, more reactive to recent data)
+    - Rolling sum (equal weight, more stable)
+    
+    Both methods use current data, so this is a measure of estimation method divergence rather
+    than forecast accuracy. High values indicate the two methods agree (stable volatility regime),
+    low values indicate divergence (volatility regime change or clustering).
+    
+    Calculated as: 1 - |realized - forecast| / (realized + 1e-10) over 20-day rolling window.
+    Higher values = methods agree (consistent estimation), lower = methods diverge (regime change).
     Normalized to [0, 1]. Clipped for safety.
     """
     forecast = feature_volatility_forecast(df)
     realized = feature_realized_volatility_20d(df)
     
-    # Calculate accuracy over rolling window (20 days)
-    accuracy = pd.Series(index=df.index, dtype=float)
+    # Calculate consistency/divergence over rolling window (20 days)
+    consistency = pd.Series(index=df.index, dtype=float)
     for i in range(len(df)):
         if i < 20:
-            accuracy.iloc[i] = 0.5  # Default for early periods
+            consistency.iloc[i] = 0.5  # Default for early periods
             continue
         
         start_idx = max(0, i - 20)
         window_forecast = forecast.iloc[start_idx:i+1]
         window_realized = realized.iloc[start_idx:i+1]
         
-        # Mean absolute error
+        # Mean absolute error between the two estimation methods
         mae = (window_realized - window_forecast).abs().mean()
         mean_realized = window_realized.mean()
         
-        # Accuracy: 1 - normalized error
+        # Consistency: 1 - normalized error (higher = methods agree)
         if mean_realized > 0:
             normalized_error = mae / (mean_realized + 1e-10)
-            acc = 1.0 - normalized_error
+            cons = 1.0 - normalized_error
         else:
-            acc = 0.5
+            cons = 0.5
         
-        accuracy.iloc[i] = acc
+        consistency.iloc[i] = cons
     
-    accuracy = accuracy.fillna(0.5).clip(0.0, 1.0)
-    accuracy.name = "volatility_forecast_accuracy"
-    return accuracy
+    consistency = consistency.fillna(0.5).clip(0.0, 1.0)
+    consistency.name = "volatility_forecast_accuracy"  # Keep name for backward compatibility
+    return consistency
 
 
 def feature_volatility_forecast_error(df: DataFrame) -> Series:
     """
     Volatility Forecast Error: Forecast error magnitude.
     
+    NOTE: This compares current forecast to current realized volatility (both use current data).
+    For true forecast error, see feature_volatility_forecast_error_true.
+    
     Calculated as: |realized - forecast| / forecast.
-    Higher values = larger forecast errors.
+    Higher values = larger divergence between EWMA and rolling sum methods.
     No clipping - let ML learn the distribution.
     """
     forecast = feature_volatility_forecast(df)
@@ -10921,6 +10928,32 @@ def feature_volatility_forecast_error(df: DataFrame) -> Series:
     
     error = (realized - forecast).abs() / (forecast + 1e-10)
     error.name = "volatility_forecast_error"
+    return error
+
+
+def feature_volatility_forecast_error_true(df: DataFrame) -> Series:
+    """
+    True Volatility Forecast Error: Actual forecast error (past forecast vs present outcome).
+    
+    This is a TRUE forecast accuracy measure: compares the forecast made at time t-1
+    to the realized volatility outcome at time t. This measures how well the forecast
+    actually predicted future volatility.
+    
+    Calculated as: |realized[t] - forecast[t-1]| / forecast[t-1].
+    Higher values = larger forecast errors (forecast was less accurate).
+    Lower values = smaller forecast errors (forecast was more accurate).
+    No clipping - let ML learn the distribution.
+    """
+    forecast = feature_volatility_forecast(df)
+    realized = feature_realized_volatility_20d(df)
+    
+    # Shift forecast by 1 to use past forecast
+    forecast_shifted = forecast.shift(1)
+    
+    # Compare past forecast to current realized outcome
+    error = (realized - forecast_shifted).abs() / (forecast_shifted + 1e-10)
+    error = error.fillna(0.0)  # Fill NaN from shift
+    error.name = "volatility_forecast_error_true"
     return error
 
 
@@ -11495,18 +11528,19 @@ def feature_top_features_ensemble(df: DataFrame, cached_gain_prob_score: Optiona
 
 def feature_volatility_forecast_accuracy_weighted(df: DataFrame) -> Series:
     """
-    Volatility Forecast Accuracy Weighted: Accuracy-weighted volatility forecast.
+    Volatility Forecast Consistency Weighted: Consistency-weighted volatility forecast.
     
-    Adjusts volatility forecast by its recent accuracy.
+    Adjusts volatility forecast by the consistency between EWMA and rolling sum methods.
     Calculated as: volatility_forecast × volatility_forecast_accuracy.
-    Higher accuracy = more weight on forecast.
+    Higher consistency = more weight on forecast (when methods agree, forecast is more reliable).
+    Lower consistency = less weight (when methods diverge, indicates regime uncertainty).
     No clipping - let ML learn the distribution.
     """
     vol_forecast = feature_volatility_forecast(df)
     accuracy = feature_volatility_forecast_accuracy(df)
     
     weighted = vol_forecast * accuracy
-    weighted.name = "volatility_forecast_accuracy_weighted"
+    weighted.name = "volatility_forecast_accuracy_weighted"  # Keep name for backward compatibility
     return weighted
 
 

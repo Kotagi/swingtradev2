@@ -438,6 +438,7 @@ from features.sets.v3_New_Dawn.technical import (
     # Block ML-26.1: Enhanced Volatility Features (10 features)
     feature_volatility_forecast_accuracy,
     feature_volatility_forecast_error,
+    feature_volatility_forecast_error_true,
     feature_volatility_forecast_trend,
     feature_volatility_clustering_strength,
     feature_volatility_regime_forecast,
@@ -901,6 +902,7 @@ FEATURE_REGISTRY = {
     # Block ML-26.1: Enhanced Volatility Features (10 features)
     'volatility_forecast_accuracy': feature_volatility_forecast_accuracy,
     'volatility_forecast_error': feature_volatility_forecast_error,
+    'volatility_forecast_error_true': feature_volatility_forecast_error_true,
     'volatility_forecast_trend': feature_volatility_forecast_trend,
     'volatility_clustering_strength': feature_volatility_clustering_strength,
     'volatility_regime_forecast': feature_volatility_regime_forecast,

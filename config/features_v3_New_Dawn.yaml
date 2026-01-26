@@ -430,6 +430,7 @@ features:
   # KEEP FOR FILTERING: volatility_forecast_accuracy, volatility_forecast_error, volatility_forecast_trend, volatility_surprise
   volatility_forecast_accuracy: 1
   volatility_forecast_error: 1
+  volatility_forecast_error_true: 1  # True forecast accuracy (past forecast vs present outcome)
   volatility_forecast_trend: 1
   volatility_clustering_strength: 1
   volatility_regime_forecast: 0  # DISABLED: Experimental
