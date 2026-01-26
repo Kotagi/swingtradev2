@@ -71,7 +71,7 @@ try:
     HAS_FEATURE_SET_MANAGER = True
 except ImportError:
     HAS_FEATURE_SET_MANAGER = False
-    DEFAULT_FEATURE_SET = "v1"
+    DEFAULT_FEATURE_SET = "v3_New_Dawn"
 
 # Try to import matplotlib for plotting (optional)
 try:
@@ -615,8 +615,8 @@ def main() -> None:
     # (label_future_return is imported at the top of the file)
     
     # Determine horizon and threshold
-    horizon = args.horizon if args.horizon else 30  # Default to 30 if not specified
-    return_threshold = args.return_threshold if args.return_threshold is not None else 0.0
+    horizon = args.horizon if args.horizon else 20  # Default to 20 if not specified
+    return_threshold = args.return_threshold if args.return_threshold is not None else 0.15
     
     print(f"Calculating labels with horizon={horizon} days, threshold={return_threshold:.2%}")
     

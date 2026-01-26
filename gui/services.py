@@ -1218,6 +1218,7 @@ class FeatureService:
         processed_count = 0
         skipped_count = 0
         failed_count = 0
+        failed_tickers = []
         
         # Try to find patterns in the output
         total_match = re.search(r'Total tickers:\s*(\d+)', output, re.IGNORECASE)
@@ -1236,6 +1237,17 @@ class FeatureService:
         if failed_match:
             failed_count = int(failed_match.group(1))
         
+        # Extract failed ticker names from "Failed tickers" section
+        failed_section_match = re.search(r'Failed tickers.*?:\s*\n((?:\s+[^\n]+(?:\n|$))+)', output, re.IGNORECASE | re.MULTILINE)
+        if failed_section_match:
+            failed_section = failed_section_match.group(1)
+            # Extract ticker names (format: "  TICKER: error message")
+            ticker_matches = re.findall(r'^\s+([A-Z0-9]+(?:\.[A-Z]+)?):\s*(.+?)(?:\n|$)', failed_section, re.MULTILINE)
+            for ticker, error in ticker_matches[:5]:  # Limit to first 5 for display
+                failed_tickers.append(f"{ticker}")
+            if len(ticker_matches) > 5:
+                failed_tickers.append(f"... and {len(ticker_matches) - 5} more")
+        
         # Build message with statistics
         stats_parts = []
         if processed_count > 0:
@@ -1243,7 +1255,11 @@ class FeatureService:
         if skipped_count > 0:
             stats_parts.append(f"{skipped_count} Skipped")
         if failed_count > 0:
-            stats_parts.append(f"{failed_count} Failed")
+            if failed_tickers:
+                failed_info = f"{failed_count} Failed ({', '.join(failed_tickers)})"
+            else:
+                failed_info = f"{failed_count} Failed"
+            stats_parts.append(failed_info)
         
         if stats_parts:
             message = f"Features built successfully ({', '.join(stats_parts)})"
@@ -3337,7 +3353,7 @@ class SHAPService:
                 HAS_FEATURE_SET_MANAGER = True
             except ImportError:
                 HAS_FEATURE_SET_MANAGER = False
-                DEFAULT_FEATURE_SET = "v1"
+                DEFAULT_FEATURE_SET = "v3_New_Dawn"
             
             if progress_callback:
                 progress_callback(1, "Loading model...")

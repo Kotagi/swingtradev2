@@ -170,6 +170,16 @@ def clean_file(
             except Exception as e:
                 raise ValueError(f"Failed to convert {req_col} to float: {e}")
         
+        # 8c) Also convert 'adj close' to float if present (used by features)
+        adj_close_col = find_column_case_insensitive(df, "adj close")
+        if adj_close_col is not None:
+            try:
+                df[adj_close_col] = pd.to_numeric(df[adj_close_col], errors="coerce").astype(float)
+            except Exception as e:
+                if verbose:
+                    logger.warning(f"{symbol}: Failed to convert adj close to float: {e}")
+                # Don't fail - adj close is optional, features can fall back to 'close'
+        
         # 9) Drop rows with any missing or non-positive OHLCV
         ohlcv = df[REQUIRED_COLS]
         valid_mask = ohlcv.gt(0).all(axis=1) & ohlcv.notna().all(axis=1)

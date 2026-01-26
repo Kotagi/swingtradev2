@@ -34,7 +34,7 @@ try:
     HAS_FEATURE_SET_MANAGER = True
 except ImportError as e:
     HAS_FEATURE_SET_MANAGER = False
-    DEFAULT_FEATURE_SET = "v1"
+    DEFAULT_FEATURE_SET = "v3_New_Dawn"
     print(f"Warning: Could not import feature_set_manager: {e}")
 
 

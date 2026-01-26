@@ -47,7 +47,7 @@ class IdentifyTab(QWidget):
         self.data_service = DataService()
         self.current_opportunities = None
         self.worker = None
-        self.current_feature_set = "v1"  # Default feature set
+        self.current_feature_set = "v3_New_Dawn"  # Default feature set
         
         self.init_ui()
     
@@ -559,7 +559,7 @@ class IdentifyTab(QWidget):
                 return main_window.feature_set_selector.get_current_feature_set()
         except (AttributeError, RuntimeError, TypeError):
             pass
-        return getattr(self, 'current_feature_set', 'v1')
+        return getattr(self, 'current_feature_set', 'v3_New_Dawn')
 
 
 

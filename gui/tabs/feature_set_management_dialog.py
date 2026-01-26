@@ -35,7 +35,7 @@ try:
     HAS_FEATURE_SET_MANAGER = True
 except ImportError:
     HAS_FEATURE_SET_MANAGER = False
-    DEFAULT_FEATURE_SET = "v1"
+    DEFAULT_FEATURE_SET = "v3_New_Dawn"
 
 
 class FeatureSetManagementDialog(QDialog):

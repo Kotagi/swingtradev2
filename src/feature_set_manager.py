@@ -19,7 +19,7 @@ import yaml
 PROJECT_ROOT = Path(__file__).parent.parent
 CONFIG_DIR = PROJECT_ROOT / "config"
 DATA_DIR = PROJECT_ROOT / "data"
-DEFAULT_FEATURE_SET = "v1"  # Default feature set name
+DEFAULT_FEATURE_SET = "v3_New_Dawn"  # Default feature set name
 
 # Ensure project root is in Python path for imports
 if str(PROJECT_ROOT) not in sys.path:

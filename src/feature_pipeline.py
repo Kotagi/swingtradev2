@@ -70,16 +70,12 @@ def load_enabled_features_for_set(config_path: str, feature_set: str = None) -> 
         feature_set = DEFAULT_FEATURE_SET
     
     # Import the registry module for this feature set
-    if feature_set == DEFAULT_FEATURE_SET:
-        # For v1, use the new location
-        from features.sets.v1.registry import load_enabled_features
-    else:
-        # For other feature sets, dynamically import
-        import importlib
-        # Convert feature set name to valid Python module name (spaces/dashes to underscores)
-        module_name = feature_set.replace(" ", "_").replace("-", "_")
-        registry_module = importlib.import_module(f"features.sets.{module_name}.registry")
-        load_enabled_features = registry_module.load_enabled_features
+    # Dynamically import based on feature set name
+    import importlib
+    # Convert feature set name to valid Python module name (spaces/dashes to underscores)
+    module_name = feature_set.replace(" ", "_").replace("-", "_")
+    registry_module = importlib.import_module(f"features.sets.{module_name}.registry")
+    load_enabled_features = registry_module.load_enabled_features
     
     return load_enabled_features(config_path)
 
@@ -372,7 +368,12 @@ def process_file(
     spy_data: Optional[pd.DataFrame] = None
 ) -> Tuple[str, Optional[str], Dict]:
     """
-    Worker: process one ticker end-to-end with optional caching.
+    Worker: process one ticker end-to-end with optional caching and incremental updates.
+    
+    Supports incremental feature engineering:
+    - Adds new features for existing dates without rebuilding everything
+    - Adds new dates for all enabled features when new trading days are available
+    - Only rebuilds what's necessary when full_refresh=False
 
     Args:
         file_path: Path to cleaned input Parquet.
@@ -395,44 +396,244 @@ def process_file(
         'features_failed': 0,
         'validation_issues': 0,
         'rows_before': 0,
-        'rows_after': 0
+        'rows_after': 0,
+        'new_features_added': 0,
+        'new_dates_added': 0,
+        'incremental_mode': False
     }
 
-    # Caching: skip if up-to-date and not full_refresh
-    if not full_refresh and out_file.exists():
-        input_mtime = file_path.stat().st_mtime
-        output_mtime = out_file.stat().st_mtime
-        if output_mtime >= input_mtime:
-            logger.debug(f"Skipping {ticker}, up-to-date")
-            stats['status'] = 'skipped'
-            return (file_path.name, None, stats)
-
-    logger.debug(f"Start processing {ticker}")
-
+    # 1) Load cleaned input data
     try:
-        # 1) Load cleaned data (use PyArrow engine for faster I/O, fallback to default if not available)
         try:
-            df = pd.read_parquet(file_path, engine='pyarrow')
+            df_input = pd.read_parquet(file_path, engine='pyarrow')
         except (ImportError, ValueError):
-            # Fallback to default engine if PyArrow not available
-            df = pd.read_parquet(file_path)
-        stats['rows_before'] = len(df)
+            df_input = pd.read_parquet(file_path)
         
-        if df.empty:
+        if df_input.empty:
             raise ValueError(f"{ticker}: Empty DataFrame")
+        
+        # Ensure index is datetime
+        if not isinstance(df_input.index, pd.DatetimeIndex):
+            df_input.index = pd.to_datetime(df_input.index)
+        
+        stats['rows_before'] = len(df_input)
+    except Exception as e:
+        stats['status'] = 'failed'
+        logger.error(f"Error loading input data for {ticker}: {e}", exc_info=True)
+        return (file_path.name, str(e), stats)
 
-        # 2) Compute features with validation (pass spy_data if available)
-        df_feat, validation_issues = apply_features(df, enabled, logger, validate=True, spy_data=spy_data)
-        stats['features_computed'] = len(enabled) - len(validation_issues)
+    # 2) Check for incremental update opportunities
+    df_existing = None
+    needs_full_rebuild = full_refresh
+    
+    if not full_refresh and out_file.exists():
+        try:
+            # Load existing feature file
+            try:
+                df_existing = pd.read_parquet(out_file, engine='pyarrow')
+            except (ImportError, ValueError):
+                df_existing = pd.read_parquet(out_file)
+            
+            # Ensure index is datetime
+            if not isinstance(df_existing.index, pd.DatetimeIndex):
+                df_existing.index = pd.to_datetime(df_existing.index)
+            
+            # Check if input file was modified (simple cache check)
+            input_mtime = file_path.stat().st_mtime
+            output_mtime = out_file.stat().st_mtime
+            
+            # Identify what needs to be computed
+            price_cols = ['open', 'high', 'low', 'close', 'volume', 'adj close', 'Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']
+            existing_feature_cols = [col for col in df_existing.columns if col not in price_cols]
+            enabled_feature_names = set(enabled.keys())
+            existing_feature_names = set(existing_feature_cols)
+            
+            # Find new features (enabled but not in existing)
+            new_features = enabled_feature_names - existing_feature_names
+            
+            # Find new dates (in input but not in existing)
+            existing_dates = set(df_existing.index)
+            input_dates = set(df_input.index)
+            new_dates = input_dates - existing_dates
+            
+            # Check if we can skip entirely (no new features, no new dates, and output is newer)
+            if not new_features and not new_dates and output_mtime >= input_mtime:
+                logger.debug(f"Skipping {ticker}, fully up-to-date")
+                stats['status'] = 'skipped'
+                return (file_path.name, None, stats)
+            
+            # Determine if we need incremental update or full rebuild
+            if new_features or new_dates:
+                stats['incremental_mode'] = True
+                stats['new_features_added'] = len(new_features)
+                stats['new_dates_added'] = len(new_dates)
+                
+                if new_features:
+                    logger.info(f"{ticker}: Found {len(new_features)} new feature(s) to compute: {sorted(new_features)[:5]}{'...' if len(new_features) > 5 else ''}")
+                if new_dates:
+                    logger.info(f"{ticker}: Found {len(new_dates)} new date(s) to compute: {min(new_dates) if new_dates else 'N/A'} to {max(new_dates) if new_dates else 'N/A'}")
+                
+                # If input file was modified, we might need to recompute features that depend on historical data
+                # For now, we'll do incremental updates. Full rebuild only if explicitly requested.
+                needs_full_rebuild = False
+            else:
+                # No new features or dates, but input was modified - might need to check for data corrections
+                # For safety, if input is significantly newer, do full rebuild
+                if input_mtime > output_mtime:
+                    time_diff = input_mtime - output_mtime
+                    # If input is more than 1 hour newer, assume data corrections and rebuild
+                    if time_diff > 3600:
+                        logger.info(f"{ticker}: Input file significantly newer ({time_diff:.0f}s), doing full rebuild")
+                        needs_full_rebuild = True
+                    else:
+                        logger.debug(f"{ticker}: Input file slightly newer, but no new features/dates - skipping")
+                        stats['status'] = 'skipped'
+                        return (file_path.name, None, stats)
+        except Exception as e:
+            logger.warning(f"{ticker}: Error reading existing feature file, will rebuild: {e}")
+            df_existing = None
+            needs_full_rebuild = True
+
+    # 3) Compute features (incremental or full)
+    try:
+        if needs_full_rebuild or df_existing is None:
+            # Full rebuild: compute all enabled features for all dates
+            logger.debug(f"Full rebuild for {ticker}")
+            df_feat, validation_issues = apply_features(df_input, enabled, logger, validate=True, spy_data=spy_data)
+            stats['features_computed'] = len(enabled) - len(validation_issues)
+        else:
+            # Incremental update: compute only what's needed
+            logger.debug(f"Incremental update for {ticker}")
+            
+            # Identify what to compute
+            new_features = set(enabled.keys()) - set([col for col in df_existing.columns if col not in price_cols])
+            new_dates = set(df_input.index) - set(df_existing.index)
+            
+            validation_issues = {}
+            features_to_compute = {}
+            
+            if new_features and new_dates:
+                # Case 1: Both new features and new dates
+                # Compute new features for existing dates only, and all features for new dates
+                logger.debug(f"Computing {len(new_features)} new features for existing dates, and all features for {len(new_dates)} new dates")
+                
+                # Get existing dates that are also in input
+                existing_dates_set = set(df_existing.index) & set(df_input.index)
+                df_existing_dates = df_input.loc[list(existing_dates_set)]
+                
+                # Compute new features for existing dates only
+                new_features_dict = {name: enabled[name] for name in new_features}
+                df_new_feat_existing, new_validation = apply_features(df_existing_dates, new_features_dict, logger, validate=True, spy_data=spy_data)
+                
+                # Compute all enabled features for new dates only
+                df_new_dates = df_input.loc[list(new_dates)]
+                df_new_dates_feat, new_dates_validation = apply_features(df_new_dates, enabled, logger, validate=True, spy_data=spy_data)
+                
+                validation_issues.update(new_validation)
+                validation_issues.update(new_dates_validation)
+                
+                # Merge: start with existing, add new features for existing dates, then add new dates
+                # First, ensure price columns come from input (source of truth)
+                price_cols = ['open', 'high', 'low', 'close', 'volume', 'adj close', 'Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']
+                existing_feature_cols = [col for col in df_existing.columns if col not in price_cols]
+                
+                # Start with existing features (excluding price columns)
+                df_feat = df_existing[existing_feature_cols].copy()
+                
+                # Add new feature columns for existing dates only
+                for feat_name in new_features:
+                    if feat_name in df_new_feat_existing.columns:
+                        df_feat[feat_name] = df_new_feat_existing[feat_name]
+                
+                # Add/update rows for new dates (all features including new ones)
+                # Extract only feature columns from new_dates_feat (price columns will come from input)
+                new_dates_feat_cols = [col for col in df_new_dates_feat.columns if col not in price_cols]
+                df_feat = pd.concat([df_feat, df_new_dates_feat[new_dates_feat_cols]])
+                df_feat = df_feat[~df_feat.index.duplicated(keep='last')]  # Keep new dates version
+                df_feat = df_feat.sort_index()
+                
+                # Add price columns from input (source of truth)
+                for price_col in price_cols:
+                    if price_col in df_input.columns:
+                        df_feat[price_col] = df_input[price_col]
+                
+                stats['features_computed'] = len(new_features) + len(enabled)
+                
+            elif new_features:
+                # Case 2: Only new features (no new dates)
+                # Compute new features for existing dates only
+                logger.debug(f"Computing {len(new_features)} new features for existing dates")
+                
+                # Use existing dates that are also in input (in case input was trimmed)
+                common_dates = set(df_existing.index) & set(df_input.index)
+                df_existing_dates = df_input.loc[list(common_dates)]
+                
+                new_features_dict = {name: enabled[name] for name in new_features}
+                df_new_feat, new_validation = apply_features(df_existing_dates, new_features_dict, logger, validate=True, spy_data=spy_data)
+                
+                validation_issues.update(new_validation)
+                
+                # Merge: add new feature columns to existing
+                # Ensure price columns come from input (source of truth)
+                price_cols = ['open', 'high', 'low', 'close', 'volume', 'adj close', 'Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']
+                existing_feature_cols = [col for col in df_existing.columns if col not in price_cols]
+                
+                # Start with existing features (excluding price columns)
+                df_feat = df_existing[existing_feature_cols].copy()
+                
+                # Add price columns from input (source of truth)
+                for price_col in price_cols:
+                    if price_col in df_input.columns:
+                        df_feat[price_col] = df_input[price_col]
+                
+                # Add new feature columns
+                for feat_name in new_features:
+                    if feat_name in df_new_feat.columns:
+                        df_feat[feat_name] = df_new_feat[feat_name]
+                
+                stats['features_computed'] = len(new_features)
+                
+            elif new_dates:
+                # Case 3: Only new dates (no new features)
+                # Compute all enabled features for new dates only
+                logger.debug(f"Computing all features for {len(new_dates)} new dates")
+                
+                df_new_dates = df_input.loc[list(new_dates)]
+                df_new_dates_feat, new_dates_validation = apply_features(df_new_dates, enabled, logger, validate=True, spy_data=spy_data)
+                
+                validation_issues.update(new_dates_validation)
+                
+                # Merge: concatenate new dates to existing
+                # Ensure price columns come from input (source of truth)
+                price_cols = ['open', 'high', 'low', 'close', 'volume', 'adj close', 'Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']
+                existing_feature_cols = [col for col in df_existing.columns if col not in price_cols]
+                
+                # Start with existing features (excluding price columns)
+                df_feat = df_existing[existing_feature_cols].copy()
+                
+                # Extract only feature columns from new_dates_feat (price columns will come from input)
+                new_dates_feat_cols = [col for col in df_new_dates_feat.columns if col not in price_cols]
+                df_feat = pd.concat([df_feat, df_new_dates_feat[new_dates_feat_cols]])
+                df_feat = df_feat[~df_feat.index.duplicated(keep='last')]  # Remove duplicates, keep new
+                df_feat = df_feat.sort_index()
+                
+                # Add price columns from input (source of truth)
+                for price_col in price_cols:
+                    if price_col in df_input.columns:
+                        df_feat[price_col] = df_input[price_col]
+                
+                stats['features_computed'] = len(enabled)
+            else:
+                # No new features or dates - should have been caught earlier, but handle gracefully
+                logger.debug(f"No new features or dates for {ticker}")
+                df_feat = df_existing.copy()
+                stats['features_computed'] = 0
+        
         stats['features_failed'] = len([v for v in validation_issues.values() if 'Computation error' in str(v)])
         stats['validation_issues'] = sum(len(issues) for issues in validation_issues.values())
-
-        # 3) Labels are now calculated during training, not during feature engineering
-        # Features are ready - no label generation needed
         stats['rows_after'] = len(df_feat)
 
         # 4) Final validation: check for excessive NaNs in final output
-        # Exclude price columns but keep all feature columns
         price_cols = ['open', 'high', 'low', 'close', 'volume', 'adj close', 'Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']
         feature_cols = [col for col in df_feat.columns if col not in price_cols]
         if feature_cols:
@@ -445,9 +646,13 @@ def process_file(
         try:
             df_feat.to_parquet(out_file, index=True, engine='pyarrow')
         except (ImportError, ValueError):
-            # Fallback to default engine if PyArrow not available
             df_feat.to_parquet(out_file, index=True)
-        logger.debug(f"Finished {ticker} -> {out_file}")
+        
+        if stats['incremental_mode']:
+            logger.debug(f"Finished incremental update for {ticker} -> {out_file} (added {stats['new_features_added']} features, {stats['new_dates_added']} dates)")
+        else:
+            logger.debug(f"Finished {ticker} -> {out_file}")
+        
         return (file_path.name, None, stats)
 
     except Exception as e:
@@ -490,8 +695,8 @@ def main(
         # Extract feature set from filename (e.g., "features_v1.yaml" -> "v1")
         feature_set = config_path_obj.stem.replace("features_", "")
     elif config_path_obj.name == "features.yaml":
-        # Old default config, use v1
-        feature_set = "v1"
+        # Old default config, use v3_New_Dawn
+        feature_set = "v3_New_Dawn"
     
     enabled = load_enabled_features_for_set(config_path, feature_set)
     logger.info(f"Using feature set: {feature_set}")
@@ -593,6 +798,11 @@ def main(
     total_rows_before = sum(s.get('rows_before', 0) for s in all_stats.values())
     total_rows_after = sum(s.get('rows_after', 0) for s in all_stats.values())
     
+    # Incremental update statistics
+    incremental_updates = sum(1 for s in all_stats.values() if s.get('incremental_mode', False))
+    total_new_features_added = sum(s.get('new_features_added', 0) for s in all_stats.values())
+    total_new_dates_added = sum(s.get('new_dates_added', 0) for s in all_stats.values())
+    
     elapsed = time.perf_counter() - start_time
     
     # Print comprehensive summary
@@ -603,6 +813,10 @@ def main(
     logger.info(f"Skipped (cached): {len(skipped)}")
     logger.info(f"Successfully completed: {num_success}")
     logger.info(f"Failed: {len(failures)}")
+    if incremental_updates > 0:
+        logger.info(f"Incremental updates: {incremental_updates} ticker(s)")
+        logger.info(f"  - New features added: {total_new_features_added:,}")
+        logger.info(f"  - New dates added: {total_new_dates_added:,}")
     logger.info(f"Total features computed: {total_features_computed:,}")
     logger.info(f"Total feature failures: {total_features_failed:,}")
     logger.info(f"Total validation issues: {total_validation_issues:,}")
@@ -613,10 +827,15 @@ def main(
     
     if failures:
         logger.warning(f"\nFailed tickers ({len(failures)}):")
+        # Also print to stdout so GUI can capture it
+        print(f"\nFailed tickers ({len(failures)}):", flush=True)
         for fn, err in failures[:10]:  # Show first 10
-            logger.warning(f"  {fn}: {err}")
+            ticker_name = Path(fn).stem if fn else "unknown"
+            logger.warning(f"  {ticker_name}: {err}")
+            print(f"  {ticker_name}: {err}", flush=True)
         if len(failures) > 10:
             logger.warning(f"  ... and {len(failures) - 10} more")
+            print(f"  ... and {len(failures) - 10} more", flush=True)
     
     if skipped:
         logger.info(f"\nSkipped (already up-to-date): {len(skipped)} tickers")

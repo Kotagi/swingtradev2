@@ -54,8 +54,8 @@ class TrainingTab(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.current_feature_set = "v1"  # Default (for global selector compatibility)
-        self.training_feature_set = "v1"  # Feature set selected for training (independent)
+        self.current_feature_set = "v3_New_Dawn"  # Default (for global selector compatibility)
+        self.training_feature_set = "v3_New_Dawn"  # Feature set selected for training (independent)
         self.service = TrainingService()
         self.data_service = DataService()
         self.registry = ModelRegistry()
@@ -170,7 +170,7 @@ class TrainingTab(QWidget):
         horizon_row.addWidget(QLabel("Horizon (Trading Days):"))
         self.horizon_spin = QSpinBox()
         self.horizon_spin.setRange(1, 365)
-        self.horizon_spin.setValue(30)
+        self.horizon_spin.setValue(20)
         self.horizon_spin.setSuffix(" days")
         self.horizon_spin.setToolTip("Trade horizon in trading days (used to select label column, e.g., label_30d)")
         horizon_row.addWidget(self.horizon_spin)
@@ -182,7 +182,7 @@ class TrainingTab(QWidget):
         threshold_row.addWidget(QLabel("Return Threshold (%):"))
         self.return_threshold_spin = QSpinBox()
         self.return_threshold_spin.setRange(0, 100)
-        self.return_threshold_spin.setValue(5)
+        self.return_threshold_spin.setValue(15)
         self.return_threshold_spin.setSuffix("%")
         self.return_threshold_spin.setToolTip("Return threshold used for labeling (for metadata tracking only)")
         threshold_row.addWidget(self.return_threshold_spin)
@@ -592,8 +592,8 @@ class TrainingTab(QWidget):
         except (ImportError, Exception):
             # Fallback if feature_set_manager not available
             self.feature_set_combo.clear()
-            self.feature_set_combo.addItem("v1 (default)", "v1")
-            self.training_feature_set = "v1"
+            self.feature_set_combo.addItem("v3_New_Dawn (default)", "v3_New_Dawn")
+            self.training_feature_set = "v3_New_Dawn"
     
     def on_training_feature_set_changed(self, text: str):
         """Handle feature set selection change in training tab."""
@@ -651,7 +651,7 @@ class TrainingTab(QWidget):
         except (AttributeError, RuntimeError, TypeError):
             pass
         # Fall back to stored value
-        return getattr(self, 'current_feature_set', 'v1')
+        return getattr(self, 'current_feature_set', 'v3_New_Dawn')
     
     def on_feature_set_changed(self, feature_set: str):
         """Handle feature set change from main window (for global selector compatibility)."""

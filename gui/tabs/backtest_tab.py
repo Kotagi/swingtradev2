@@ -413,7 +413,7 @@ class BacktestTab(QWidget):
         self.worker = None
         self.entry_filters = []  # List of (feature, operator, value)
         self.loaded_preset_name = None  # Track which preset was loaded
-        self.current_feature_set = "v1"  # Default
+        self.current_feature_set = "v3_New_Dawn"  # Default
         
         self.init_ui()
         
@@ -1219,7 +1219,7 @@ class BacktestTab(QWidget):
         except (AttributeError, RuntimeError, TypeError):
             pass
         # Fall back to stored value
-        return getattr(self, 'current_feature_set', 'v1')
+        return getattr(self, 'current_feature_set', 'v3_New_Dawn')
     
     def on_feature_set_changed(self, feature_set: str):
         """Handle feature set change from main window."""

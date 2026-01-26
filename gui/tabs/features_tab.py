@@ -61,7 +61,7 @@ class FeaturesTab(QWidget):
         self.service = FeatureService()
         self.data_service = DataService()
         self.worker = None
-        self.current_feature_set = "v1"  # Default
+        self.current_feature_set = "v3_New_Dawn"  # Default
         self.feature_set_selector = None  # Will be set by main window
         self.dev_tools_enabled = False  # Controlled by MainWindow toggle
         self.test_run_context = None  # Holds info for the dev test run
@@ -124,7 +124,7 @@ class FeaturesTab(QWidget):
         # Note: The selector widget already has its own "Feature Set:" label, so we don't add another one
         self.featureset_row = QHBoxLayout()
         # Placeholder - will be replaced with actual selector from main window
-        self.featureset_display = QLabel("v1 (default)")
+        self.featureset_display = QLabel("v3_New_Dawn (default)")
         self.featureset_display.setStyleSheet("color: #00d4aa; font-weight: bold;")
         self.featureset_row.addWidget(self.featureset_display)
         self.featureset_row.addStretch()
@@ -133,7 +133,7 @@ class FeaturesTab(QWidget):
         # Options
         options_row = QHBoxLayout()
         self.full_features_check = QCheckBox("Force Full Recompute")
-        self.full_features_check.setChecked(True)
+        self.full_features_check.setChecked(False)
         options_row.addWidget(self.full_features_check)
         options_row.addStretch()
         params_layout.addLayout(options_row)
@@ -273,15 +273,16 @@ class FeaturesTab(QWidget):
             feature_set = self.get_current_feature_set()
             project_root = Path(__file__).parent.parent.parent
             
-            # Determine config path
-            if feature_set and feature_set != "v1":
-                try:
-                    from feature_set_manager import get_feature_set_config_path
-                    config_path = get_feature_set_config_path(feature_set)
-                except (ImportError, Exception):
+            # Determine config path using feature_set_manager for all feature sets
+            try:
+                from feature_set_manager import get_feature_set_config_path
+                config_path = get_feature_set_config_path(feature_set)
+            except (ImportError, Exception):
+                # Fallback: construct path manually
+                if feature_set:
                     config_path = project_root / "config" / f"features_{feature_set}.yaml"
-            else:
-                config_path = project_root / "config" / "features.yaml"
+                else:
+                    config_path = project_root / "config" / "features.yaml"
             
             # Load enabled count
             if config_path.exists():
@@ -592,7 +593,7 @@ class FeaturesTab(QWidget):
         self.current_feature_set = feature_set
         # Update display if selector hasn't been added yet
         if hasattr(self, 'featureset_display') and self.featureset_display.parent():
-            self.featureset_display.setText(f"{feature_set} {'(default)' if feature_set == 'v1' else ''}")
+            self.featureset_display.setText(f"{feature_set} {'(default)' if feature_set == 'v3_New_Dawn' else ''}")
             self.featureset_display.setStyleSheet("color: #00d4aa; font-weight: bold;")
         # Update feature button text when feature set changes
         if hasattr(self, 'feature_selection_btn'):

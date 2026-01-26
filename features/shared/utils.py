@@ -126,10 +126,18 @@ def _get_close_series(df: DataFrame) -> Series:
     """
     # Prefer adjusted close (split-adjusted, better for ML)
     try:
-        return _get_column(df, 'adj close')
+        adj_close = _get_column(df, 'adj close')
+        # Safety check: ensure adj close is numeric (handle cases where it's stored as string)
+        if adj_close.dtype == 'object':
+            adj_close = pd.to_numeric(adj_close, errors='coerce')
+        return adj_close
     except KeyError:
         # Fallback to regular close if adj close not available
-        return _get_column(df, 'close')
+        close = _get_column(df, 'close')
+        # Safety check: ensure close is numeric
+        if close.dtype == 'object':
+            close = pd.to_numeric(close, errors='coerce')
+        return close
 
 
 def _get_open_series(df: DataFrame) -> Series:

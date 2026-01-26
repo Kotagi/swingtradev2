@@ -240,7 +240,7 @@ class HelpDialog(QDialog):
         <h3>Parameters</h3>
         <ul>
             <li><b>Feature Set</b>: Feature set version (v1, v2, or custom)</li>
-            <li><b>Force Full Recompute</b>: Rebuild all features, ignoring cached files (checked by default)</li>
+            <li><b>Force Full Recompute</b>: Rebuild all features, ignoring cached files (unchecked by default - uses incremental updates)</li>
         </ul>
         
         <h3>Paths</h3>
