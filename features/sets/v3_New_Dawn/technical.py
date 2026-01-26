@@ -11584,3 +11584,34 @@ def feature_adr_percentage(df: DataFrame) -> Series:
     
     adr.name = "adr_percentage"
     return adr
+
+
+def feature_distance_from_monthly_vwap(df: DataFrame) -> Series:
+    """
+    Distance from Monthly VWAP: Distance from Volume Weighted Average Price over ~21 trading days.
+    
+    For a 20-30 day trading horizon, monthly VWAP is more "institutional" than 200-day SMA.
+    Stocks trading significantly above their monthly VWAP are often "overextended" - the model
+    may be buying late. This feature tells the model: "Yes, volatility is there, but the price
+    is too far from the average entry price of other buyers."
+    
+    Calculated as: (Close / Monthly_VWAP) - 1.
+    Positive values = trading above monthly VWAP (overextended).
+    Negative values = trading below monthly VWAP (potential opportunity).
+    Zero = trading at monthly VWAP.
+    
+    Monthly VWAP = sum(price * volume) / sum(volume) over ~21 trading days.
+    No clipping - let ML learn the distribution.
+    """
+    close = _get_close_series(df)
+    volume = _get_volume_series(df)
+    
+    # Monthly VWAP over ~21 trading days (approximately 1 month)
+    price_volume = close * volume
+    monthly_vwap = price_volume.rolling(window=21, min_periods=1).sum() / volume.rolling(window=21, min_periods=1).sum()
+    
+    # Distance as percentage: (Close / Monthly_VWAP) - 1
+    distance = (close / (monthly_vwap + 1e-10)) - 1.0
+    
+    distance.name = "distance_from_monthly_vwap"
+    return distance

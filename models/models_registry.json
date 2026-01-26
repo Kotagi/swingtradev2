@@ -42,88 +42,6 @@
       "shap_metadata": null
     },
     {
-      "id": "model_20251219_012813",
-      "name": "Baseline_5d_5%",
-      "file_path": "C:\\Users\\brand\\Documents\\Stocks\\SwingTradeApp\\SwingTradeV2\\models\\model_5d_5pct_default_57feat_notuned_nocv_20251219_012316.pkl",
-      "training_date": "2025-12-19T01:28:13.358005",
-      "metrics": {
-        "test": {
-          "roc_auc": 0.5624,
-          "average_precision": 0.4632,
-          "f1_score": 0.5456,
-          "precision": 0.4603,
-          "recall": 0.6697,
-          "accuracy": 0.5306
-        },
-        "validation": {
-          "roc_auc": 0.7002,
-          "average_precision": 0.8219,
-          "f1_score": 0.7316,
-          "precision": 0.8,
-          "recall": 0.6739,
-          "accuracy": 0.66
-        }
-      },
-      "parameters": {
-        "horizon": 5,
-        "return_threshold": 0.05,
-        "feature_set": null,
-        "tune": false,
-        "cv": false,
-        "imbalance_multiplier": 1.0,
-        "n_iter": null,
-        "cv_folds": null
-      },
-      "training_info": {
-        "training_time": 270.25,
-        "feature_count": 57,
-        "total_features": 60
-      },
-      "shap_artifacts_path": null,
-      "shap_metadata": null
-    },
-    {
-      "id": "model_20260119_221528",
-      "name": "XGBoost_20d_15%",
-      "file_path": "C:\\Users\\brand\\Documents\\Stocks\\SwingTradeApp\\SwingTradeV2\\models\\model_20d_15pct_Test_57feat_notuned_nocv_20260119_221026.pkl",
-      "training_date": "2026-01-19T22:15:28.312401",
-      "metrics": {
-        "test": {
-          "roc_auc": 0.545,
-          "average_precision": 0.1481,
-          "f1_score": 0.2503,
-          "precision": 0.1637,
-          "recall": 0.5317,
-          "accuracy": 0.5511
-        },
-        "validation": {
-          "roc_auc": 0.619,
-          "average_precision": 0.327,
-          "f1_score": 0.4313,
-          "precision": 0.3372,
-          "recall": 0.5984,
-          "accuracy": 0.5845
-        }
-      },
-      "parameters": {
-        "horizon": 20,
-        "return_threshold": 0.15,
-        "feature_set": "Test",
-        "tune": false,
-        "cv": false,
-        "imbalance_multiplier": 1.0,
-        "n_iter": null,
-        "cv_folds": null
-      },
-      "training_info": {
-        "training_time": 279.46,
-        "feature_count": 59,
-        "total_features": 57
-      },
-      "shap_artifacts_path": null,
-      "shap_metadata": null
-    },
-    {
       "id": "model_20260120_020025",
       "name": "V2_Non_Normalized_20d_15%",
       "file_path": "C:\\Users\\brand\\Documents\\Stocks\\SwingTradeApp\\SwingTradeV2\\models\\model_20d_15pct_v2_57feat_notuned_nocv_20260120_015358.pkl",
@@ -488,6 +406,47 @@
         "training_time": 646.34,
         "feature_count": 231,
         "total_features": 395
+      },
+      "shap_artifacts_path": null,
+      "shap_metadata": null
+    },
+    {
+      "id": "model_20260127_021140",
+      "name": "XGBoost_20d_15%",
+      "file_path": "C:\\Users\\brand\\Documents\\Stocks\\SwingTradeApp\\SwingTradeV2\\models\\model_20d_15pct_v3_New_Dawn_232feat_notuned_nocv_20260127_015658.pkl",
+      "training_date": "2026-01-27T02:11:40.791161",
+      "metrics": {
+        "test": {
+          "roc_auc": 0.7582,
+          "average_precision": 0.2744,
+          "f1_score": 0.2768,
+          "precision": 0.1711,
+          "recall": 0.7236,
+          "accuracy": 0.6575
+        },
+        "validation": {
+          "roc_auc": 0.7832,
+          "average_precision": 0.2756,
+          "f1_score": 0.2825,
+          "precision": 0.1696,
+          "recall": 0.8445,
+          "accuracy": 0.5882
+        }
+      },
+      "parameters": {
+        "horizon": 20,
+        "return_threshold": 0.15,
+        "feature_set": "v3_New_Dawn",
+        "tune": false,
+        "cv": false,
+        "imbalance_multiplier": 1.0,
+        "n_iter": null,
+        "cv_folds": null
+      },
+      "training_info": {
+        "training_time": 870.33,
+        "feature_count": 232,
+        "total_features": 396
       },
       "shap_artifacts_path": null,
       "shap_metadata": null

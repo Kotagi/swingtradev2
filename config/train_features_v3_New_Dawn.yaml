@@ -462,3 +462,4 @@ features:
   gain_probability_volatility_regime_interaction: 0
   # BLOCK ML-27: Precision-Enhancing Features (5 features)
   adr_percentage: 1
+  distance_from_monthly_vwap: 1
