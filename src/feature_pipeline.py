@@ -180,6 +180,59 @@ def apply_features(
             cached_historical_prob=gain_probability_cache['historical_gain_probability']
         )
     
+    # Cache signal features for signal_ensemble_score and related features
+    signal_cache = {}
+    signal_feature_names = [
+        'signal_ensemble_score',
+        'signal_quality_score',
+        'false_positive_risk',
+    ]
+    has_signal_features = any(name in enabled_features for name in signal_feature_names)
+    
+    if has_signal_features:
+        # Import here to avoid circular imports
+        from features.sets.v3_New_Dawn.technical import (
+            feature_signal_consistency,
+            feature_signal_confirmation,
+            feature_signal_strength,
+            feature_signal_timing,
+            feature_signal_risk_reward,
+            feature_signal_historical_success,
+            feature_signal_quality_score,
+        )
+        
+        # Compute signal features once (they're called multiple times)
+        logger.debug("Computing signal features (cached for reuse)")
+        signal_cache['signal_consistency'] = feature_signal_consistency(df)
+        signal_cache['signal_confirmation'] = feature_signal_confirmation(df)
+        signal_cache['signal_strength'] = feature_signal_strength(df)
+        signal_cache['signal_timing'] = feature_signal_timing(df)
+        signal_cache['signal_risk_reward'] = feature_signal_risk_reward(df)
+        signal_cache['signal_historical_success'] = feature_signal_historical_success(df)
+        
+        # Compute signal_quality_score (depends on the above)
+        signal_cache['signal_quality_score'] = feature_signal_quality_score(
+            df,
+            cached_signal_consistency=signal_cache['signal_consistency'],
+            cached_signal_confirmation=signal_cache['signal_confirmation'],
+            cached_signal_strength=signal_cache['signal_strength'],
+            cached_signal_timing=signal_cache['signal_timing'],
+            cached_signal_risk_reward=signal_cache['signal_risk_reward']
+        )
+    
+    # Pre-compute signal_ensemble_score if needed (depends on cached signal features)
+    if has_signal_features and 'signal_ensemble_score' in enabled_features:
+        from features.sets.v3_New_Dawn.technical import feature_signal_ensemble_score
+        logger.debug("Computing signal_ensemble_score (cached for reuse)")
+        signal_cache['signal_ensemble_score'] = feature_signal_ensemble_score(
+            df,
+            cached_signal_quality_score=signal_cache.get('signal_quality_score'),
+            cached_signal_strength=signal_cache.get('signal_strength'),
+            cached_signal_confirmation=signal_cache.get('signal_confirmation'),
+            cached_signal_timing=signal_cache.get('signal_timing'),
+            cached_signal_historical_success=signal_cache.get('signal_historical_success')
+        )
+    
     for name, func in enabled_features.items():
         try:
             # Check function signature to determine which parameters to pass
@@ -234,6 +287,39 @@ def apply_features(
                             cached_historical_prob=gain_probability_cache.get('historical_gain_probability')
                         )
                     kwargs['cached_gain_consistency'] = gain_probability_cache['gain_consistency']
+            
+            # Pass cached signal features if available
+            if has_signal_features:
+                # Pass cached signal_quality_score
+                if 'cached_signal_quality_score' in params and 'signal_quality_score' in signal_cache:
+                    kwargs['cached_signal_quality_score'] = signal_cache['signal_quality_score']
+                if 'cached_result' in params:
+                    # For signal_quality_score itself, pass cached_result
+                    if name == 'signal_quality_score' and 'signal_quality_score' in signal_cache:
+                        kwargs['cached_result'] = signal_cache['signal_quality_score']
+                
+                # Pass cached signal components for signal_quality_score
+                if 'cached_signal_consistency' in params and 'signal_consistency' in signal_cache:
+                    kwargs['cached_signal_consistency'] = signal_cache['signal_consistency']
+                if 'cached_signal_confirmation' in params and 'signal_confirmation' in signal_cache:
+                    kwargs['cached_signal_confirmation'] = signal_cache['signal_confirmation']
+                if 'cached_signal_strength' in params and 'signal_strength' in signal_cache:
+                    kwargs['cached_signal_strength'] = signal_cache['signal_strength']
+                if 'cached_signal_timing' in params and 'signal_timing' in signal_cache:
+                    kwargs['cached_signal_timing'] = signal_cache['signal_timing']
+                if 'cached_signal_risk_reward' in params and 'signal_risk_reward' in signal_cache:
+                    kwargs['cached_signal_risk_reward'] = signal_cache['signal_risk_reward']
+                if 'cached_signal_historical_success' in params and 'signal_historical_success' in signal_cache:
+                    kwargs['cached_signal_historical_success'] = signal_cache['signal_historical_success']
+                
+                # Pass cached signal_ensemble_score components
+                if 'cached_signal_ensemble_score' in params and 'signal_ensemble_score' in signal_cache:
+                    kwargs['cached_signal_ensemble_score'] = signal_cache['signal_ensemble_score']
+                
+                # Pass cached_result for signal_ensemble_score itself
+                if 'cached_result' in params:
+                    if name == 'signal_ensemble_score' and 'signal_ensemble_score' in signal_cache:
+                        kwargs['cached_result'] = signal_cache['signal_ensemble_score']
             
             # Call feature function with appropriate arguments
             if kwargs:
