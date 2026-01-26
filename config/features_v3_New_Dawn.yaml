@@ -464,3 +464,4 @@ features:
   adr_percentage: 1
   distance_from_monthly_vwap: 1
   atr_channel_position: 1
+  vpt_divergence: 1

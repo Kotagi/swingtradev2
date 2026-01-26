@@ -11666,3 +11666,51 @@ def feature_atr_channel_position(df: DataFrame) -> Series:
     position = position.clip(-1.0, 2.0)
     position.name = "atr_channel_position"
     return position
+
+
+def feature_vpt_divergence(df: DataFrame) -> Series:
+    """
+    VPT (Volume-Price Trend) Divergence: Cumulative measure of 'Smart Money' flow.
+    
+    Tracks the relationship between price change and volume. If price is making a new high
+    but VPT is flat or declining, it signals a "weak" breakout - smart money isn't participating.
+    This acts as a filter for high-volatility signals. If volatility is high but VPT is negative,
+    the model can learn to ignore the "Buy" signal.
+    
+    VPT Calculation:
+    - VPT = Previous VPT + Volume * (Close - Previous Close) / Previous Close
+    - Cumulative sum of volume-weighted price changes
+    
+    Divergence Detection:
+    - Compares price momentum vs VPT momentum over 10-day window
+    - Negative correlation = divergence (price up but VPT down, or vice versa)
+    - Divergence = 1 - normalized correlation (higher = more divergence)
+    
+    Values: 0.0 = no divergence (price and VPT moving together), 1.0 = maximum divergence.
+    Normalized to [0, 1]. Clipped for safety.
+    """
+    close = _get_close_series(df)
+    volume = _get_volume_series(df)
+    
+    # Calculate price change percentage
+    price_change_pct = close.pct_change().fillna(0.0)
+    
+    # VPT = cumulative sum of Volume * Price_Change_Pct
+    vpt = (volume * price_change_pct).cumsum()
+    
+    # Calculate momentum for both price and VPT over 10-day window
+    price_momentum = close.pct_change(periods=10).fillna(0.0)
+    vpt_momentum = vpt.pct_change(periods=10).fillna(0.0)
+    
+    # Rolling correlation between price momentum and VPT momentum (10-day window)
+    # Negative correlation = divergence
+    correlation = price_momentum.rolling(window=10, min_periods=3).corr(vpt_momentum)
+    
+    # Divergence = 1 - normalized correlation
+    # When correlation is positive (price and VPT moving together), divergence is low
+    # When correlation is negative (price and VPT diverging), divergence is high
+    divergence = 1.0 - ((correlation + 1.0) / 2.0)  # Normalize from [-1, 1] to [0, 1]
+    
+    divergence = divergence.fillna(0.5).clip(0.0, 1.0)
+    divergence.name = "vpt_divergence"
+    return divergence
