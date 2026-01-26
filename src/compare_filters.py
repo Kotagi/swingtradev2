@@ -11,8 +11,12 @@ import pandas as pd
 from pathlib import Path
 import sys
 
-PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
+# Resolve to absolute path to ensure correct resolution when run as subprocess
+_script_file = Path(__file__).resolve()
+PROJECT_ROOT = _script_file.parent.parent
+_project_root_str = str(PROJECT_ROOT)
+if _project_root_str not in sys.path:
+    sys.path.insert(0, _project_root_str)
 
 from src.enhanced_backtest import run_backtest, load_model, calculate_metrics, TICKERS_CSV, DATA_DIR, DEFAULT_MODEL
 from utils.stop_loss_policy import create_stop_loss_config_from_args

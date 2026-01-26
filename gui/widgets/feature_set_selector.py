@@ -17,15 +17,25 @@ sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 try:
-    from feature_set_manager import (
-        list_feature_sets,
-        feature_set_exists,
-        DEFAULT_FEATURE_SET
-    )
+    # Try importing from src first (current location)
+    try:
+        from src.feature_set_manager import (
+            list_feature_sets,
+            feature_set_exists,
+            DEFAULT_FEATURE_SET
+        )
+    except ImportError:
+        # Fallback to direct import (if src is in path)
+        from feature_set_manager import (
+            list_feature_sets,
+            feature_set_exists,
+            DEFAULT_FEATURE_SET
+        )
     HAS_FEATURE_SET_MANAGER = True
-except ImportError:
+except ImportError as e:
     HAS_FEATURE_SET_MANAGER = False
     DEFAULT_FEATURE_SET = "v1"
+    print(f"Warning: Could not import feature_set_manager: {e}")
 
 
 class FeatureSetSelector(QWidget):

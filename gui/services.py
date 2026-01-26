@@ -338,7 +338,8 @@ class DataService:
                 stdout=subprocess.PIPE,  # Capture stdout to parse summary
                 stderr=subprocess.PIPE,  # Keep stderr for error messages
                 text=True,
-                bufsize=1  # Line buffered
+                bufsize=1,  # Line buffered
+                cwd=str(PROJECT_ROOT)  # Set working directory to project root
             )
             
             stdout_lines = []
@@ -700,7 +701,8 @@ class DataService:
                 stdout=subprocess.PIPE,  # Capture stdout to parse summary
                 stderr=subprocess.PIPE,  # Keep stderr for error messages
                 text=True,
-                bufsize=1  # Line buffered
+                bufsize=1,  # Line buffered
+                cwd=str(PROJECT_ROOT)  # Set working directory to project root
             )
             
             stdout_lines = []
@@ -1003,7 +1005,8 @@ class FeatureService:
                 stdout=subprocess.PIPE,  # Capture stdout to parse summary
                 stderr=subprocess.PIPE,  # Keep stderr for error messages
                 text=True,
-                bufsize=1  # Line buffered
+                bufsize=1,  # Line buffered
+                cwd=str(PROJECT_ROOT)  # Set working directory to project root
             )
             
             stdout_lines = []
@@ -1730,6 +1733,12 @@ class BacktestService:
         
         if model_path is None:
             model_path = str(PROJECT_ROOT / "models" / "xgb_classifier_selected_features.pkl")
+        else:
+            # Resolve model path - convert relative paths to absolute
+            model_path_obj = Path(model_path)
+            if not model_path_obj.is_absolute():
+                model_path_obj = PROJECT_ROOT / model_path_obj
+            model_path = str(model_path_obj.resolve())
         
         # Determine data directory based on feature set
         try:
@@ -1775,7 +1784,8 @@ class BacktestService:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                bufsize=1
+                bufsize=1,
+                cwd=str(PROJECT_ROOT)  # Set working directory to project root
             )
             
             stdout_lines = []

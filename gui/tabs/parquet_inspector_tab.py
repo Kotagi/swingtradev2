@@ -22,7 +22,7 @@ from datetime import datetime
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
-TEMP_EXPORT_FILE = PROJECT_ROOT / "data" / "inspect_parquet" / "temp_export.csv"
+TEMP_EXPORT_FILE = PROJECT_ROOT / "outputs" / "inspections" / "temp_export.csv"
 
 
 class ParquetInspectorTab(QWidget):

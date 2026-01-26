@@ -32,7 +32,8 @@ backtest:
 
 data:
   # Start date for historical data (YYYY-MM-DD)
-  start_date: "2008-01-01"
+  # Set to 2009-02-01 to ensure 220+ trading days before training start (2010-01-01)
+  start_date: "2009-02-01"
   
   # Tickers file path
   tickers_file: "data/tickers/sp500_tickers.csv"

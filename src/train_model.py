@@ -36,10 +36,16 @@ import joblib
 import os
 
 # Add project root and src to Python path
-PROJECT_ROOT = Path(__file__).parent.parent
-SRC_DIR = Path(__file__).parent
-sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(SRC_DIR))
+# Resolve to absolute path to ensure correct resolution when run as subprocess
+_script_file = Path(__file__).resolve()
+PROJECT_ROOT = _script_file.parent.parent
+SRC_DIR = _script_file.parent
+_project_root_str = str(PROJECT_ROOT)
+_src_dir_str = str(SRC_DIR)
+if _project_root_str not in sys.path:
+    sys.path.insert(0, _project_root_str)
+if _src_dir_str not in sys.path:
+    sys.path.insert(0, _src_dir_str)
 
 from xgboost import XGBClassifier
 from sklearn.metrics import (

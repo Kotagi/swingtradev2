@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 from typing import List, Dict, Optional
 
-PROJECT_ROOT = Path(__file__).parent
+PROJECT_ROOT = Path(__file__).parent.parent
 
 
 def parse_benchmark_results(file_path: Path) -> List[Dict]:
@@ -84,7 +84,7 @@ def find_baseline_and_optimized(results: List[Dict]) -> tuple:
 
 
 def main():
-    results_file = PROJECT_ROOT / "benchmark_results.txt"
+    results_file = PROJECT_ROOT / "outputs" / "benchmarks" / "benchmark_results.txt"
     
     if not results_file.exists():
         print(f"Error: Benchmark results file not found: {results_file}")

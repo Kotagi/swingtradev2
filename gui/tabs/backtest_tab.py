@@ -1117,6 +1117,11 @@ class BacktestTab(QWidget):
         try:
             import joblib
             path = Path(model_path)
+            # Resolve relative paths relative to project root
+            if not path.is_absolute():
+                path = PROJECT_ROOT / path
+            path = path.resolve()
+            
             if not path.exists():
                 return
             

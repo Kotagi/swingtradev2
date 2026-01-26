@@ -25,10 +25,30 @@ from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 
 # Add project root and src to Python path
-PROJECT_ROOT = Path(__file__).parent.parent
-SRC_DIR = Path(__file__).parent
-sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(SRC_DIR))
+# Resolve to absolute path to ensure correct resolution when run as subprocess
+_script_file = Path(__file__).resolve()
+PROJECT_ROOT = _script_file.parent.parent
+SRC_DIR = _script_file.parent
+
+# Ensure project root is in path (check first to avoid duplicates)
+_project_root_str = str(PROJECT_ROOT)
+if _project_root_str not in sys.path:
+    sys.path.insert(0, _project_root_str)
+
+# Also add src directory
+_src_dir_str = str(SRC_DIR)
+if _src_dir_str not in sys.path:
+    sys.path.insert(0, _src_dir_str)
+
+# Verify utils package exists before importing
+_utils_path = PROJECT_ROOT / "utils" / "stop_loss_policy.py"
+if not _utils_path.exists():
+    raise ImportError(
+        f"Cannot find utils.stop_loss_policy module. "
+        f"Expected at: {_utils_path}. "
+        f"PROJECT_ROOT: {PROJECT_ROOT}. "
+        f"Current working directory: {Path.cwd()}"
+    )
 
 from utils.stop_loss_policy import (
     StopLossConfig,
@@ -865,8 +885,14 @@ def main():
     scaler = None
     features_to_scale = []
     if args.strategy == "model":
-        print(f"Loading model from {args.model}...")
-        model, features, scaler, features_to_scale, _ = load_model(Path(args.model))
+        # Resolve model path relative to project root if it's a relative path
+        model_path = Path(args.model)
+        if not model_path.is_absolute():
+            model_path = PROJECT_ROOT / model_path
+        model_path = model_path.resolve()
+        
+        print(f"Loading model from {model_path}...")
+        model, features, scaler, features_to_scale, _ = load_model(model_path)
         if model is None:
             print("ERROR: Model not found. Cannot run model strategy.")
             return

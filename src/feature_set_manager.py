@@ -10,6 +10,7 @@ Utility module for managing multiple feature sets. Allows you to:
 """
 
 import shutil
+import sys
 from pathlib import Path
 from typing import Optional, Dict, List
 import yaml
@@ -19,6 +20,10 @@ PROJECT_ROOT = Path(__file__).parent.parent
 CONFIG_DIR = PROJECT_ROOT / "config"
 DATA_DIR = PROJECT_ROOT / "data"
 DEFAULT_FEATURE_SET = "v1"  # Default feature set name
+
+# Ensure project root is in Python path for imports
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 
 def get_feature_set_config_path(feature_set: str) -> Path:
@@ -111,11 +116,16 @@ def feature_set_exists(feature_set: str) -> bool:
     # Also check if the registry module exists
     try:
         import importlib
+        # Ensure project root is in path for imports
+        if str(PROJECT_ROOT) not in sys.path:
+            sys.path.insert(0, str(PROJECT_ROOT))
         # Convert feature set name to valid Python module name
         module_name = feature_set.replace(" ", "_").replace("-", "_")
         importlib.import_module(f"features.sets.{module_name}.registry")
         return True
-    except ImportError:
+    except ImportError as e:
+        # Debug: print error if needed (can be removed later)
+        # print(f"Debug: Failed to import registry for {feature_set}: {e}")
         return False
 
 

@@ -50,7 +50,7 @@ from tqdm import tqdm
 
 # —— CONFIGURATION —— #
 DEFAULT_TICKERS_FILE = "data/tickers/sp500_tickers.csv"
-DEFAULT_START_DATE   = "2008-01-01"
+DEFAULT_START_DATE   = "2009-02-01"  # Ensures 220+ trading days before training start (2010-01-01)
 DEFAULT_END_DATE     = None   # None implies up to today
 DEFAULT_RAW_FOLDER   = "data/raw"
 DEFAULT_SECTORS_FILE = "data/tickers/sectors.csv"

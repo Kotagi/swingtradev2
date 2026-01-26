@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import List, Dict
 
 # Add project root to path
-PROJECT_ROOT = Path(__file__).parent
+PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
@@ -283,7 +283,7 @@ def main():
     print("="*70)
     
     # Save results to file
-    results_file = PROJECT_ROOT / "benchmark_results.txt"
+    results_file = PROJECT_ROOT / "outputs" / "benchmarks" / "benchmark_results.txt"
     with open(results_file, 'a') as f:
         f.write(f"\n{'='*70}\n")
         f.write(f"Benchmark Run: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")

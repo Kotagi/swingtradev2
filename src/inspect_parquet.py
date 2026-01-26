@@ -10,7 +10,7 @@ Usage:
 
 This will:
   1. Print shape, index info, dtypes, null counts, head & tail.
-  2. Write the full DataFrame to CSV under data/inspect_parquet/AAPL.csv.
+  2. Write the full DataFrame to CSV under outputs/inspections/AAPL.csv.
 """
 
 import argparse
@@ -27,8 +27,8 @@ def main():
     )
     parser.add_argument(
         "--export-dir", "-e",
-        default=Path(__file__).parent.parent / "data" / "inspect_parquet",
-        help="Directory where the full CSV will be saved (default: data/inspect_parquet)"
+        default=Path(__file__).parent.parent / "outputs" / "inspections",
+        help="Directory where the full CSV will be saved (default: outputs/inspections)"
     )
     args = parser.parse_args()
 

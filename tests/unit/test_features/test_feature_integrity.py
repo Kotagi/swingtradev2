@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Dict, List
 
 # Add project root to path
-PROJECT_ROOT = Path(__file__).parent
+PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
@@ -58,7 +58,7 @@ def test_feature_completeness():
     spy_data = _load_spy_data()
     
     # Compute features
-    logger = setup_logger("test", "test_integrity.log")
+    logger = setup_logger("test", "outputs/logs/test_integrity.log")
     df_feat, validation_issues = apply_features(df, enabled, logger, validate=True, spy_data=spy_data)
     
     # Check which features are present
@@ -99,7 +99,7 @@ def test_data_integrity():
     
     from features.shared.utils import _load_spy_data
     spy_data = _load_spy_data()
-    logger = setup_logger("test", "test_integrity.log")
+    logger = setup_logger("test", "outputs/logs/test_integrity.log")
     
     all_pass = True
     
@@ -161,7 +161,7 @@ def test_feature_population():
     
     from features.shared.utils import _load_spy_data
     spy_data = _load_spy_data()
-    logger = setup_logger("test", "test_integrity.log")
+    logger = setup_logger("test", "outputs/logs/test_integrity.log")
     
     all_pass = True
     
@@ -221,7 +221,7 @@ def test_feature_values_reasonable():
     
     from features.shared.utils import _load_spy_data
     spy_data = _load_spy_data()
-    logger = setup_logger("test", "test_integrity.log")
+    logger = setup_logger("test", "outputs/logs/test_integrity.log")
     
     all_pass = True
     
@@ -285,7 +285,7 @@ def test_multiple_tickers_consistency():
     
     from features.shared.utils import _load_spy_data
     spy_data = _load_spy_data()
-    logger = setup_logger("test", "test_integrity.log")
+    logger = setup_logger("test", "outputs/logs/test_integrity.log")
     
     # Collect feature counts for each ticker
     results = {}

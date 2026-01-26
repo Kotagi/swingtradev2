@@ -27,7 +27,7 @@ import subprocess
 import platform
 
 # Default export directory
-DEFAULT_EXPORT_DIR = Path(__file__).parent.parent / "data" / "inspect_parquet"
+DEFAULT_EXPORT_DIR = Path(__file__).parent.parent / "outputs" / "inspections"
 
 
 class ParquetInspectorGUI:

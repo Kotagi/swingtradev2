@@ -12,6 +12,12 @@ data/
 *.log
 feature_pipeline.log
 
+# Outputs
+outputs/logs/
+outputs/benchmarks/
+outputs/reports/
+outputs/inspections/
+
 # Models (generated artifacts)
 models/*.pkl
 models/*.joblib

@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 # Add project root to path
-PROJECT_ROOT = Path(__file__).parent
+PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
@@ -126,7 +126,7 @@ def test_feature_computation_with_spy():
         print("[FAILED] No SPY features found in enabled features")
         return False
     
-    logger = setup_logger("test", "test_spy.log")
+    logger = setup_logger("test", "outputs/logs/test_spy.log")
     
     # Test 3a: Compute WITHOUT SPY data (should load internally)
     print("\n   Test 3a: Computing features WITHOUT passing spy_data...")
@@ -197,7 +197,7 @@ def test_spy_data_passing():
     
     # Test with None spy_data
     print("   Test 4a: Computing with spy_data=None...")
-    logger = setup_logger("test", "test_spy.log")
+    logger = setup_logger("test", "outputs/logs/test_spy.log")
     spy_features = {name: enabled[name] for name in ['beta_spy_252d'] if name in enabled}
     
     if len(spy_features) == 0:
@@ -255,7 +255,7 @@ def test_multiple_tickers():
     enabled = load_enabled_features_for_set(str(config_path), "v1")
     spy_features = {name: enabled[name] for name in ['beta_spy_252d'] if name in enabled}
     
-    logger = setup_logger("test", "test_spy.log")
+    logger = setup_logger("test", "outputs/logs/test_spy.log")
     
     # Process each ticker with same SPY data
     results = {}
