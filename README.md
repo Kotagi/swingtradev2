@@ -92,7 +92,7 @@ SwingTradeV2/
 │   ├── tabs/        # GUI tabs (dashboard, data, features, training, etc.)
 │   ├── widgets/     # Custom widgets (charts, etc.)
 │   └── utils/       # GUI utilities
-├── info/             # Documentation (see below)
+├── docs/             # Documentation (organized by category)
 ├── models/           # Trained models and metadata
 │   └── shap_artifacts/  # SHAP explanation artifacts
 ├── scripts/          # Utility scripts
@@ -114,16 +114,16 @@ SwingTradeV2/
 
 ## Documentation
 
-Comprehensive documentation is available in the `/info` folder:
+Comprehensive documentation is available in the `/docs` folder:
 
-- **[PIPELINE_STEPS.md](info/PIPELINE_STEPS.md)**: Complete guide to all 7 pipeline steps with detailed arguments and examples
-- **[FEATURE_GUIDE.md](info/FEATURE_GUIDE.md)**: Comprehensive documentation for all 57 technical indicators
-- **[QUICKSTART.md](info/QUICKSTART.md)**: Quick start guide
-- **[INSTALL.md](info/INSTALL.md)**: Installation instructions
-- **[FEATURE_ROADMAP.md](info/FEATURE_ROADMAP.md)**: Planned features and improvements
-- **[FEATURE_REDUNDANCY_GUIDE.md](info/FEATURE_REDUNDANCY_GUIDE.md)**: Guide to feature selection and redundancy
+- **[PIPELINE_STEPS.md](docs/guides/PIPELINE_STEPS.md)**: Complete guide to all 7 pipeline steps with detailed arguments and examples
+- **[FEATURE_GUIDE.md](docs/features/FEATURE_GUIDE.md)**: Comprehensive documentation for all technical indicators
+- **[QUICKSTART.md](docs/getting_started/QUICKSTART.md)**: Quick start guide
+- **[INSTALL.md](docs/getting_started/INSTALL.md)**: Installation instructions
+- **[NEW_DAWN_IMPLEMENTATION_ROADMAP.md](docs/features/NEW_DAWN_IMPLEMENTATION_ROADMAP.md)**: Current feature implementation roadmap (415 features)
+- **[FEATURE_REDUNDANCY_GUIDE.md](docs/features/FEATURE_REDUNDANCY_GUIDE.md)**: Guide to feature selection and redundancy
 
-See the `/info` folder for complete documentation.
+See the `/docs` folder for complete documentation organized by category.
 
 ## Key Features
 
@@ -252,4 +252,4 @@ This application is provided as-is for educational and research purposes.
 
 ## Contributing
 
-This is a personal project. For questions or issues, please refer to the documentation in the `/info` folder.
+This is a personal project. For questions or issues, please refer to the documentation in the `/docs` folder.

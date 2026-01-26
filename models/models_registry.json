@@ -450,6 +450,47 @@
       },
       "shap_artifacts_path": null,
       "shap_metadata": null
+    },
+    {
+      "id": "model_20260126_225243",
+      "name": "XGBoost_30d_15%",
+      "file_path": "C:\\Users\\brand\\Documents\\Stocks\\SwingTradeApp\\SwingTradeV2\\models\\model_30d_15pct_v3_New_Dawn_231feat_notuned_nocv_20260126_224146.pkl",
+      "training_date": "2026-01-26T22:52:43.229686",
+      "metrics": {
+        "test": {
+          "roc_auc": 0.7242,
+          "average_precision": 0.3465,
+          "f1_score": 0.125,
+          "precision": 0.5543,
+          "recall": 0.0704,
+          "accuracy": 0.8514
+        },
+        "validation": {
+          "roc_auc": 0.7534,
+          "average_precision": 0.3767,
+          "f1_score": 0.2334,
+          "precision": 0.5467,
+          "recall": 0.1483,
+          "accuracy": 0.8416
+        }
+      },
+      "parameters": {
+        "horizon": 30,
+        "return_threshold": 0.15,
+        "feature_set": "v3_New_Dawn",
+        "tune": false,
+        "cv": false,
+        "imbalance_multiplier": 0.5,
+        "n_iter": null,
+        "cv_folds": null
+      },
+      "training_info": {
+        "training_time": 646.34,
+        "feature_count": 231,
+        "total_features": 395
+      },
+      "shap_artifacts_path": null,
+      "shap_metadata": null
     }
   ],
   "version": "1.0"

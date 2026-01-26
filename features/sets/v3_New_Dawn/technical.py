@@ -8336,27 +8336,23 @@ def feature_volatility_forecast(df: DataFrame) -> Series:
     Simple GARCH-like volatility forecast using EWMA.
     Calculated as: weighted average of past volatility and squared returns.
     Formula: σ²_t = α*σ²_{t-1} + (1-α)*r²_t, where α=0.94 (typical GARCH).
+    Optimized: Uses vectorized pandas .ewm() instead of Python loop for better performance.
     No clipping - let ML learn the distribution.
     """
     close = _get_close_series(df)
     returns = close.pct_change()
     
     # GARCH-like forecast: EWMA of squared returns
-    alpha = 0.94  # Typical GARCH parameter
+    # alpha=0.94 means smoothing factor (1-alpha)=0.06 in EWMA formula
     squared_returns = returns ** 2
     
-    forecast = pd.Series(index=df.index, dtype=float)
-    forecast.iloc[0] = squared_returns.iloc[0] if not pd.isna(squared_returns.iloc[0]) else 0.0
-    
-    for i in range(1, len(df)):
-        if pd.isna(squared_returns.iloc[i]):
-            forecast.iloc[i] = forecast.iloc[i-1]
-            continue
-        
-        forecast.iloc[i] = alpha * forecast.iloc[i-1] + (1 - alpha) * squared_returns.iloc[i]
+    # Vectorized EWMA: y_t = 0.94 * y_{t-1} + 0.06 * x_t
+    # pandas ewm(alpha=0.06) gives: y_t = (1-0.06) * y_{t-1} + 0.06 * x_t = 0.94 * y_{t-1} + 0.06 * x_t
+    # adjust=False means use the recursive formula directly (no bias correction)
+    forecast_var = squared_returns.ewm(alpha=0.06, adjust=False, ignore_na=True).mean()
     
     # Convert to volatility (square root)
-    forecast_vol = np.sqrt(forecast)
+    forecast_vol = np.sqrt(forecast_var)
     forecast_vol.name = "volatility_forecast"
     return forecast_vol
 
@@ -8396,17 +8392,10 @@ def feature_volatility_risk_premium(df: DataFrame) -> Series:
     # Realized volatility
     realized_vol = returns.rolling(window=20, min_periods=1).std()
     
-    # Forecast volatility (simple EWMA)
-    alpha = 0.94
+    # Forecast volatility (simple EWMA) - vectorized
     squared_returns = returns ** 2
-    forecast_var = pd.Series(index=df.index, dtype=float)
-    forecast_var.iloc[0] = squared_returns.iloc[0] if not pd.isna(squared_returns.iloc[0]) else 0.0
-    
-    for i in range(1, len(df)):
-        if pd.isna(squared_returns.iloc[i]):
-            forecast_var.iloc[i] = forecast_var.iloc[i-1]
-            continue
-        forecast_var.iloc[i] = alpha * forecast_var.iloc[i-1] + (1 - alpha) * squared_returns.iloc[i]
+    # Vectorized EWMA: same as feature_volatility_forecast
+    forecast_var = squared_returns.ewm(alpha=0.06, adjust=False, ignore_na=True).mean()
     
     forecast_vol = np.sqrt(forecast_var)
     
