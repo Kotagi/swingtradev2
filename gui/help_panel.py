@@ -289,6 +289,7 @@ class HelpDialog(QDialog):
         <ul>
             <li><b>Hyperparameter Tuning</b>: Enable RandomizedSearchCV for parameter optimization (recommended)</li>
             <li><b>Tuning Iterations</b>: Number of parameter combinations to try (5-9999, default: 20)</li>
+            <li><b>Early Stopping Rounds</b>: Number of rounds without improvement before stopping (1-1000, default: 50)</li>
             <li><b>Cross-Validation</b>: Use k-fold cross-validation for more robust evaluation</li>
             <li><b>CV Folds</b>: Number of cross-validation folds (2-10, auto: 3 or 2 if fast mode)</li>
             <li><b>Fast Mode</b>: Faster training with reduced search space (~3-5x faster)</li>

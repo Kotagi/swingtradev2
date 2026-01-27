@@ -513,6 +513,12 @@ def main() -> None:
         help="Disable early stopping (train for full n_estimators)"
     )
     parser.add_argument(
+        "--early-stopping-rounds",
+        type=int,
+        default=50,
+        help="Number of rounds without improvement before stopping (default: 50)"
+    )
+    parser.add_argument(
         "--plots",
         action="store_true",
         help="Generate training curves and feature importance plots (requires matplotlib)"
@@ -944,7 +950,7 @@ def main() -> None:
         # Note: In XGBoost 2.1.0+, early_stopping_rounds must be in constructor
         if not args.no_early_stop and len(X_val) > 0:
             print("Training with early stopping on validation set...")
-            model.set_params(early_stopping_rounds=20)
+            model.set_params(early_stopping_rounds=args.early_stopping_rounds)
             model.fit(
                 X_train, y_train,
                 eval_set=[(X_train, y_train), (X_val, y_val)],
@@ -1035,6 +1041,7 @@ def main() -> None:
     # Add early stopping info if available
     if hasattr(model, 'best_iteration'):
         training_metadata['early_stopping'] = {
+            'early_stopping_rounds': args.early_stopping_rounds,
             'best_iteration': int(model.best_iteration),
             'best_score': float(model.best_score) if hasattr(model, 'best_score') else None
         }

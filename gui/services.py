@@ -1304,6 +1304,7 @@ class TrainingService:
         n_iter: int = 20,
         cv: bool = False,
         no_early_stop: bool = False,
+        early_stopping_rounds: int = 50,
         plots: bool = False,
         fast: bool = False,
         cv_folds: Optional[int] = None,
@@ -1351,6 +1352,8 @@ class TrainingService:
             cmd.append("--cv")
         if no_early_stop:
             cmd.append("--no-early-stop")
+        if early_stopping_rounds != 50:  # Only add if not default
+            cmd.extend(["--early-stopping-rounds", str(early_stopping_rounds)])
         if plots:
             cmd.append("--plots")
         if fast:

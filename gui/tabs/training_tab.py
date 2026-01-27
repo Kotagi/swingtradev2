@@ -133,6 +133,17 @@ class TrainingTab(QWidget):
         fast_row.addStretch()
         options_layout.addLayout(fast_row)
         
+        # Early stopping rounds
+        early_stop_row = QHBoxLayout()
+        early_stop_row.addWidget(QLabel("Early Stopping Rounds:"))
+        self.early_stopping_rounds_spin = QSpinBox()
+        self.early_stopping_rounds_spin.setRange(1, 1000)
+        self.early_stopping_rounds_spin.setValue(50)  # Default: 50
+        self.early_stopping_rounds_spin.setToolTip("Number of rounds without improvement before stopping (default: 50)")
+        early_stop_row.addWidget(self.early_stopping_rounds_spin)
+        early_stop_row.addStretch()
+        options_layout.addLayout(early_stop_row)
+        
         # Other options
         other_row = QHBoxLayout()
         self.plots_check = QCheckBox("Generate Plots")
@@ -417,6 +428,7 @@ class TrainingTab(QWidget):
             "plots": self.plots_check.isChecked(),
             "shap": self.shap_check.isChecked(),
             "no_early_stop": self.no_early_stop_check.isChecked(),
+            "early_stopping_rounds": self.early_stopping_rounds_spin.value(),
             "imbalance_multiplier": self.imbalance_spin.value(),
             "horizon": self.horizon_spin.value(),
             "return_threshold": self.return_threshold_spin.value(),
@@ -440,6 +452,8 @@ class TrainingTab(QWidget):
             self.plots_check.setChecked(config["plots"])
         if "no_early_stop" in config:
             self.no_early_stop_check.setChecked(config["no_early_stop"])
+        if "early_stopping_rounds" in config:
+            self.early_stopping_rounds_spin.setValue(config["early_stopping_rounds"])
         if "imbalance_multiplier" in config:
             self.imbalance_spin.setValue(config["imbalance_multiplier"])
         if "horizon" in config:
@@ -492,6 +506,7 @@ class TrainingTab(QWidget):
             "plots": self.plots_check.isChecked(),
             "shap": self.shap_check.isChecked(),
             "no_early_stop": self.no_early_stop_check.isChecked(),
+            "early_stopping_rounds": self.early_stopping_rounds_spin.value(),
             "imbalance_multiplier": self.imbalance_spin.value()
         }
         
