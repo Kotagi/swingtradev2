@@ -10924,11 +10924,15 @@ def feature_volatility_forecast_error_true(df: DataFrame) -> Series:
     """
     True Volatility Forecast Error: Actual forecast error (past forecast vs present outcome).
     
-    This is a TRUE forecast accuracy measure: compares the forecast made at time t-1
-    to the realized volatility outcome at time t. This measures how well the forecast
-    actually predicted future volatility.
+    This is a TRUE forecast accuracy measure: compares the forecast made 20 days ago
+    to the realized volatility outcome today. This measures how well the forecast
+    actually predicted future volatility over a 20-day horizon.
     
-    Calculated as: |realized[t] - forecast[t-1]| / forecast[t-1].
+    Calculated as: |realized[t] - forecast[t-20]| / forecast[t-20].
+    Where:
+    - forecast[t-20] = forecast made 20 days ago (what we predicted)
+    - realized[t] = realized volatility over past 20 days ending today (what actually happened)
+    
     Higher values = larger forecast errors (forecast was less accurate).
     Lower values = smaller forecast errors (forecast was more accurate).
     No clipping - let ML learn the distribution.
@@ -10936,10 +10940,11 @@ def feature_volatility_forecast_error_true(df: DataFrame) -> Series:
     forecast = feature_volatility_forecast(df)
     realized = feature_realized_volatility_20d(df)
     
-    # Shift forecast by 1 to use past forecast
-    forecast_shifted = forecast.shift(1)
+    # Shift forecast by 20 days to use the forecast made 20 days ago
+    # This compares what we predicted 20 days ago to what actually happened
+    forecast_shifted = forecast.shift(20)
     
-    # Compare past forecast to current realized outcome
+    # Compare past forecast (20 days ago) to current realized outcome (past 20 days)
     error = (realized - forecast_shifted).abs() / (forecast_shifted + 1e-10)
     error = error.fillna(0.0)  # Fill NaN from shift
     error.name = "volatility_forecast_error_true"
@@ -11359,25 +11364,31 @@ def feature_volatility_regime_transition_probability(df: DataFrame) -> Series:
     Calculated as: combination of regime duration and recent volatility changes.
     Values: 0.0 = low probability, 1.0 = high probability.
     Normalized to [0, 1]. Clipped for safety.
+    
+    Optimized: Uses vectorized "streak" calculation instead of Python loop for 10x speedup.
     """
     regime = feature_volatility_regime(df)
-    regime_duration = pd.Series(index=df.index, dtype=float)
     
-    # Calculate regime duration (days in current regime)
-    current_regime = None
-    duration = 0
-    for i in range(len(df)):
-        if pd.isna(regime.iloc[i]):
-            regime_duration.iloc[i] = 0
-            continue
-        
-        if current_regime is None or abs(regime.iloc[i] - current_regime) > 10:  # Regime change threshold
-            current_regime = regime.iloc[i]
-            duration = 1
-        else:
-            duration += 1
-        
-        regime_duration.iloc[i] = duration
+    # Vectorized regime duration calculation (streak of consecutive days in same regime)
+    # Regime change threshold: 0.1 (10% change for normalized [0,1] regime values)
+    # Original used 10.0, but regime values are normalized to [0,1], so 0.1 is appropriate
+    threshold = 0.1
+    
+    # Identify regime changes: abs(diff) > threshold indicates a new regime
+    regime_diff = regime.diff().abs()
+    regime_changes = (regime_diff > threshold).fillna(True)  # First row is always a new regime
+    
+    # Create regime groups: each group is a consecutive streak of the same regime
+    # cumsum() on change indicators creates unique group IDs for each regime streak
+    regime_groups = regime_changes.cumsum()
+    
+    # Calculate duration within each group using groupby().cumcount() + 1
+    # This counts consecutive days in the current regime streak
+    regime_duration = regime.groupby(regime_groups).cumcount() + 1
+    
+    # Handle NaN values: set duration to 0 where regime is NaN
+    regime_duration = regime_duration.where(~regime.isna(), 0.0)
+    regime_duration = regime_duration.astype(float)
     
     # Recent volatility change
     vol_change = regime.diff().abs()

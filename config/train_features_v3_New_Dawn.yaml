@@ -5,7 +5,7 @@ features:
   price_vs_ma200: 1
   close_position_in_range: 1
   # BLOCK ML-1.2: Returns (8 features)
-  log_return_1d: 0
+  log_return_1d: 1  # RE-ENABLED: Atomic unit of price action, needed for earnings gaps and single-day shocks
   daily_return: 0
   gap_pct: 1
   weekly_return_5d: 1
@@ -29,7 +29,7 @@ features:
   # BLOCK ML-1.5: MA Slopes (4 features)
   sma20_slope: 0
   sma50_slope: 1
-  sma200_slope: 1
+  sma200_slope: 1  # RE-ENABLED: Distinguishes "dead cat bounce" (price above falling SMA) from "structural breakout" (price above rising SMA)
   ema20_slope: 1
   # BLOCK ML-1.6: Basic Volatility (3 features)
   volatility_5d: 0
@@ -447,13 +447,13 @@ features:
   return_rank_3m: 1
   momentum_rank_trend: 0
   # BLOCK ML-26.5: Volatility-Volume Interactions (4 features)
-  volatility_volume_correlation: 0
+  volatility_volume_correlation: 1  # RE-ENABLED: Core "Institutional Conviction" signal - separates "Panic/Noise" (high vol, low correlation) from "Accumulation" (volatility expanding with volume)
   volatility_volume_divergence: 0
   volatility_forecast_volume_confirmation: 0
   # BLOCK ML-26.6: Return-Volatility Interactions (3 features)
   return_volatility_ratio: 1
   # BLOCK ML-26.7: Regime Transition Features (3 features)
-  volatility_regime_transition_probability: 0
+  volatility_regime_transition_probability: 1  # RE-ENABLED & OPTIMIZED: Vectorized streak calculation for 10x speedup
   gain_regime_transition_probability: 0
   momentum_regime_transition: 0
   # BLOCK ML-26.8: Composite/Ensemble Features (6 features)

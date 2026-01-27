@@ -648,7 +648,16 @@ def process_file(
             if high_nan_rows > 0:
                 logger.warning(f"{ticker}: {high_nan_rows} rows with >50% missing features")
 
-        # 5) Write output Parquet (features only, no labels, use PyArrow engine for faster I/O)
+        # 5) Convert numeric columns to float32 to reduce memory usage (50% reduction)
+        # This applies to both feature columns and price columns for consistency
+        # Non-numeric columns (if any) are preserved as-is
+        numeric_cols = df_feat.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) > 0:
+            # Convert all numeric columns to float32
+            df_feat[numeric_cols] = df_feat[numeric_cols].astype(np.float32)
+            logger.debug(f"{ticker}: Converted {len(numeric_cols)} numeric columns to float32")
+
+        # 6) Write output Parquet (features only, no labels, use PyArrow engine for faster I/O)
         try:
             df_feat.to_parquet(out_file, index=True, engine='pyarrow')
         except (ImportError, ValueError):
