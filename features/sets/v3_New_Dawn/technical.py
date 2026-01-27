@@ -11586,19 +11586,23 @@ def feature_adr_percentage(df: DataFrame) -> Series:
     return adr
 
 
-def feature_distance_from_monthly_vwap(df: DataFrame) -> Series:
+def feature_monthly_vwap_slope(df: DataFrame) -> Series:
     """
-    Distance from Monthly VWAP: Distance from Volume Weighted Average Price over ~21 trading days.
+    Monthly VWAP Slope: Growth rate of institutional entry price over ~21 trading days.
+    
+    Measures the rate of change of the monthly VWAP (Volume Weighted Average Price), which
+    represents the institutional baseline entry price. This tells the model whether the
+    average buyer's entry price is trending up or down, independent of current stock price.
     
     For a 20-30 day trading horizon, monthly VWAP is more "institutional" than 200-day SMA.
-    Stocks trading significantly above their monthly VWAP are often "overextended" - the model
-    may be buying late. This feature tells the model: "Yes, volatility is there, but the price
-    is too far from the average entry price of other buyers."
+    If monthly VWAP is rising, it indicates institutional accumulation (smart money buying).
+    If falling, it suggests distribution (smart money selling).
     
-    Calculated as: (Close / Monthly_VWAP) - 1.
-    Positive values = trading above monthly VWAP (overextended).
-    Negative values = trading below monthly VWAP (potential opportunity).
-    Zero = trading at monthly VWAP.
+    Calculated as: (Monthly_VWAP.diff(5) / Monthly_VWAP).
+    This represents the 5-day percentage change in the institutional baseline.
+    Positive values = VWAP rising (institutional accumulation).
+    Negative values = VWAP falling (institutional distribution).
+    Zero = VWAP flat (no institutional trend).
     
     Monthly VWAP = sum(price * volume) / sum(volume) over ~21 trading days.
     No clipping - let ML learn the distribution.
@@ -11610,11 +11614,15 @@ def feature_distance_from_monthly_vwap(df: DataFrame) -> Series:
     price_volume = close * volume
     monthly_vwap = price_volume.rolling(window=21, min_periods=1).sum() / volume.rolling(window=21, min_periods=1).sum()
     
-    # Distance as percentage: (Close / Monthly_VWAP) - 1
-    distance = (close / (monthly_vwap + 1e-10)) - 1.0
+    # Slope as percentage change: (Monthly_VWAP.diff(5) / Monthly_VWAP)
+    # This gives the growth rate of the institutional baseline
+    slope = monthly_vwap.diff(5) / (monthly_vwap + 1e-10)
     
-    distance.name = "distance_from_monthly_vwap"
-    return distance
+    # Fill NaN values (early periods where 5-day diff can't be calculated)
+    slope = slope.fillna(0.0)
+    
+    slope.name = "monthly_vwap_slope"
+    return slope
 
 
 def feature_atr_channel_position(df: DataFrame) -> Series:

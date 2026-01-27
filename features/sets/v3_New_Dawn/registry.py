@@ -470,7 +470,7 @@ from features.sets.v3_New_Dawn.technical import (
     feature_gain_probability_volatility_regime_interaction,
     # Block ML-27: Precision-Enhancing Features (5 features)
     feature_adr_percentage,
-    feature_distance_from_monthly_vwap,
+    feature_monthly_vwap_slope,
     feature_atr_channel_position,
     feature_vpt_divergence,
     feature_relative_strength_vs_sector,
@@ -940,7 +940,7 @@ FEATURE_REGISTRY = {
     'gain_probability_volatility_regime_interaction': feature_gain_probability_volatility_regime_interaction,
     # Block ML-27: Precision-Enhancing Features (5 features)
     'adr_percentage': feature_adr_percentage,
-    'distance_from_monthly_vwap': feature_distance_from_monthly_vwap,
+    'monthly_vwap_slope': feature_monthly_vwap_slope,
     'atr_channel_position': feature_atr_channel_position,
     'vpt_divergence': feature_vpt_divergence,
     'relative_strength_vs_sector': feature_relative_strength_vs_sector,
