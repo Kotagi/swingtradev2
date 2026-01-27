@@ -186,6 +186,13 @@ def load_data() -> pd.DataFrame:
         df = pd.read_parquet(f)
         df.index.name = "date"
         df["ticker"] = f.stem
+        
+        # Convert numeric columns to float32 immediately after loading (safety measure)
+        # Feature pipeline already saves as float32, but this ensures consistency
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) > 0:
+            df[numeric_cols] = df[numeric_cols].astype(np.float32)
+        
         parts.append(df)
     
     if excluded:
@@ -819,6 +826,7 @@ def main() -> None:
             'scale_pos_weight': scale_pos_weight,
             'random_state': 42,
             'eval_metric': 'logloss',
+            'tree_method': 'hist',  # Memory-efficient histogram method
             'n_jobs': xgb_threads_during_search  # Reduced for better CV parallelization
         }
         
@@ -899,13 +907,16 @@ def main() -> None:
         
         # Use full parallelization for final training (no CV overhead)
         best_params['n_jobs'] = -1  # Use all cores for final training
+        # Ensure tree_method is set (preserve from base_params if present, otherwise set to 'hist')
+        if 'tree_method' not in best_params:
+            best_params['tree_method'] = 'hist'  # Memory-efficient histogram method
         print("Retraining with full parallelization (all CPU cores)...")
         
         # Use early stopping on validation set if available
         # Note: In XGBoost 2.1.0+, early_stopping_rounds must be in constructor
         if not args.no_early_stop and len(X_val) > 0:
             # Set early_stopping_rounds in constructor (XGBoost 2.1.0+)
-            best_params['early_stopping_rounds'] = 20
+            best_params['early_stopping_rounds'] = args.early_stopping_rounds
             model = XGBClassifier(**best_params)
             model.fit(
                 X_train, y_train,
@@ -916,6 +927,9 @@ def main() -> None:
                 print(f"Early stopping: best iteration {model.best_iteration} (score: {model.best_score:.4f})")
         else:
             # Still capture eval history for plots
+            # Ensure tree_method is set (preserve from base_params if present, otherwise set to 'hist')
+            if 'tree_method' not in best_params:
+                best_params['tree_method'] = 'hist'  # Memory-efficient histogram method
             model = XGBClassifier(**best_params)
             if len(X_val) > 0:
                 model.fit(
@@ -943,6 +957,7 @@ def main() -> None:
             scale_pos_weight=scale_pos_weight,
             random_state=42,
             eval_metric="logloss",
+            tree_method='hist',  # Memory-efficient histogram method
             n_jobs=-1
         )
         
