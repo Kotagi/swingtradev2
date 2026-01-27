@@ -160,21 +160,41 @@ def load_data() -> pd.DataFrame:
 
     Each Parquet in DATA_DIR must have a datetime index and feature columns.
     Adds a 'ticker' column to identify the source symbol.
+    
+    Excludes reference tickers (SPY and sector ETFs) from training data,
+    as these are used only for calculating features on actual stocks.
 
     Raises:
         FileNotFoundError: if no Parquet files are found.
 
     Returns:
-        DataFrame: concatenated data from all tickers.
+        DataFrame: concatenated data from all tickers (excluding reference tickers).
     """
+    # Reference tickers to exclude from training (used only for calculating features on actual stocks)
+    # SPY and sector ETFs should not be included in training data
+    REFERENCE_TICKERS = {'SPY', 'XLK', 'XLF', 'XLV', 'XLE', 'XLI', 'XLY', 'XLP', 'XLB', 'XLU', 'XLC', 'XLRE'}
+    
     parts: List[pd.DataFrame] = []
+    excluded = []
+    
     for f in DATA_DIR.glob("*.parquet"):
+        ticker = f.stem.upper()
+        if ticker in REFERENCE_TICKERS:
+            excluded.append(f.stem)
+            continue
+        
         df = pd.read_parquet(f)
         df.index.name = "date"
         df["ticker"] = f.stem
         parts.append(df)
+    
+    if excluded:
+        print(f"Excluding {len(excluded)} reference ticker(s) from training data: {', '.join(excluded)}")
+    
     if not parts:
-        raise FileNotFoundError(f"No Parquet files found in {DATA_DIR}")
+        raise FileNotFoundError(f"No Parquet files found in {DATA_DIR} (after excluding reference tickers)")
+    
+    print(f"Loaded {len(parts)} tickers for training (excluded {len(excluded)} reference tickers)")
     return pd.concat(parts, axis=0)
 
 

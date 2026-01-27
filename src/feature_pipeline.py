@@ -719,15 +719,24 @@ def main(
     else:
         logger.warning("SPY data not available - market context features will return NaN")
 
-    files = sorted(input_path.glob("*.parquet"))
-    logger.info(f"{len(files)} tickers to process")
+    # Reference tickers to exclude from feature generation (used only for calculating features on actual stocks)
+    # SPY and sector ETFs should not have features calculated or be included in training
+    REFERENCE_TICKERS = {'SPY', 'XLK', 'XLF', 'XLV', 'XLE', 'XLI', 'XLY', 'XLP', 'XLB', 'XLU', 'XLC', 'XLRE'}
     
-    if len(files) == 0:
-        logger.warning("No Parquet files found to process")
+    files = sorted(input_path.glob("*.parquet"))
+    
+    # Filter out reference tickers (SPY and sector ETFs)
+    file_list = [f for f in files if f.stem.upper() not in REFERENCE_TICKERS]
+    excluded = [f.stem for f in files if f.stem.upper() in REFERENCE_TICKERS]
+    
+    if excluded:
+        logger.info(f"Excluding {len(excluded)} reference ticker(s) from feature generation: {', '.join(excluded)}")
+    
+    logger.info(f"{len(file_list)} tickers to process (excluded {len(excluded)} reference tickers)")
+    
+    if len(file_list) == 0:
+        logger.warning("No Parquet files found to process (after excluding reference tickers)")
         return
-
-    # Collect all file paths for progress tracking
-    file_list = list(files)
     
     # Parallel dispatch with full_refresh flag and progress bar
     logger.info("Starting parallel feature computation...")
