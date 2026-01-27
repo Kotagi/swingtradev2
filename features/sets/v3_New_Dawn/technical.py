@@ -11835,3 +11835,233 @@ def feature_relative_strength_vs_sector(df: DataFrame, ticker: str = None) -> Se
     
     relative_strength.name = "relative_strength_vs_sector"
     return relative_strength
+
+
+# ============================================================================
+# BLOCK ML-28: Precision-Enhancing Features Part 2 (5 features)
+# ============================================================================
+
+
+def feature_intraday_intensity(df: DataFrame) -> Series:
+    """
+    Intraday Intensity (Closing Range): Smoothed measure of institutional conviction.
+    
+    Measures where the stock closes relative to its daily High and Low, smoothed over 5 days.
+    This is the single best indicator of institutional "conviction." If a stock gaps up 5% but
+    closes at the bottom of its daily range, the "smart money" sold into the retail FOMO.
+    We want breakouts that "hold the line" until the closing bell.
+    
+    Calculated as: 5-day SMA of (Close - Low) / (High - Low).
+    Values: 0.0 = weakest (consistently closing at lows), 1.0 = strongest (consistently closing at highs).
+    Naturally outputs a value between 0.0 and 1.0.
+    
+    The 5-day smoothing reduces single-day noise and captures institutional conviction trends.
+    No clipping needed - already normalized to [0, 1].
+    """
+    close = _get_close_series(df)
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    
+    # Calculate daily range
+    daily_range = high - low
+    
+    # Calculate closing range: (close - low) / (high - low)
+    closing_range = (close - low) / (daily_range.replace(0, np.nan) + 1e-10)
+    
+    # For zero range days, set to 0.5 (middle position)
+    closing_range = closing_range.fillna(0.5)
+    
+    # Apply 5-day SMA to smooth out single-day noise
+    intensity = closing_range.rolling(window=5, min_periods=1).mean()
+    
+    # Clip to [0, 1] for safety
+    intensity = intensity.clip(0.0, 1.0)
+    
+    intensity.name = "intraday_intensity"
+    return intensity
+
+
+def feature_volume_climax_ratio(df: DataFrame) -> Series:
+    """
+    Volume Climax Ratio (Exhaustion Filter): Volume relative to 50-day average, clipped.
+    
+    Compares today's volume to the average volume of the last 50 days. High volume is good,
+    but "climax" volume is a trap. If volume is 5x to 10x the norm, it usually means the
+    "last buyer" has entered the building, and there is no one left to push the price higher.
+    This will help the model stop buying the literal top of a spike.
+    
+    Calculated as: Volume / SMA(Volume, 50).
+    Values: 1.0 = average volume, > 1.0 = above average, < 1.0 = below average.
+    Clipped at 10.0 to prevent extreme outliers from skewing tree branches.
+    
+    This is distinct from relative_volume (20-day) and volume_climax (binary flag).
+    The 50-day window and clipping make this an exhaustion filter.
+    """
+    volume = _get_volume_series(df)
+    
+    # Calculate 50-day average volume
+    vol_avg50 = volume.rolling(window=50, min_periods=1).mean()
+    
+    # Volume ratio: Volume / SMA(Volume, 50)
+    climax_ratio = volume / (vol_avg50 + 1e-10)
+    
+    # Clip at 10.0 to prevent extreme outliers from skewing tree branches
+    climax_ratio = climax_ratio.clip(0.0, 10.0)
+    
+    climax_ratio.name = "volume_climax_ratio"
+    return climax_ratio
+
+
+def feature_momentum_quality_r2(df: DataFrame) -> Series:
+    """
+    Momentum Quality R-Squared: Measures the "linearity" or "straightness" of price moves.
+    
+    Measures the linearity of the price move over the last 15 days using R-squared from
+    linear regression. A 15% gain achieved through a steady, "quiet" grind (High R²) is
+    infinitely more tradable and predictive than a 15% gain achieved through wild, erratic
+    gaps (Low R²).
+    
+    Calculated as: R² = r² where r is the Pearson correlation coefficient between:
+    - Dependent variable: Close prices (last 15 days)
+    - Independent variable: Time (1 to 15)
+    
+    Optimized: Uses vectorized correlation calculation instead of sklearn LinearRegression.
+    Since the independent variable is just a sequence (1 to 15), we can calculate R²
+    much faster using the correlation coefficient formula: R² = r² = (cov(X,Y) / (std(X)*std(Y)))².
+    This avoids the overhead of fitting a regression model for each row.
+    
+    Values: 0.0 = no linearity (erratic, gap-filled moves), 1.0 = perfect linearity (steady grind).
+    Naturally outputs a value between 0.0 and 1.0.
+    
+    High R² = steady, predictable momentum (good for trading).
+    Low R² = erratic, gap-filled momentum (less reliable).
+    """
+    close = _get_close_series(df)
+    
+    window = 15
+    # Create time sequence (1 to 15) - this is constant for all windows
+    # Pre-compute time sequence statistics for efficiency
+    time_seq = np.arange(1, window + 1, dtype=float)
+    time_mean = time_seq.mean()
+    time_std = time_seq.std()
+    
+    # Prepare result series
+    r2_values = pd.Series(index=df.index, dtype=float)
+    
+    # Optimized vectorized calculation: for each rolling window, calculate correlation
+    # Since time sequence is constant, we pre-compute time_mean and time_std
+    # Use numpy array slicing for maximum speed
+    close_values = close.values
+    for i in range(window, len(df)):
+        # Get last 15 days of close prices (numpy array slicing is fast)
+        prices = close_values[i-window:i]
+        
+        # Skip if constant prices (would cause division by zero)
+        price_std = np.std(prices)
+        if price_std == 0:
+            r2_values.iloc[i] = 0.0
+            continue
+        
+        # Calculate Pearson correlation coefficient using vectorized operations
+        # r = cov(X, Y) / (std(X) * std(Y))
+        price_mean = np.mean(prices)
+        
+        # Calculate covariance: E[(X - E[X]) * (Y - E[Y])]
+        # Using numpy operations for speed
+        covariance = np.mean((time_seq - time_mean) * (prices - price_mean))
+        
+        # Calculate correlation: r = cov / (std_X * std_Y)
+        correlation = covariance / (time_std * price_std)
+        
+        # R² = r² (clip to [0, 1] since correlation can be negative)
+        r2 = max(0.0, correlation ** 2)
+        
+        r2_values.iloc[i] = r2
+    
+    # Fill early periods with 0.0 (can't calculate R² without enough data)
+    r2_values = r2_values.fillna(0.0)
+    
+    # Clip to [0, 1] for safety
+    r2_values = r2_values.clip(0.0, 1.0)
+    
+    r2_values.name = "momentum_quality_r2"
+    return r2_values
+
+
+def feature_atr_expansion_ratio(df: DataFrame) -> Series:
+    """
+    ATR Expansion Ratio (The "Coil"): Ratio of short-term to medium-term volatility.
+    
+    The ratio of very short-term volatility to medium-term volatility. You want to buy when
+    volatility is just starting to expand from a "Squeeze" or "Coil." If the ATR(5) is already
+    3x the ATR(50), the move is overextended, and the stock is likely to mean-revert or stall.
+    
+    Calculated as: ATR(5) / ATR(50).
+    Values: 1.0 = baseline (short-term ATR equals medium-term), > 1.0 = expansion, < 1.0 = contraction.
+    The model will learn that buying at > 2.0 is a low-precision entry (overextended).
+    
+    This is distinct from atr_ratio_20d and atr_ratio_252d (different window combinations).
+    The 5 vs 50 window captures early expansion signals.
+    """
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    close = _get_close_series(df)
+    
+    # Calculate True Range
+    tr1 = high - low
+    tr2 = (high - close.shift(1)).abs()
+    tr3 = (low - close.shift(1)).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    
+    # Calculate ATR(5) and ATR(50)
+    atr5 = tr.rolling(window=5, min_periods=1).mean()
+    atr50 = tr.rolling(window=50, min_periods=1).mean()
+    
+    # Expansion ratio: ATR(5) / ATR(50)
+    expansion_ratio = atr5 / (atr50 + 1e-10)
+    
+    expansion_ratio.name = "atr_expansion_ratio"
+    return expansion_ratio
+
+
+def feature_relative_strength_momentum(df: DataFrame, ticker: str = None) -> Series:
+    """
+    Relative Strength Momentum (RS-Slope Acceleration): Rate of change of relative strength.
+    
+    Instead of looking at the RS value itself, we look at the rate of change of the RS line
+    against the sector. We've confirmed the RS feature works, but "Slope" is more predictive
+    than "Distance." We want stocks that are actively accelerating away from their sector peers
+    at the moment of the signal.
+    
+    Calculated as: 5-day difference of relative_strength_vs_sector, normalized using rolling z-score.
+    Uses rolling standardization (z-score) to make values comparable across different sectors
+    and stock price levels, while handling negative RS values properly.
+    
+    Values: Positive = RS accelerating (stock pulling away from sector), 
+            Negative = RS decelerating (stock converging with sector).
+    Zero = RS flat (no acceleration).
+    
+    Normalization: Uses rolling z-score (20-day window) to standardize the 5-day difference.
+    Formula: (RS.diff(5) - rolling_mean) / (rolling_std + epsilon).
+    This makes values comparable across sectors and prevents extreme values when RS is near zero.
+    """
+    # Import here to avoid circular import
+    from features.sets.v3_New_Dawn.technical import feature_relative_strength_vs_sector
+    
+    # Get the base relative strength feature
+    rs = feature_relative_strength_vs_sector(df, ticker=ticker)
+    
+    # Calculate 5-day difference (acceleration)
+    rs_diff = rs.diff(5)
+    
+    # Normalize using rolling z-score (20-day window)
+    # This standardizes the acceleration and makes it comparable across sectors
+    rs_diff_mean = rs_diff.rolling(window=20, min_periods=5).mean()
+    rs_diff_std = rs_diff.rolling(window=20, min_periods=5).std()
+    rs_momentum = (rs_diff - rs_diff_mean) / (rs_diff_std + 1e-10)
+    
+    # Fill NaN values (early periods where 5-day diff or rolling stats can't be calculated)
+    rs_momentum = rs_momentum.fillna(0.0)
+    
+    rs_momentum.name = "relative_strength_momentum"
+    return rs_momentum

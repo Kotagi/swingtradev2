@@ -474,6 +474,12 @@ from features.sets.v3_New_Dawn.technical import (
     feature_atr_channel_position,
     feature_vpt_divergence,
     feature_relative_strength_vs_sector,
+    # Block ML-28: Precision-Enhancing Features Part 2 (5 features)
+    feature_intraday_intensity,
+    feature_volume_climax_ratio,
+    feature_momentum_quality_r2,
+    feature_atr_expansion_ratio,
+    feature_relative_strength_momentum,
 )
 
 # Feature registry mapping
@@ -944,6 +950,12 @@ FEATURE_REGISTRY = {
     'atr_channel_position': feature_atr_channel_position,
     'vpt_divergence': feature_vpt_divergence,
     'relative_strength_vs_sector': feature_relative_strength_vs_sector,
+    # Block ML-28: Precision-Enhancing Features Part 2 (5 features)
+    'intraday_intensity': feature_intraday_intensity,
+    'volume_climax_ratio': feature_volume_climax_ratio,
+    'momentum_quality_r2': feature_momentum_quality_r2,
+    'atr_expansion_ratio': feature_atr_expansion_ratio,
+    'relative_strength_momentum': feature_relative_strength_momentum,
 }
 
 

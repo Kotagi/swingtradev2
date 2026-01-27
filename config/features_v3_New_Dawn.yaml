@@ -466,3 +466,9 @@ features:
   atr_channel_position: 1
   vpt_divergence: 1
   relative_strength_vs_sector: 1
+  # BLOCK ML-28: Precision-Enhancing Features Part 2 (5 features)
+  intraday_intensity: 1
+  volume_climax_ratio: 1
+  momentum_quality_r2: 1
+  atr_expansion_ratio: 1
+  relative_strength_momentum: 1
