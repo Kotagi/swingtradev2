@@ -817,7 +817,7 @@ class DataService:
         Parse clean data output to extract statistics.
         
         Returns:
-            Success message with statistics
+            Success message with statistics and failed file names
         """
         import re
         
@@ -831,17 +831,33 @@ class DataService:
         
         # Try to find patterns in the output
         # The clean script may print summary statistics
-        success_match = re.search(r'(?:Successfully|Processed|Cleaned):\s*(\d+)', output, re.IGNORECASE)
+        success_match = re.search(r'(?:Successfully cleaned|Successfully|Processed|Cleaned):\s*(\d+)', output, re.IGNORECASE)
         if success_match:
             success_count = int(success_match.group(1))
         
-        failed_match = re.search(r'(?:Failed|Errors):\s*(\d+)', output, re.IGNORECASE)
+        failed_match = re.search(r'Failed:\s*(\d+)', output, re.IGNORECASE)
         if failed_match:
             failed_count = int(failed_match.group(1))
         
         skipped_match = re.search(r'(?:Skipped|Already cleaned):\s*(\d+)', output, re.IGNORECASE)
         if skipped_match:
             skipped_count = int(skipped_match.group(1))
+        
+        # Extract failed file names (similar to download parsing)
+        failed_files = []
+        # Look for "Failed files (X):" section followed by file names
+        # Logger output includes timestamps, so we need to match lines like:
+        # "2025-01-24 10:30:45 WARNING: Failed files (1):"
+        # "2025-01-24 10:30:46 WARNING:   SYMBOL: error message"
+        failed_section_match = re.search(r'Failed files\s*\(\d+\):(.*?)(?=\n\n|\n===|$)', output, re.IGNORECASE | re.DOTALL)
+        if failed_section_match:
+            failed_section = failed_section_match.group(1)
+            # Extract file names from lines like:
+            # "2025-01-24 10:30:46 WARNING:   SYMBOL: error message"
+            # Match lines that have a ticker symbol (uppercase letters/numbers) after the log prefix
+            # Pattern: optional timestamp/levelname, then spaces, then ticker symbol
+            file_matches = re.findall(r'(?:WARNING|ERROR|INFO):\s+([A-Z0-9]+)(?::|$)', failed_section, re.MULTILINE)
+            failed_files.extend(file_matches)
         
         # Build message with statistics
         stats_parts = []
@@ -856,6 +872,16 @@ class DataService:
             message = f"Data cleaning completed successfully ({', '.join(stats_parts)})"
         else:
             message = "Data cleaning completed successfully"
+        
+        # Append failed file names if any
+        if failed_files:
+            if len(failed_files) <= 10:
+                message += f"\n\nFailed files: {', '.join(failed_files)}"
+            else:
+                message += f"\n\nFailed files ({len(failed_files)}): {', '.join(failed_files[:10])}, ... and {len(failed_files) - 10} more"
+        elif failed_count > 0 and not failed_files:
+            # If we detected failures but couldn't parse the file names, at least show the count
+            message += f"\n\n{failed_count} file(s) failed (check logs for details)"
         
         return message
 
