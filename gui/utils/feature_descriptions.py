@@ -607,6 +607,25 @@ FEATURE_DESCRIPTIONS = {
             "< -1.0 for bearish market conditions."
         )
     },
+    "relative_strength_vs_sector": {
+        "name": "Relative Strength vs. Sector",
+        "description": (
+            "Stock's 20-day return compared to its sector ETF's 20-day return. "
+            "Measures whether a stock is outperforming or underperforming its sector. "
+            "Positive values indicate the stock is leading its sector (bullish), "
+            "negative values indicate lagging (bearish). "
+            "Uses actual sector ETFs (XLK for Technology, XLF for Financials, etc.) "
+            "with historical fallbacks for newer sectors."
+        ),
+        "interpretation": (
+            "Values are differences in 20-day returns (stock return - sector return). "
+            "Positive values (e.g., +0.05) mean stock gained 5% more than sector (outperforming). "
+            "Negative values (e.g., -0.03) mean stock gained 3% less than sector (underperforming). "
+            "Typical filter thresholds: > 0.02 (2% outperformance) for sector leaders, "
+            "< -0.02 (-2% underperformance) for sector laggards. "
+            "This feature filters out 'beta-driven' moves where the whole sector moves together."
+        )
+    },
     "mkt_spy_sma200_slope": {
         "name": "SPY SMA200 Slope",
         "description": (

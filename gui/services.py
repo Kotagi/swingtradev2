@@ -271,7 +271,7 @@ class DataService:
     def download_data(
         self,
         tickers_file: str = None,
-        start_date: str = "2008-01-01",
+        start_date: str = "2009-02-01",
         raw_folder: str = None,
         sectors_file: str = None,
         full: bool = False,

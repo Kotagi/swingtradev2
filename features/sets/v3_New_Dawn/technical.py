@@ -11716,7 +11716,7 @@ def feature_vpt_divergence(df: DataFrame) -> Series:
     return divergence
 
 
-def feature_relative_strength_vs_sector(df: DataFrame) -> Series:
+def feature_relative_strength_vs_sector(df: DataFrame, ticker: str = None) -> Series:
     """
     Relative Strength vs. Sector: Stock return vs sector ETF return over 20 days.
     
@@ -11730,45 +11730,87 @@ def feature_relative_strength_vs_sector(df: DataFrame) -> Series:
     Negative values = stock underperforming sector (laggard).
     
     Implementation:
-    - Currently uses SPY as sector proxy (sector ETF data can be added later)
-    - Future enhancement: Load actual sector ETF data based on stock's sector mapping
-    - Sector ETFs: XLF (Financials), XLK (Tech), XLE (Energy), XLV (Healthcare), etc.
+    - Uses actual sector ETF data based on stock's sector mapping
+    - Falls back to SPY if ticker not provided, sector not found, or ETF data unavailable
+    - Historical fallbacks: XLC (before 2018-09-28) → XLK, XLRE (before 2015-10-07) → XLF
+    
+    Args:
+        df: DataFrame with OHLCV data
+        ticker: Optional ticker symbol (e.g., 'AAPL', 'JPM'). If None, uses SPY as fallback.
     
     No clipping - let ML learn the distribution.
     """
+    from features.shared.utils import (
+        _load_sector_mapping,
+        _get_sector_etf_with_fallback,
+        _load_sector_etf_data,
+        _load_spy_data
+    )
+    
     close = _get_close_series(df)
     
     # Calculate stock 20-day return
     stock_return_20d = close.pct_change(periods=20)
     
-    # Load sector ETF data (currently SPY as proxy)
-    # Future: Can be enhanced to load actual sector ETF based on stock's sector
-    spy_data = _load_spy_data()
+    # Try to use sector ETF if ticker is provided
+    etf_data = None
+    etf_close = None
     
-    if spy_data is None:
-        # If no SPY data available, return zeros (can't calculate relative strength)
-        relative_strength = pd.Series(0.0, index=df.index)
-        relative_strength.name = "relative_strength_vs_sector"
-        return relative_strength
+    if ticker:
+        try:
+            # Load sector mapping
+            sector_mapping = _load_sector_mapping()
+            sector = sector_mapping.get(ticker)
+            
+            if sector:
+                # Get ETF symbol with historical fallback
+                first_date = str(df.index[0]) if len(df.index) > 0 else None
+                if first_date:
+                    etf_symbol = _get_sector_etf_with_fallback(sector, first_date)
+                    
+                    if etf_symbol:
+                        # Load sector ETF data
+                        etf_data = _load_sector_etf_data(etf_symbol)
+                        
+                        if etf_data is not None:
+                            # Get ETF close prices (try different column names)
+                            for col in ['Close', 'close', 'Adj Close', 'AdjClose', 'Price']:
+                                if col in etf_data.columns:
+                                    etf_close = etf_data[col]
+                                    break
+        except Exception as e:
+            # Log warning but continue with SPY fallback
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Error loading sector ETF for {ticker}: {e}, falling back to SPY")
     
-    # Get SPY close prices (try different column names)
-    spy_close = None
-    for col in ['Close', 'close', 'Adj Close', 'AdjClose', 'Price']:
-        if col in spy_data.columns:
-            spy_close = spy_data[col]
-            break
+    # Fallback to SPY if sector ETF not available
+    if etf_close is None:
+        spy_data = _load_spy_data()
+        
+        if spy_data is None:
+            # If no SPY data available, return zeros (can't calculate relative strength)
+            relative_strength = pd.Series(0.0, index=df.index)
+            relative_strength.name = "relative_strength_vs_sector"
+            return relative_strength
+        
+        # Get SPY close prices (try different column names)
+        for col in ['Close', 'close', 'Adj Close', 'AdjClose', 'Price']:
+            if col in spy_data.columns:
+                etf_close = spy_data[col]
+                break
+        
+        if etf_close is None:
+            # If can't find close column, return zeros
+            relative_strength = pd.Series(0.0, index=df.index)
+            relative_strength.name = "relative_strength_vs_sector"
+            return relative_strength
     
-    if spy_close is None:
-        # If can't find close column, return zeros
-        relative_strength = pd.Series(0.0, index=df.index)
-        relative_strength.name = "relative_strength_vs_sector"
-        return relative_strength
-    
-    # Align SPY data with stock data by date
-    spy_close_aligned = spy_close.reindex(df.index, method='ffill')
+    # Align ETF/SPY data with stock data by date
+    etf_close_aligned = etf_close.reindex(df.index, method='ffill')
     
     # Calculate sector ETF 20-day return
-    sector_return_20d = spy_close_aligned.pct_change(periods=20)
+    sector_return_20d = etf_close_aligned.pct_change(periods=20)
     
     # Relative strength = Stock return - Sector return
     relative_strength = stock_return_20d - sector_return_20d

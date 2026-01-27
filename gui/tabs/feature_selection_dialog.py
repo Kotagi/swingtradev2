@@ -135,7 +135,7 @@ class FeatureSelectionDialog(QDialog):
             "Return Features": ["daily_return", "gap_pct", "weekly_return", "monthly_return", 
                                "quarterly_return", "ytd_return"],
             "52-Week Features": ["dist_52w_high", "dist_52w_low", "pos_52w"],
-            "Market Context": ["mkt_spy", "beta_spy"],  # Check this BEFORE Moving Averages
+            "Market Context": ["mkt_spy", "beta_spy", "relative_strength", "sector"],  # Check this BEFORE Moving Averages
             "Moving Averages": ["sma20", "sma50", "sma200", "sma20_sma50", "sma50_sma200", "sma50_slope", "sma200_slope"],
             "Volatility": ["volatility_5d", "volatility_21d", "volatility_ratio", "atr14", "volatility_of_volatility"],
             "Volume": ["log_volume", "log_avg_volume", "relative_volume", "obv_momentum"],

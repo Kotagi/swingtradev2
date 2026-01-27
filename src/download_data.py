@@ -62,6 +62,9 @@ REQUEST_TIMEOUT      = 30     # seconds for yfinance requests
 MIN_PAUSE            = 0.5    # minimum pause between chunks (adaptive rate limiting)
 MAX_PAUSE            = 10.0   # maximum pause between chunks
 
+# Sector ETF symbols for relative strength features
+SECTOR_ETFS = ['XLK', 'XLF', 'XLV', 'XLE', 'XLI', 'XLY', 'XLP', 'XLB', 'XLU', 'XLC', 'XLRE']
+
 
 def chunked_list(items: list, chunk_size: int):
     """Yield successive chunks of size `chunk_size` from `items`."""
@@ -750,6 +753,197 @@ def print_summary(stats: Dict):
     print("="*80)
 
 
+def download_sector_etf(
+    etf_symbol: str,
+    start_date: str = None,
+    end_date: str = None,
+    raw_folder: str = DEFAULT_RAW_FOLDER,
+    full_refresh: bool = False
+) -> bool:
+    """
+    Download sector ETF data from yfinance.
+    
+    Args:
+        etf_symbol: ETF symbol (e.g., 'XLK', 'XLF')
+        start_date: Start date for download (YYYY-MM-DD). Defaults to DEFAULT_START_DATE (2009-02-01)
+        end_date: End date for download (YYYY-MM-DD, exclusive). Defaults to today
+        raw_folder: Directory to save CSV file. Defaults to DEFAULT_RAW_FOLDER
+        full_refresh: If True, redownload even if file exists
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    # Use defaults if not provided
+    if start_date is None:
+        start_date = DEFAULT_START_DATE
+    if end_date is None:
+        end_date = (datetime.today() + timedelta(days=1)).strftime("%Y-%m-%d")
+    etf_file = Path(raw_folder) / f"{etf_symbol}.csv"
+    
+    # Determine download date range (incremental or full)
+    download_start_date = start_date
+    if end_date:
+        etf_end_date = end_date
+    else:
+        etf_end_date = (datetime.today() + timedelta(days=1)).strftime("%Y-%m-%d")
+    
+    # Incremental download: check existing file and only download missing dates
+    if not full_refresh and etf_file.exists():
+        try:
+            existing_df = pd.read_csv(etf_file, index_col=0, parse_dates=True)
+            if not existing_df.empty:
+                last_date = existing_df.index.max()
+                # Only download from day after last date to current
+                download_start_date = (pd.to_datetime(last_date) + timedelta(days=1)).strftime("%Y-%m-%d")
+                # Check if we need to download anything
+                if pd.to_datetime(download_start_date) >= pd.to_datetime(etf_end_date):
+                    logging.debug(f"{etf_symbol} data already up-to-date (last date: {last_date}), skipping")
+                    return True
+                logging.info(f"{etf_symbol} incremental update: downloading from {download_start_date} (last date: {last_date})")
+        except Exception as e:
+            logging.warning(f"{etf_symbol}: Error reading existing file for incremental update: {e}, will redownload")
+            download_start_date = start_date
+    
+    try:
+        logging.info(f"Downloading {etf_symbol} data from {download_start_date} to {etf_end_date}...")
+        etf_data = yf.download(
+            tickers=etf_symbol,
+            start=download_start_date,
+            end=etf_end_date,
+            progress=False,
+            auto_adjust=False,
+            timeout=REQUEST_TIMEOUT
+        )
+        
+        if etf_data.empty:
+            logging.warning(f"{etf_symbol}: Download returned empty data")
+            return False
+        
+        # Handle MultiIndex columns (yfinance returns MultiIndex for single ticker)
+        if isinstance(etf_data.columns, pd.MultiIndex):
+            # MultiIndex format: (Column Name, Ticker Symbol)
+            # Extract columns by first level (column name) and flatten
+            formatted_df = pd.DataFrame(index=etf_data.index)
+            for col_name in etf_data.columns.levels[0]:
+                if col_name in etf_data.columns.levels[0]:
+                    # Get the column (may have ticker as second level)
+                    col_data = etf_data[col_name]
+                    if isinstance(col_data, pd.DataFrame):
+                        # If multiple tickers, take first one
+                        formatted_df[col_name] = col_data.iloc[:, 0]
+                    else:
+                        formatted_df[col_name] = col_data
+            etf_data = formatted_df
+        else:
+            # Already a regular DataFrame, use as-is
+            formatted_df = pd.DataFrame(index=etf_data.index)
+            for col in etf_data.columns:
+                formatted_df[col] = etf_data[col]
+            etf_data = formatted_df
+        
+        # Ensure index is datetime
+        if not isinstance(etf_data.index, pd.DatetimeIndex):
+            etf_data.index = pd.to_datetime(etf_data.index)
+        
+        # Reformat to match regular ticker format (Date, Open, High, Low, Close, Adj Close, Volume)
+        # Create properly formatted DataFrame with standard column names
+        formatted_df = pd.DataFrame(index=etf_data.index)
+        
+        # Map columns (case-insensitive) - handle both MultiIndex flattened and regular columns
+        for standard_col, variations in [
+            ('Open', ['Open', 'open']),
+            ('High', ['High', 'high']),
+            ('Low', ['Low', 'low']),
+            ('Close', ['Close', 'close']),
+            ('Adj Close', ['Adj Close', 'AdjClose', 'adj close', 'adjclose', 'Price']),
+            ('Volume', ['Volume', 'volume'])
+        ]:
+            for var in variations:
+                if var in etf_data.columns:
+                    formatted_df[standard_col] = etf_data[var]
+                    break
+        
+        # Add split_coefficient (ETFs don't split, so always 1.0)
+        formatted_df['split_coefficient'] = 1.0
+        
+        # Rename index to 'Date' for CSV output
+        formatted_df.index.name = 'Date'
+        
+        # Incremental update: merge with existing data if not full refresh
+        if not full_refresh and etf_file.exists():
+            try:
+                existing_df = pd.read_csv(etf_file, index_col=0, parse_dates=True)
+                if not existing_df.empty:
+                    # Combine existing and new data, removing duplicates
+                    combined_df = pd.concat([existing_df, formatted_df])
+                    combined_df = combined_df[~combined_df.index.duplicated(keep="first")]
+                    combined_df = combined_df.sort_index()
+                    formatted_df = combined_df
+                    logging.info(f"{etf_symbol} incremental update: added {len(formatted_df) - len(existing_df)} new rows")
+            except Exception as e:
+                logging.warning(f"{etf_symbol}: Error merging with existing data: {e}, using new data only")
+        
+        # Save to CSV in same format as regular tickers
+        formatted_df.to_csv(etf_file, index=True)
+        logging.info(f"{etf_symbol} data saved to {etf_file} ({len(formatted_df)} rows)")
+        return True
+        
+    except Exception as e:
+        logging.warning(f"Failed to download {etf_symbol} data: {e}")
+        return False
+
+
+def download_all_sector_etfs(
+    start_date: str = None,
+    end_date: str = None,
+    raw_folder: str = DEFAULT_RAW_FOLDER,
+    full_refresh: bool = False,
+    download_etfs: bool = True
+) -> Dict[str, bool]:
+    """
+    Download all sector ETF data.
+    
+    Args:
+        start_date: Start date for download (YYYY-MM-DD). Defaults to DEFAULT_START_DATE (2009-02-01)
+        end_date: End date for download (YYYY-MM-DD, exclusive). Defaults to today
+        raw_folder: Directory to save CSV files. Defaults to DEFAULT_RAW_FOLDER
+        full_refresh: If True, redownload even if files exist
+        download_etfs: If False, skip ETF downloads
+    
+    Returns:
+        Dict mapping ETF symbol to success status
+    """
+    # Use defaults if not provided
+    if start_date is None:
+        start_date = DEFAULT_START_DATE
+    if end_date is None:
+        end_date = (datetime.today() + timedelta(days=1)).strftime("%Y-%m-%d")
+    if not download_etfs:
+        logging.info("Skipping sector ETF downloads (download_etfs=False)")
+        return {}
+    
+    logging.info(f"Downloading {len(SECTOR_ETFS)} sector ETFs...")
+    results = {}
+    
+    for etf_symbol in SECTOR_ETFS:
+        success = download_sector_etf(
+            etf_symbol=etf_symbol,
+            start_date=start_date,
+            end_date=end_date,
+            raw_folder=raw_folder,
+            full_refresh=full_refresh
+        )
+        results[etf_symbol] = success
+        
+        # Small pause between downloads to avoid rate limiting
+        time.sleep(0.5)
+    
+    successful = sum(1 for v in results.values() if v)
+    logging.info(f"Sector ETF downloads complete: {successful}/{len(SECTOR_ETFS)} successful")
+    
+    return results
+
+
 def main() -> None:
     """Parse command-line arguments, download data, and optionally write sector mapping."""
     import argparse
@@ -817,6 +1011,19 @@ def main() -> None:
         action="store_true",
         help="Resume from last checkpoint (skips already completed tickers)"
     )
+    parser.add_argument(
+        "--download-etfs",
+        action="store_true",
+        default=True,
+        dest="download_etfs",
+        help="Download sector ETF data (default: True)"
+    )
+    parser.add_argument(
+        "--no-etfs",
+        action="store_false",
+        dest="download_etfs",
+        help="Skip downloading sector ETF data"
+    )
 
     args = parser.parse_args()
 
@@ -853,25 +1060,91 @@ def main() -> None:
     logging.info("Downloading SPY data for market context features...")
     try:
         spy_file = Path(args.raw_folder) / "SPY.csv"
-        if not spy_file.exists() or args.full_refresh:
-            # yfinance's end parameter is exclusive, so add 1 day to include today's data
-            spy_end_date = args.end_date or (datetime.today() + timedelta(days=1)).strftime("%Y-%m-%d")
+        spy_end_date = args.end_date or (datetime.today() + timedelta(days=1)).strftime("%Y-%m-%d")
+        
+        # Determine download date range (incremental or full)
+        spy_start_date = args.start_date
+        needs_download = True
+        
+        if not args.full_refresh and spy_file.exists():
+            try:
+                # Read SPY file (has special format with header rows)
+                header_row = pd.read_csv(spy_file, nrows=0)
+                column_names = header_row.columns.tolist()
+                existing_spy = pd.read_csv(spy_file, skiprows=2, names=column_names)
+                # Remove the "Date" row if it exists
+                existing_spy = existing_spy[existing_spy.iloc[:, 0] != 'Date'].copy()
+                # The first column (Price) contains dates
+                date_col = existing_spy.columns[0]
+                existing_spy[date_col] = pd.to_datetime(existing_spy[date_col])
+                existing_spy = existing_spy.set_index(date_col)
+                
+                if not existing_spy.empty:
+                    last_date = existing_spy.index.max()
+                    # Only download from day after last date to current
+                    spy_start_date = (pd.to_datetime(last_date) + timedelta(days=1)).strftime("%Y-%m-%d")
+                    # Check if we need to download anything
+                    if pd.to_datetime(spy_start_date) >= pd.to_datetime(spy_end_date):
+                        logging.info(f"SPY data already up-to-date (last date: {last_date}), skipping")
+                        needs_download = False
+                    else:
+                        logging.info(f"SPY incremental update: downloading from {spy_start_date} (last date: {last_date})")
+            except Exception as e:
+                logging.warning(f"SPY: Error reading existing file for incremental update: {e}, will redownload")
+                spy_start_date = args.start_date
+        
+        # Download if needed
+        if needs_download:
             spy_data = yf.download(
                 tickers="SPY",
-                start=args.start_date,
+                start=spy_start_date,
                 end=spy_end_date,
                 progress=False,
                 auto_adjust=False
             )
             if not spy_data.empty:
+                # Handle MultiIndex if present
+                if isinstance(spy_data.columns, pd.MultiIndex):
+                    spy_data = spy_data['SPY'] if 'SPY' in spy_data.columns.levels[0] else spy_data.iloc[:, 0]
+                
+                # For incremental updates, merge with existing data
+                if not args.full_refresh and spy_file.exists() and spy_start_date != args.start_date:
+                    try:
+                        # Read existing data again for merging
+                        header_row = pd.read_csv(spy_file, nrows=0)
+                        column_names = header_row.columns.tolist()
+                        existing_spy = pd.read_csv(spy_file, skiprows=2, names=column_names)
+                        existing_spy = existing_spy[existing_spy.iloc[:, 0] != 'Date'].copy()
+                        date_col = existing_spy.columns[0]
+                        existing_spy[date_col] = pd.to_datetime(existing_spy[date_col])
+                        existing_spy = existing_spy.set_index(date_col)
+                        
+                        # Merge new data with existing
+                        combined_spy = pd.concat([existing_spy, spy_data])
+                        combined_spy = combined_spy[~combined_spy.index.duplicated(keep="first")]
+                        combined_spy = combined_spy.sort_index()
+                        spy_data = combined_spy
+                        logging.info(f"SPY incremental update: added {len(spy_data) - len(existing_spy)} new rows (total: {len(spy_data)} rows)")
+                    except Exception as e:
+                        logging.warning(f"SPY: Error merging incremental data: {e}, using new data only")
+                
+                # Save SPY in its original format (with header rows)
                 spy_data.to_csv(spy_file)
-                logging.info(f"SPY data saved to {spy_file}")
+                logging.info(f"SPY data saved to {spy_file} ({len(spy_data)} rows)")
             else:
                 logging.warning("SPY download returned empty data")
-        else:
-            logging.info(f"SPY data already exists at {spy_file}, skipping (use --full to redownload)")
     except Exception as e:
         logging.warning(f"Failed to download SPY data: {e}")
+    
+    # Download sector ETFs for relative strength features
+    etf_end_date = args.end_date or (datetime.today() + timedelta(days=1)).strftime("%Y-%m-%d")
+    download_all_sector_etfs(
+        start_date=args.start_date,
+        end_date=etf_end_date,
+        raw_folder=args.raw_folder,
+        full_refresh=args.full_refresh,
+        download_etfs=args.download_etfs
+    )
 
 
 if __name__ == "__main__":

@@ -115,7 +115,7 @@ class DataTab(QWidget):
         # Start date
         date_row = QHBoxLayout()
         date_row.addWidget(QLabel("Start Date:"))
-        self.start_date_edit = QLineEdit("2008-01-01")
+        self.start_date_edit = QLineEdit("2009-02-01")
         self.start_date_edit.setPlaceholderText("YYYY-MM-DD")
         date_row.addWidget(self.start_date_edit)
         date_row.addStretch()

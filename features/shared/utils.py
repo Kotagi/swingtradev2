@@ -10,7 +10,7 @@ Contains non-feature-specific utilities like:
 import numpy as np
 import pandas as pd
 from pandas import Series, DataFrame
-from typing import Optional
+from typing import Optional, Dict
 from sklearn.linear_model import LinearRegression
 from pathlib import Path
 import logging
@@ -19,6 +19,12 @@ logger = logging.getLogger(__name__)
 
 # Cache for SPY data to avoid reloading
 _SPY_DATA_CACHE = None
+
+# Cache for sector mapping to avoid reloading
+_SECTOR_MAPPING_CACHE = None
+
+# Cache for sector ETF data to avoid reloading (per ETF symbol)
+_SECTOR_ETF_CACHE = {}
 
 
 def _load_spy_data() -> Optional[DataFrame]:
@@ -158,6 +164,173 @@ def _get_low_series(df: DataFrame) -> Series:
 def _get_volume_series(df: DataFrame) -> Series:
     """Return the 'volume' series, case-insensitive."""
     return _get_column(df, 'volume')
+
+
+def _load_sector_mapping() -> Dict[str, str]:
+    """
+    Load ticker -> sector mapping from data/tickers/sectors.csv.
+    
+    This function caches the loaded mapping to avoid reloading on every call.
+    The mapping is read-only data, so it's safe to cache indefinitely.
+    
+    Returns:
+        Dict mapping ticker symbol to sector name (e.g., {'AAPL': 'Technology', 'JPM': 'Financial Services'})
+        Empty dict if file not found or error loading.
+    """
+    global _SECTOR_MAPPING_CACHE
+    
+    # Return cached data if available
+    if _SECTOR_MAPPING_CACHE is not None:
+        return _SECTOR_MAPPING_CACHE
+    
+    # Try to load sector mapping from CSV
+    project_root = Path.cwd()
+    sectors_file = project_root / "data" / "tickers" / "sectors.csv"
+    
+    if not sectors_file.exists():
+        logger.warning(f"Sector mapping file not found: {sectors_file}")
+        _SECTOR_MAPPING_CACHE = {}
+        return _SECTOR_MAPPING_CACHE
+    
+    try:
+        # Read CSV file
+        df = pd.read_csv(sectors_file)
+        
+        # Validate required columns
+        if 'ticker' not in df.columns or 'sector' not in df.columns:
+            logger.error(f"Sector mapping file missing required columns (ticker, sector): {sectors_file}")
+            _SECTOR_MAPPING_CACHE = {}
+            return _SECTOR_MAPPING_CACHE
+        
+        # Create mapping dictionary
+        sector_mapping = dict(zip(df['ticker'], df['sector']))
+        
+        # Cache the mapping
+        _SECTOR_MAPPING_CACHE = sector_mapping
+        logger.debug(f"Loaded sector mapping for {len(sector_mapping)} tickers")
+        return sector_mapping
+        
+    except Exception as e:
+        logger.error(f"Error loading sector mapping from {sectors_file}: {e}", exc_info=True)
+        _SECTOR_MAPPING_CACHE = {}
+        return _SECTOR_MAPPING_CACHE
+
+
+def _get_sector_etf_with_fallback(sector_name: str, date: str) -> Optional[str]:
+    """
+    Map sector name to ETF symbol with historical fallback logic.
+    
+    For sectors that were created after 2009, uses historically accurate fallbacks:
+    - Communication Services (XLC) before 2018-09-28 → XLK (Technology)
+    - Real Estate (XLRE) before 2015-10-07 → XLF (Financial Services)
+    
+    Args:
+        sector_name: Sector name from sectors.csv (e.g., 'Technology', 'Financial Services')
+        date: Date string (YYYY-MM-DD) to determine if fallback is needed
+    
+    Returns:
+        ETF symbol (e.g., 'XLK', 'XLF') or None if sector not recognized
+    """
+    # Base sector to ETF mapping
+    sector_to_etf = {
+        'Technology': 'XLK',
+        'Financial Services': 'XLF',
+        'Healthcare': 'XLV',
+        'Energy': 'XLE',
+        'Industrials': 'XLI',
+        'Consumer Cyclical': 'XLY',
+        'Consumer Defensive': 'XLP',
+        'Basic Materials': 'XLB',
+        'Utilities': 'XLU',
+        'Communication Services': 'XLC',
+        'Real Estate': 'XLRE'
+    }
+    
+    # Get base ETF symbol
+    etf_symbol = sector_to_etf.get(sector_name)
+    if etf_symbol is None:
+        logger.warning(f"Unknown sector: {sector_name}")
+        return None
+    
+    # Apply historical fallbacks for newer sectors
+    try:
+        date_obj = pd.to_datetime(date)
+        
+        # Communication Services (XLC) launched June 18, 2018, but GICS reclassification was Sept 28, 2018
+        # Use Sept 28, 2018 as the cutoff (when companies were actually reclassified)
+        if etf_symbol == 'XLC' and date_obj < pd.to_datetime('2018-09-28'):
+            # Before reclassification, Communication Services companies were in Technology
+            return 'XLK'
+        
+        # Real Estate (XLRE) launched Oct 7, 2015, but GICS reclassification was Sept 16, 2016
+        # Use Oct 7, 2015 as the cutoff (when ETF actually launched)
+        if etf_symbol == 'XLRE' and date_obj < pd.to_datetime('2015-10-07'):
+            # Before reclassification, Real Estate companies were in Financial Services
+            return 'XLF'
+            
+    except Exception as e:
+        logger.warning(f"Error parsing date '{date}' for sector fallback: {e}")
+        # Return base ETF symbol if date parsing fails
+    
+    return etf_symbol
+
+
+def _load_sector_etf_data(etf_symbol: str) -> Optional[DataFrame]:
+    """
+    Load sector ETF data from CSV file.
+    
+    Sector ETF data is stored in data/raw/{ETF_SYMBOL}.csv and is used for
+    relative strength calculations. This function caches loaded data per ETF
+    symbol to avoid reloading on every call.
+    
+    Args:
+        etf_symbol: ETF symbol (e.g., 'XLK', 'XLF', 'XLV')
+    
+    Returns:
+        DataFrame with ETF data (columns: Open, High, Low, Close, Volume, etc.)
+        or None if file not found or error loading.
+    """
+    global _SECTOR_ETF_CACHE
+    
+    # Return cached data if available
+    if etf_symbol in _SECTOR_ETF_CACHE:
+        return _SECTOR_ETF_CACHE[etf_symbol]
+    
+    # Try to load ETF data from CSV
+    project_root = Path.cwd()
+    etf_file = project_root / "data" / "raw" / f"{etf_symbol}.csv"
+    
+    if not etf_file.exists():
+        logger.debug(f"Sector ETF file not found: {etf_file}")
+        return None
+    
+    try:
+        # Read CSV file - ETF files are now in standard ticker format:
+        # Date, Open, High, Low, Close, Adj Close, Volume, split_coefficient
+        # Standard CSV with Date as first column, no special header rows
+        etf_data = pd.read_csv(etf_file)
+        
+        # Set Date column as index
+        if 'Date' in etf_data.columns:
+            etf_data['Date'] = pd.to_datetime(etf_data['Date'])
+            etf_data = etf_data.set_index('Date')
+        else:
+            # Fallback: use first column as date
+            date_col = etf_data.columns[0]
+            etf_data[date_col] = pd.to_datetime(etf_data[date_col])
+            etf_data = etf_data.set_index(date_col)
+        
+        # Ensure index is sorted
+        etf_data = etf_data.sort_index()
+        
+        # Cache the data
+        _SECTOR_ETF_CACHE[etf_symbol] = etf_data
+        logger.debug(f"Loaded {etf_symbol} data: {len(etf_data)} rows from {etf_data.index.min()} to {etf_data.index.max()}")
+        return etf_data
+        
+    except Exception as e:
+        logger.warning(f"Error loading {etf_symbol} data from {etf_file}: {e}", exc_info=True)
+        return None
 
 
 def _rolling_percentile_rank(series: Series, window: int, min_periods: int = 1) -> Series:

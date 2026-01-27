@@ -117,7 +117,8 @@ def apply_features(
     enabled_features: dict,
     logger,
     validate: bool = True,
-    spy_data: Optional[pd.DataFrame] = None
+    spy_data: Optional[pd.DataFrame] = None,
+    ticker: Optional[str] = None
 ) -> Tuple[pd.DataFrame, Dict[str, List[str]]]:
     """
     Apply each enabled feature function to the DataFrame with validation.
@@ -130,6 +131,7 @@ def apply_features(
         logger: Logger for status.
         validate: If True, validate features for NaNs/infinities.
         spy_data: Optional SPY DataFrame to pass to features that need it.
+        ticker: Optional ticker symbol to pass to features that need it (e.g., for sector mapping).
 
     Returns:
         (df_feat, validation_issues) where:
@@ -323,6 +325,10 @@ def apply_features(
                     if name == 'signal_ensemble_score' and 'signal_ensemble_score' in signal_cache:
                         kwargs['cached_result'] = signal_cache['signal_ensemble_score']
             
+            # Pass ticker if function accepts it (for sector-relative features)
+            if 'ticker' in params and ticker is not None:
+                kwargs['ticker'] = ticker
+            
             # Call feature function with appropriate arguments
             if kwargs:
                 feature_series = func(df, **kwargs)
@@ -499,7 +505,7 @@ def process_file(
         if needs_full_rebuild or df_existing is None:
             # Full rebuild: compute all enabled features for all dates
             logger.debug(f"Full rebuild for {ticker}")
-            df_feat, validation_issues = apply_features(df_input, enabled, logger, validate=True, spy_data=spy_data)
+            df_feat, validation_issues = apply_features(df_input, enabled, logger, validate=True, spy_data=spy_data, ticker=ticker)
             stats['features_computed'] = len(enabled) - len(validation_issues)
         else:
             # Incremental update: compute only what's needed
@@ -523,11 +529,11 @@ def process_file(
                 
                 # Compute new features for existing dates only
                 new_features_dict = {name: enabled[name] for name in new_features}
-                df_new_feat_existing, new_validation = apply_features(df_existing_dates, new_features_dict, logger, validate=True, spy_data=spy_data)
+                df_new_feat_existing, new_validation = apply_features(df_existing_dates, new_features_dict, logger, validate=True, spy_data=spy_data, ticker=ticker)
                 
                 # Compute all enabled features for new dates only
                 df_new_dates = df_input.loc[list(new_dates)]
-                df_new_dates_feat, new_dates_validation = apply_features(df_new_dates, enabled, logger, validate=True, spy_data=spy_data)
+                df_new_dates_feat, new_dates_validation = apply_features(df_new_dates, enabled, logger, validate=True, spy_data=spy_data, ticker=ticker)
                 
                 validation_issues.update(new_validation)
                 validation_issues.update(new_dates_validation)
@@ -569,7 +575,7 @@ def process_file(
                 df_existing_dates = df_input.loc[list(common_dates)]
                 
                 new_features_dict = {name: enabled[name] for name in new_features}
-                df_new_feat, new_validation = apply_features(df_existing_dates, new_features_dict, logger, validate=True, spy_data=spy_data)
+                df_new_feat, new_validation = apply_features(df_existing_dates, new_features_dict, logger, validate=True, spy_data=spy_data, ticker=ticker)
                 
                 validation_issues.update(new_validation)
                 
@@ -599,7 +605,7 @@ def process_file(
                 logger.debug(f"Computing all features for {len(new_dates)} new dates")
                 
                 df_new_dates = df_input.loc[list(new_dates)]
-                df_new_dates_feat, new_dates_validation = apply_features(df_new_dates, enabled, logger, validate=True, spy_data=spy_data)
+                df_new_dates_feat, new_dates_validation = apply_features(df_new_dates, enabled, logger, validate=True, spy_data=spy_data, ticker=ticker)
                 
                 validation_issues.update(new_dates_validation)
                 
