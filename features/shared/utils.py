@@ -29,13 +29,13 @@ _SECTOR_ETF_CACHE = {}
 
 def _load_spy_data() -> Optional[DataFrame]:
     """
-    Load SPY data from CSV file for beta calculation.
+    Load SPY data from Parquet or CSV file for market context features.
     
-    SPY data is stored in data/raw/SPY.csv and is used for market context features.
+    SPY data is stored in data/clean/SPY.parquet (preferred) or data/raw/SPY.csv.
     This function caches the loaded data to avoid reloading on every call.
     
     Returns:
-        DataFrame with SPY data (columns: Date, Open, High, Low, Close, Volume, etc.)
+        DataFrame with SPY data (columns: Open, High, Low, Close, Adj Close, Volume, etc.)
         or None if file not found or error loading.
     """
     global _SPY_DATA_CACHE
@@ -44,45 +44,49 @@ def _load_spy_data() -> Optional[DataFrame]:
     if _SPY_DATA_CACHE is not None:
         return _SPY_DATA_CACHE
     
-    # Try to load SPY data from CSV
     project_root = Path.cwd()
-    spy_file = project_root / "data" / "raw" / "SPY.csv"
     
+    # Try to load from cleaned Parquet first (faster, preferred)
+    spy_parquet = project_root / "data" / "clean" / "SPY.parquet"
+    if spy_parquet.exists():
+        try:
+            spy_data = pd.read_parquet(spy_parquet)
+            if not spy_data.empty:
+                # Ensure index is datetime
+                if not isinstance(spy_data.index, pd.DatetimeIndex):
+                    spy_data.index = pd.to_datetime(spy_data.index)
+                spy_data = spy_data.sort_index()
+                _SPY_DATA_CACHE = spy_data
+                logger.debug(f"Loaded SPY data from Parquet: {len(spy_data)} rows")
+                return spy_data
+        except Exception as e:
+            logger.warning(f"Error loading SPY from Parquet: {e}, trying CSV")
+    
+    # Fallback to CSV (raw or clean)
+    spy_file = project_root / "data" / "raw" / "SPY.csv"
     if not spy_file.exists():
-        # Try alternative location (cleaned data)
         spy_file = project_root / "data" / "clean" / "SPY.csv"
         if not spy_file.exists():
+            logger.warning("SPY data file not found in data/raw/ or data/clean/")
             return None
     
     try:
-        # Read CSV file - structure is:
-        # Row 0: Column names (Price, Adj Close, Close, High, Low, Open, Volume)
-        # Row 1: "Date", NaN, NaN, ...
-        # Row 2+: Actual data
-        # Read first row to get column names, then skip row 1
-        header_row = pd.read_csv(spy_file, nrows=0)
-        column_names = header_row.columns.tolist()
+        # Read CSV file in standard ticker format (Date, Open, High, Low, Close, Adj Close, Volume)
+        spy_data = pd.read_csv(spy_file, index_col=0, parse_dates=True)
         
-        # Read data starting from row 3 (skip first 3 rows: header, Date row, and first data row)
-        # Actually, skip 2 rows and filter out the "Date" row
-        spy_data = pd.read_csv(spy_file, skiprows=2, names=column_names)
-        
-        # Remove the "Date" row if it exists
-        spy_data = spy_data[spy_data.iloc[:, 0] != 'Date'].copy()
-        
-        # The first column (Price) contains dates
-        date_col = spy_data.columns[0]
-        spy_data[date_col] = pd.to_datetime(spy_data[date_col])
-        spy_data = spy_data.set_index(date_col)
+        if spy_data.empty:
+            logger.warning(f"SPY CSV file is empty: {spy_file}")
+            return None
         
         # Ensure index is sorted
         spy_data = spy_data.sort_index()
         
         # Cache the data
         _SPY_DATA_CACHE = spy_data
+        logger.debug(f"Loaded SPY data from CSV: {len(spy_data)} rows")
         return spy_data
     except Exception as e:
-        # Return None on any error
+        logger.warning(f"Error loading SPY data from {spy_file}: {e}", exc_info=True)
         return None
 
 
@@ -277,17 +281,16 @@ def _get_sector_etf_with_fallback(sector_name: str, date: str) -> Optional[str]:
 
 def _load_sector_etf_data(etf_symbol: str) -> Optional[DataFrame]:
     """
-    Load sector ETF data from CSV file.
+    Load sector ETF data from Parquet or CSV file.
     
-    Sector ETF data is stored in data/raw/{ETF_SYMBOL}.csv and is used for
-    relative strength calculations. This function caches loaded data per ETF
-    symbol to avoid reloading on every call.
+    Sector ETF data is stored in data/clean/{ETF_SYMBOL}.parquet (preferred) or data/raw/{ETF_SYMBOL}.csv.
+    This function caches loaded data per ETF symbol to avoid reloading on every call.
     
     Args:
         etf_symbol: ETF symbol (e.g., 'XLK', 'XLF', 'XLV')
     
     Returns:
-        DataFrame with ETF data (columns: Open, High, Low, Close, Volume, etc.)
+        DataFrame with ETF data (columns: Open, High, Low, Close, Adj Close, Volume, etc.)
         or None if file not found or error loading.
     """
     global _SECTOR_ETF_CACHE
@@ -296,8 +299,25 @@ def _load_sector_etf_data(etf_symbol: str) -> Optional[DataFrame]:
     if etf_symbol in _SECTOR_ETF_CACHE:
         return _SECTOR_ETF_CACHE[etf_symbol]
     
-    # Try to load ETF data from CSV
     project_root = Path.cwd()
+    
+    # Try to load from cleaned Parquet first (faster, preferred)
+    etf_parquet = project_root / "data" / "clean" / f"{etf_symbol}.parquet"
+    if etf_parquet.exists():
+        try:
+            etf_data = pd.read_parquet(etf_parquet)
+            if not etf_data.empty:
+                # Ensure index is datetime
+                if not isinstance(etf_data.index, pd.DatetimeIndex):
+                    etf_data.index = pd.to_datetime(etf_data.index)
+                etf_data = etf_data.sort_index()
+                _SECTOR_ETF_CACHE[etf_symbol] = etf_data
+                logger.debug(f"Loaded {etf_symbol} data from Parquet: {len(etf_data)} rows from {etf_data.index.min()} to {etf_data.index.max()}")
+                return etf_data
+        except Exception as e:
+            logger.warning(f"Error loading {etf_symbol} from Parquet: {e}, trying CSV")
+    
+    # Fallback to CSV (raw)
     etf_file = project_root / "data" / "raw" / f"{etf_symbol}.csv"
     
     if not etf_file.exists():
@@ -305,27 +325,19 @@ def _load_sector_etf_data(etf_symbol: str) -> Optional[DataFrame]:
         return None
     
     try:
-        # Read CSV file - ETF files are now in standard ticker format:
-        # Date, Open, High, Low, Close, Adj Close, Volume, split_coefficient
-        # Standard CSV with Date as first column, no special header rows
-        etf_data = pd.read_csv(etf_file)
+        # Read CSV file in standard ticker format (Date, Open, High, Low, Close, Adj Close, Volume)
+        etf_data = pd.read_csv(etf_file, index_col=0, parse_dates=True)
         
-        # Set Date column as index
-        if 'Date' in etf_data.columns:
-            etf_data['Date'] = pd.to_datetime(etf_data['Date'])
-            etf_data = etf_data.set_index('Date')
-        else:
-            # Fallback: use first column as date
-            date_col = etf_data.columns[0]
-            etf_data[date_col] = pd.to_datetime(etf_data[date_col])
-            etf_data = etf_data.set_index(date_col)
+        if etf_data.empty:
+            logger.warning(f"{etf_symbol} CSV file is empty: {etf_file}")
+            return None
         
         # Ensure index is sorted
         etf_data = etf_data.sort_index()
         
         # Cache the data
         _SECTOR_ETF_CACHE[etf_symbol] = etf_data
-        logger.debug(f"Loaded {etf_symbol} data: {len(etf_data)} rows from {etf_data.index.min()} to {etf_data.index.max()}")
+        logger.debug(f"Loaded {etf_symbol} data from CSV: {len(etf_data)} rows from {etf_data.index.min()} to {etf_data.index.max()}")
         return etf_data
         
     except Exception as e:

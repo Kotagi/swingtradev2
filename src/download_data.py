@@ -1068,16 +1068,8 @@ def main() -> None:
         
         if not args.full_refresh and spy_file.exists():
             try:
-                # Read SPY file (has special format with header rows)
-                header_row = pd.read_csv(spy_file, nrows=0)
-                column_names = header_row.columns.tolist()
-                existing_spy = pd.read_csv(spy_file, skiprows=2, names=column_names)
-                # Remove the "Date" row if it exists
-                existing_spy = existing_spy[existing_spy.iloc[:, 0] != 'Date'].copy()
-                # The first column (Price) contains dates
-                date_col = existing_spy.columns[0]
-                existing_spy[date_col] = pd.to_datetime(existing_spy[date_col])
-                existing_spy = existing_spy.set_index(date_col)
+                # Read SPY file (now in standard ticker format)
+                existing_spy = pd.read_csv(spy_file, index_col=0, parse_dates=True)
                 
                 if not existing_spy.empty:
                     last_date = existing_spy.index.max()
@@ -1103,34 +1095,74 @@ def main() -> None:
                 auto_adjust=False
             )
             if not spy_data.empty:
-                # Handle MultiIndex if present
+                # Handle MultiIndex columns (yfinance returns MultiIndex for single ticker)
                 if isinstance(spy_data.columns, pd.MultiIndex):
-                    spy_data = spy_data['SPY'] if 'SPY' in spy_data.columns.levels[0] else spy_data.iloc[:, 0]
+                    # MultiIndex format: (Column Name, Ticker Symbol)
+                    # Extract columns by first level (column name) and flatten
+                    formatted_df = pd.DataFrame(index=spy_data.index)
+                    for col_name in spy_data.columns.levels[0]:
+                        if col_name in spy_data.columns.levels[0]:
+                            # Get the column (may have ticker as second level)
+                            col_data = spy_data[col_name]
+                            if isinstance(col_data, pd.DataFrame):
+                                # If multiple tickers, take first one
+                                formatted_df[col_name] = col_data.iloc[:, 0]
+                            else:
+                                formatted_df[col_name] = col_data
+                    spy_data = formatted_df
+                else:
+                    # Already a regular DataFrame, use as-is
+                    formatted_df = pd.DataFrame(index=spy_data.index)
+                    for col in spy_data.columns:
+                        formatted_df[col] = spy_data[col]
+                    spy_data = formatted_df
                 
-                # For incremental updates, merge with existing data
+                # Ensure index is datetime
+                if not isinstance(spy_data.index, pd.DatetimeIndex):
+                    spy_data.index = pd.to_datetime(spy_data.index)
+                
+                # Reformat to match regular ticker format (Date, Open, High, Low, Close, Adj Close, Volume)
+                # Create properly formatted DataFrame with standard column names
+                formatted_df = pd.DataFrame(index=spy_data.index)
+                
+                # Map columns (case-insensitive) - handle both MultiIndex flattened and regular columns
+                for standard_col, variations in [
+                    ('Open', ['Open', 'open']),
+                    ('High', ['High', 'high']),
+                    ('Low', ['Low', 'low']),
+                    ('Close', ['Close', 'close']),
+                    ('Adj Close', ['Adj Close', 'AdjClose', 'adj close', 'adjclose', 'Price']),
+                    ('Volume', ['Volume', 'volume'])
+                ]:
+                    for var in variations:
+                        if var in spy_data.columns:
+                            formatted_df[standard_col] = spy_data[var]
+                            break
+                
+                # Add split_coefficient (SPY is an ETF, so always 1.0)
+                formatted_df['split_coefficient'] = 1.0
+                
+                # Rename index to 'Date' for CSV output
+                formatted_df.index.name = 'Date'
+                
+                # Incremental update: merge with existing data if not full refresh
                 if not args.full_refresh and spy_file.exists() and spy_start_date != args.start_date:
                     try:
-                        # Read existing data again for merging
-                        header_row = pd.read_csv(spy_file, nrows=0)
-                        column_names = header_row.columns.tolist()
-                        existing_spy = pd.read_csv(spy_file, skiprows=2, names=column_names)
-                        existing_spy = existing_spy[existing_spy.iloc[:, 0] != 'Date'].copy()
-                        date_col = existing_spy.columns[0]
-                        existing_spy[date_col] = pd.to_datetime(existing_spy[date_col])
-                        existing_spy = existing_spy.set_index(date_col)
-                        
-                        # Merge new data with existing
-                        combined_spy = pd.concat([existing_spy, spy_data])
-                        combined_spy = combined_spy[~combined_spy.index.duplicated(keep="first")]
-                        combined_spy = combined_spy.sort_index()
-                        spy_data = combined_spy
-                        logging.info(f"SPY incremental update: added {len(spy_data) - len(existing_spy)} new rows (total: {len(spy_data)} rows)")
+                        # Read existing data (now in standard format)
+                        existing_spy = pd.read_csv(spy_file, index_col=0, parse_dates=True)
+                        if not existing_spy.empty:
+                            # Merge new data with existing
+                            combined_spy = pd.concat([existing_spy, formatted_df])
+                            combined_spy = combined_spy[~combined_spy.index.duplicated(keep="first")]
+                            combined_spy = combined_spy.sort_index()
+                            formatted_df = combined_spy
+                            logging.info(f"SPY incremental update: added {len(formatted_df) - len(existing_spy)} new rows (total: {len(formatted_df)} rows)")
                     except Exception as e:
                         logging.warning(f"SPY: Error merging incremental data: {e}, using new data only")
                 
-                # Save SPY in its original format (with header rows)
-                spy_data.to_csv(spy_file)
-                logging.info(f"SPY data saved to {spy_file} ({len(spy_data)} rows)")
+                # Save SPY in standard ticker format (same as regular tickers and ETFs)
+                formatted_df.to_csv(spy_file)
+                logging.info(f"SPY data saved to {spy_file} ({len(formatted_df)} rows)")
             else:
                 logging.warning("SPY download returned empty data")
     except Exception as e:

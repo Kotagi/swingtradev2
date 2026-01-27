@@ -103,7 +103,7 @@ class TrainingTab(QWidget):
         iter_row = QHBoxLayout()
         iter_row.addWidget(QLabel("Tuning Iterations:"))
         self.n_iter_spin = QSpinBox()
-        self.n_iter_spin.setRange(5, 100)
+        self.n_iter_spin.setRange(5, 9999)  # Allow up to 4-digit numbers for extensive tuning
         self.n_iter_spin.setValue(20)
         iter_row.addWidget(self.n_iter_spin)
         iter_row.addStretch()

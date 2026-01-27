@@ -311,7 +311,11 @@ def main() -> None:
     
     # Find all CSV files
     files = sorted(raw_dir.glob("*.csv"))
-    logger.info(f"Found {len(files)} raw CSV files in {raw_dir}")
+    
+    # All tickers (including SPY and sector ETFs) are now cleaned and converted to parquet
+    # Reference tickers (SPY, ETFs) are still excluded from feature generation and training,
+    # but they need to be cleaned so features can load them efficiently from parquet files
+    logger.info(f"Found {len(files)} raw CSV files to clean in {raw_dir}")
     
     if len(files) == 0:
         logger.warning("No CSV files found to clean")
