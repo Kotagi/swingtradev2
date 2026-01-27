@@ -11670,16 +11670,21 @@ def feature_atr_channel_position(df: DataFrame) -> Series:
 
 def feature_vpt_divergence(df: DataFrame) -> Series:
     """
-    VPT (Volume-Price Trend) Divergence: Cumulative measure of 'Smart Money' flow.
+    VPT (Volume-Price Trend) Divergence: Rolling measure of 'Smart Money' flow.
     
-    Tracks the relationship between price change and volume. If price is making a new high
-    but VPT is flat or declining, it signals a "weak" breakout - smart money isn't participating.
-    This acts as a filter for high-volatility signals. If volatility is high but VPT is negative,
-    the model can learn to ignore the "Buy" signal.
+    Tracks the relationship between price change and volume over a 60-day rolling window.
+    If price is making a new high but VPT is flat or declining, it signals a "weak" breakout -
+    smart money isn't participating. This acts as a filter for high-volatility signals.
+    If volatility is high but VPT is negative, the model can learn to ignore the "Buy" signal.
+    
+    Uses rolling window (60 days) instead of cumulative sum to prevent numerical instability
+    and maintain sensitivity to recent market changes. Optimized for 20-30 day swing trading horizon.
     
     VPT Calculation:
-    - VPT = Previous VPT + Volume * (Close - Previous Close) / Previous Close
-    - Cumulative sum of volume-weighted price changes
+    - VPT = Rolling sum of Volume * (Close - Previous Close) / Previous Close over 60 days
+    - Uses rolling window (60 trading days = ~3 months) instead of cumulative sum
+    - Prevents numerical instability from unbounded growth and maintains sensitivity to recent changes
+    - 60-day window optimized for swing trading (more responsive than 252-day annual window)
     
     Divergence Detection:
     - Compares price momentum vs VPT momentum over 10-day window
@@ -11695,8 +11700,10 @@ def feature_vpt_divergence(df: DataFrame) -> Series:
     # Calculate price change percentage
     price_change_pct = close.pct_change().fillna(0.0)
     
-    # VPT = cumulative sum of Volume * Price_Change_Pct
-    vpt = (volume * price_change_pct).cumsum()
+    # VPT = rolling sum of Volume * Price_Change_Pct (60 trading days = ~3 months)
+    # Using rolling window instead of cumulative sum to prevent numerical instability
+    # and maintain sensitivity to recent changes (optimized for 20-30 day swing trading horizon)
+    vpt = (volume * price_change_pct).rolling(window=60, min_periods=1).sum()
     
     # Calculate momentum for both price and VPT over 10-day window
     price_momentum = close.pct_change(periods=10).fillna(0.0)
