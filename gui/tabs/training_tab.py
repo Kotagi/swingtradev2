@@ -144,13 +144,18 @@ class TrainingTab(QWidget):
         refit_row.addStretch()
         options_layout.addLayout(refit_row)
 
+        # Tuning & CV container (hidden when mode=Build)
+        self.tuning_cv_container = QWidget()
+        tuning_cv_layout = QVBoxLayout(self.tuning_cv_container)
+        tuning_cv_layout.setContentsMargins(0, 0, 0, 0)
+
         # Hyperparameter tuning
         tune_row = QHBoxLayout()
         self.tune_check = QCheckBox("Enable Hyperparameter Tuning")
         self.tune_check.setChecked(False)
         tune_row.addWidget(self.tune_check)
         tune_row.addStretch()
-        options_layout.addLayout(tune_row)
+        tuning_cv_layout.addLayout(tune_row)
         
         # Tuning iterations (shown when tuning enabled)
         iter_row = QHBoxLayout()
@@ -160,14 +165,14 @@ class TrainingTab(QWidget):
         self.n_iter_spin.setValue(20)
         iter_row.addWidget(self.n_iter_spin)
         iter_row.addStretch()
-        options_layout.addLayout(iter_row)
+        tuning_cv_layout.addLayout(iter_row)
         
         # Cross-validation
         cv_row = QHBoxLayout()
         self.cv_check = QCheckBox("Use Cross-Validation")
         cv_row.addWidget(self.cv_check)
         cv_row.addStretch()
-        options_layout.addLayout(cv_row)
+        tuning_cv_layout.addLayout(cv_row)
         
         # CV folds
         folds_row = QHBoxLayout()
@@ -177,14 +182,16 @@ class TrainingTab(QWidget):
         self.cv_folds_spin.setValue(3)
         folds_row.addWidget(self.cv_folds_spin)
         folds_row.addStretch()
-        options_layout.addLayout(folds_row)
+        tuning_cv_layout.addLayout(folds_row)
         
         # Fast mode
         fast_row = QHBoxLayout()
         self.fast_check = QCheckBox("Fast Mode (faster but less optimal)")
         fast_row.addWidget(self.fast_check)
         fast_row.addStretch()
-        options_layout.addLayout(fast_row)
+        tuning_cv_layout.addLayout(fast_row)
+
+        options_layout.addWidget(self.tuning_cv_container)
         
         # Early stopping rounds
         early_stop_row = QHBoxLayout()
@@ -546,6 +553,8 @@ class TrainingTab(QWidget):
         self.refit_n_estimators_spin.setVisible(is_build)
         self.horizon_spin.setEnabled(not is_build)
         self.return_threshold_spin.setEnabled(not is_build)
+        # Hide tuning and CV options when Build (load config, train one model—no tuning/CV)
+        self.tuning_cv_container.setVisible(not is_build)
         # When switching to Explore, auto-fill the Explore output path so the user is never prompted
         if is_explore:
             self._update_explore_output_path()

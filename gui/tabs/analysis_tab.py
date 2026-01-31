@@ -91,6 +91,11 @@ class AnalysisTab(QWidget):
         parquet_inspector_tab = ParquetInspectorTab()
         self.tab_widget.addTab(parquet_inspector_tab, "Data Inspector")
         
+        # Tab 7: Prune features
+        from gui.tabs.prune_features_tab import PruneFeaturesTab
+        prune_tab = PruneFeaturesTab()
+        self.tab_widget.addTab(prune_tab, "Prune features")
+        
         layout.addWidget(self.tab_widget)
         
         # Set layout on content widget

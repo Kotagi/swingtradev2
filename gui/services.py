@@ -2055,6 +2055,68 @@ class BacktestService:
         return filtered
 
 
+class PruneService:
+    """Service for pruning low/zero-importance features from build and train configs."""
+
+    def get_importances_from_model(self, model_path: str) -> Tuple[Dict[str, float], Optional[str]]:
+        """Load feature importances and feature set from a model. Returns (importances_dict, feature_set)."""
+        try:
+            from src.prune_features_config import get_importances_from_model as _get
+            return _get(model_path)
+        except Exception as e:
+            return {}, None
+
+    def get_enabled_feature_names(self, feature_set: str, config_type: str = "train") -> List[str]:
+        """Return list of feature names currently enabled (1) in the config."""
+        try:
+            from src.prune_features_config import get_enabled_feature_names as _get
+            return _get(feature_set, config_type)
+        except Exception:
+            return []
+
+    def preview_prune(
+        self,
+        feature_set: str,
+        model_path: str,
+        rule: str,
+        rule_param: float,
+    ) -> Tuple[List[str], str, str]:
+        """
+        Compute which features would be disabled.
+        Returns (list of feature names to disable, message, feature_set_used).
+        """
+        try:
+            from src.prune_features_config import (
+                get_importances_from_model,
+                get_enabled_feature_names,
+                compute_to_disable,
+            )
+            importances, fs = get_importances_from_model(model_path)
+            if not feature_set and fs:
+                feature_set = fs
+            if not importances:
+                return [], "No feature importances found in model (or model not found).", feature_set or ""
+            enabled = get_enabled_feature_names(feature_set, "train")
+            to_disable = compute_to_disable(importances, rule, rule_param, config_feature_names=enabled)
+            msg = f"{len(to_disable)} feature(s) would be disabled (set to 0 in build and train configs)."
+            return to_disable, msg, feature_set or ""
+        except Exception as e:
+            return [], f"Error: {str(e)}", ""
+
+    def apply_prune(
+        self,
+        feature_set: str,
+        to_disable: List[str],
+        dry_run: bool = False,
+    ) -> Tuple[int, str]:
+        """Set given features to 0 in build and train configs. Returns (count_changed, message)."""
+        try:
+            from src.prune_features_config import apply_prune as _apply
+            return _apply(feature_set, to_disable, dry_run=dry_run, update_build_config=True, update_train_config=True)
+        except Exception as e:
+            return 0, f"Error: {str(e)}"
+
+
 class StopLossAnalysisService:
     """Service for stop-loss analysis functionality."""
     
