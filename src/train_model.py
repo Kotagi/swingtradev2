@@ -697,8 +697,7 @@ def main() -> None:
             args.train_end = build_config_loaded["train_end"]
         if "val_end" in build_config_loaded and build_config_loaded["val_end"] is not None:
             args.val_end = build_config_loaded["val_end"]
-        if "imbalance_multiplier" in build_config_loaded and build_config_loaded["imbalance_multiplier"] is not None:
-            args.imbalance_multiplier = float(build_config_loaded["imbalance_multiplier"])
+        # Imbalance multiplier is NOT overridden from config: user sets it manually in Build mode (GUI).
         if "early_stopping_rounds" in build_config_loaded and build_config_loaded["early_stopping_rounds"] is not None:
             args.early_stopping_rounds = int(build_config_loaded["early_stopping_rounds"])
         print(f"\n=== BUILD MODE: loaded config from {build_path} ===")
