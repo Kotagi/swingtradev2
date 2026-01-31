@@ -1358,6 +1358,34 @@ def feature_atr14_normalized(df: DataFrame, intermediates: Optional[dict] = None
     return atr_norm
 
 
+def feature_expansion_gap_ratio(df: DataFrame) -> Series:
+    """
+    Expansion Gap Ratio: Range/ATR20 when up day, multiplied by relative volume (power gap).
+
+    (High - Low) / ATR20 when Close > Open, else 0; then * (Volume / 20d Avg Volume).
+    > 2 indicates impulse with volume confirmation; filters bull traps on low volume.
+    """
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    close = _get_close_series(df)
+    openp = _get_open_series(df)
+    volume = _get_volume_series(df)
+    tr1 = high - low
+    tr2 = (high - close.shift(1)).abs()
+    tr3 = (low - close.shift(1)).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    atr20 = tr.rolling(window=20, min_periods=1).mean()
+    daily_range = high - low
+    ratio = daily_range / (atr20 + 1e-10)
+    up_day = close > openp
+    ratio = ratio.where(up_day, 0.0)
+    avg_vol_20 = volume.rolling(window=20, min_periods=1).mean()
+    rel_vol = volume / (avg_vol_20 + 1e-10)
+    power_gap = (ratio * rel_vol).clip(upper=10.0)
+    power_gap.name = "expansion_gap_ratio"
+    return power_gap
+
+
 # ============================================================================
 # BLOCK ML-2.1: Basic Volume (6 features)
 # ============================================================================
@@ -1887,6 +1915,24 @@ def feature_mfi(df: DataFrame) -> Series:
     mfi_centered = (mfi - 50) / 50
     mfi_centered.name = "mfi"
     return mfi_centered
+
+
+def feature_cmf_divergence(df: DataFrame) -> Series:
+    """
+    CMF Divergence: Continuous divergence between MFI trend and price (dist to 52w high).
+
+    Quiet accumulation: price flat/down (positive dist_52w_high) but MFI trending up.
+    Option C: relative difference (mfi_trend + dist_52w_high) for intensity; ML-friendly.
+    """
+    mfi = feature_mfi(df)
+    dist_high = feature_dist_52w_high(df)
+    mfi_5d = mfi - mfi.shift(5)
+    divergence = mfi_5d + dist_high
+    roll_mean = divergence.rolling(window=20, min_periods=5).mean()
+    roll_std = divergence.rolling(window=20, min_periods=5).std()
+    out = (divergence - roll_mean) / (roll_std + 1e-10)
+    out.name = "cmf_divergence"
+    return out
 
 
 def feature_tsi(df: DataFrame) -> Series:
@@ -4400,6 +4446,26 @@ def feature_volume_imbalance(df: DataFrame) -> Series:
     imbalance_norm = imbalance / (avg_volume + 1e-10)
     imbalance_norm.name = "volume_imbalance"
     return imbalance_norm
+
+
+def feature_volume_directional_force(df: DataFrame) -> Series:
+    """
+    Volume-Weighted Directional Force (VDF): Buying vs selling pressure scaled by volume.
+
+    (Close - Low) - (High - Close) / (High - Low) * Volume, normalized by 20-day average volume.
+    Positive = closed near highs on buying pressure; comparable across stocks.
+    """
+    high = _get_high_series(df)
+    low = _get_low_series(df)
+    close = _get_close_series(df)
+    volume = _get_volume_series(df)
+    num = (close - low) - (high - close)
+    denom = (high - low).replace(0, np.nan)
+    raw = (num / denom).fillna(0) * volume
+    avg_vol_20 = volume.rolling(window=20, min_periods=1).mean()
+    vdf = raw / (avg_vol_20 + 1e-10)
+    vdf.name = "volume_directional_force"
+    return vdf
 
 
 def feature_volume_at_price(df: DataFrame) -> Series:
@@ -7199,6 +7265,22 @@ def feature_rs_trend(df: DataFrame) -> Series:
     rs_trend = rs_trend.clip(-1.0, 1.0)
     rs_trend.name = "rs_trend"
     return rs_trend
+
+
+def feature_rs_acceleration(df: DataFrame) -> Series:
+    """
+    RS Acceleration: 5-day change in Relative Strength vs SPY, z-scored.
+
+    Identifies stocks starting to outperform SPY at an increasing rate (market filter).
+    Z-score over rolling 20-day window for comparability.
+    """
+    rs = feature_relative_strength_spy(df)
+    rs_5d_change = rs - rs.shift(5)
+    roll_mean = rs_5d_change.rolling(window=20, min_periods=5).mean()
+    roll_std = rs_5d_change.rolling(window=20, min_periods=5).std()
+    z = (rs_5d_change - roll_mean) / (roll_std + 1e-10)
+    z.name = "rs_acceleration"
+    return z
 
 
 def feature_relative_strength_sector(df: DataFrame) -> Series:

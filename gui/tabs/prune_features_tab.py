@@ -8,7 +8,7 @@ Lives under Analysis tab.
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, QPushButton,
     QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit, QMessageBox, QFileDialog,
-    QStackedWidget, QFormLayout,
+    QStackedWidget, QFormLayout, QSizePolicy,
 )
 from PyQt6.QtCore import Qt
 from pathlib import Path
@@ -63,6 +63,18 @@ class PruneFeaturesTab(QWidget):
         fs_group.setLayout(fs_layout)
         layout.addWidget(fs_group)
 
+        # Features ranked by importance (when model selected)
+        importance_group = QGroupBox("Features by importance")
+        importance_layout = QVBoxLayout()
+        self.importance_text = QTextEdit()
+        self.importance_text.setReadOnly(True)
+        self.importance_text.setPlaceholderText("Select a model above to list features ranked by importance (full values).")
+        self.importance_text.setMinimumHeight(180)
+        self.importance_text.setMaximumHeight(280)
+        importance_layout.addWidget(self.importance_text)
+        importance_group.setLayout(importance_layout)
+        layout.addWidget(importance_group)
+
         # Rule
         rule_group = QGroupBox("Prune rule")
         rule_layout = QFormLayout()
@@ -73,9 +85,14 @@ class PruneFeaturesTab(QWidget):
         self.rule_combo.currentIndexChanged.connect(self._on_rule_changed)
         rule_layout.addRow("Rule:", self.rule_combo)
         self.param_stack = QStackedWidget()
+        self.param_stack.setMaximumWidth(140)
+        self.param_stack.setMaximumHeight(32)
+        self.param_stack.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self.param_n = QSpinBox()
         self.param_n.setRange(1, 10000)
         self.param_n.setValue(200)
+        self.param_n.setMaximumWidth(120)
+        self.param_n.setMaximumHeight(28)
         self.param_n.setToolTip("Keep only the top N features by importance; disable the rest.")
         self.param_stack.addWidget(self.param_n)
         self.param_threshold = QDoubleSpinBox()
@@ -83,9 +100,12 @@ class PruneFeaturesTab(QWidget):
         self.param_threshold.setDecimals(6)
         self.param_threshold.setSingleStep(0.001)
         self.param_threshold.setValue(0.001)
+        self.param_threshold.setMaximumWidth(120)
+        self.param_threshold.setMaximumHeight(28)
         self.param_threshold.setToolTip("Disable features with importance below this value.")
         self.param_stack.addWidget(self.param_threshold)
         self.param_placeholder = QWidget()
+        self.param_placeholder.setMaximumHeight(28)
         self.param_stack.addWidget(self.param_placeholder)
         rule_layout.addRow("Parameter:", self.param_stack)
         rule_group.setLayout(rule_layout)
@@ -117,6 +137,33 @@ class PruneFeaturesTab(QWidget):
 
         layout.addStretch()
         self.setLayout(layout)
+        # Connect after importance_text exists; then populate if a model is selected
+        self.model_combo.currentIndexChanged.connect(self._on_model_changed)
+        self._on_model_changed()
+
+    def _on_model_changed(self):
+        """Load feature importances for the selected model, set feature set from model, and list features ranked by importance."""
+        path = self.model_combo.currentData()
+        if not path or not Path(path).exists():
+            self.importance_text.clear()
+            self.importance_text.setPlaceholderText("Select a model above to list features ranked by importance (full values).")
+            return
+        importances, feature_set = self.service.get_importances_from_model(path)
+        # Auto-set feature set combo to the model's feature set when available
+        if feature_set and self.feature_set_combo.count() > 0:
+            for i in range(self.feature_set_combo.count()):
+                if self.feature_set_combo.itemData(i) == feature_set:
+                    self.feature_set_combo.setCurrentIndex(i)
+                    break
+        # Update features-by-importance list (full numbers)
+        if not importances:
+            self.importance_text.setPlainText("No feature importances in this model.")
+            return
+        items = sorted(importances.items(), key=lambda x: -x[1])
+        lines = []
+        for i, (name, imp) in enumerate(items, 1):
+            lines.append(f"{i}\t{name}\t{repr(imp)}")
+        self.importance_text.setPlainText("\n".join(lines))
 
     def _populate_models(self):
         self.model_combo.clear()

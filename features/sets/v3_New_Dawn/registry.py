@@ -45,6 +45,7 @@ from features.sets.v3_New_Dawn.technical import (
     feature_volatility_5d,
     feature_volatility_21d,
     feature_atr14_normalized,
+    feature_expansion_gap_ratio,
     # Block ML-2.1: Basic Volume
     feature_log_volume,
     feature_log_avg_volume_20d,
@@ -79,6 +80,7 @@ from features.sets.v3_New_Dawn.technical import (
     feature_kama_slope,
     feature_chaikin_money_flow,
     feature_mfi,
+    feature_cmf_divergence,
     feature_tsi,
     feature_trend_residual,
     # Block ML-3.1: Additional Momentum Oscillators
@@ -192,6 +194,7 @@ from features.sets.v3_New_Dawn.technical import (
     feature_volume_divergence,
     feature_volume_autocorrelation,
     feature_volume_imbalance,
+    feature_volume_directional_force,
     feature_volume_at_price,
     feature_volatility_ratio,
     # Block ML-8.1: Weekly Returns
@@ -302,6 +305,7 @@ from features.sets.v3_New_Dawn.technical import (
     feature_rs_consistency,
     feature_rs_regime,
     feature_rs_trend,
+    feature_rs_acceleration,
     feature_relative_strength_sector,
     # Block ML-15: Time-Based Features (14 features, skipping days_since_earnings)
     feature_day_of_week,
@@ -520,6 +524,7 @@ FEATURE_REGISTRY = {
     'volatility_5d': feature_volatility_5d,
     'volatility_21d': feature_volatility_21d,
     'atr14_normalized': feature_atr14_normalized,
+    'expansion_gap_ratio': feature_expansion_gap_ratio,
     # Block ML-2.1: Basic Volume (6 features)
     'log_volume': feature_log_volume,
     'log_avg_volume_20d': feature_log_avg_volume_20d,
@@ -554,6 +559,7 @@ FEATURE_REGISTRY = {
     'kama_slope': feature_kama_slope,
     'chaikin_money_flow': feature_chaikin_money_flow,
     'mfi': feature_mfi,
+    'cmf_divergence': feature_cmf_divergence,
     'tsi': feature_tsi,
     'trend_residual': feature_trend_residual,
     # Block ML-3.1: Additional Momentum Oscillators (4 features)
@@ -667,6 +673,7 @@ FEATURE_REGISTRY = {
     'volume_divergence': feature_volume_divergence,
     'volume_autocorrelation': feature_volume_autocorrelation,
     'volume_imbalance': feature_volume_imbalance,
+    'volume_directional_force': feature_volume_directional_force,
     'volume_at_price': feature_volume_at_price,
     'volatility_ratio': feature_volatility_ratio,
     # Block ML-8.1: Weekly Returns (3 features)
@@ -777,6 +784,7 @@ FEATURE_REGISTRY = {
     'rs_consistency': feature_rs_consistency,
     'rs_regime': feature_rs_regime,
     'rs_trend': feature_rs_trend,
+    'rs_acceleration': feature_rs_acceleration,
     'relative_strength_sector': feature_relative_strength_sector,
     # Block ML-15: Time-Based Features (14 features, skipping days_since_earnings)
     'day_of_week': feature_day_of_week,
