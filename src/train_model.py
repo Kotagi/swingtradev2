@@ -28,6 +28,7 @@ import sys
 import yaml
 import json
 import time
+import threading
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -54,7 +55,7 @@ from sklearn.metrics import (
 )
 from sklearn.dummy import DummyClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
+from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit, ParameterSampler
 from typing import Tuple, List, Dict, Optional
 
 # Import labeling utility (used during training to calculate labels)
@@ -152,6 +153,39 @@ HYPERPARAMETER_SPACE_FAST = {
     'reg_alpha': [0, 0.1],  # Reduced from [0, 0.1, 1.0]
     'reg_lambda': [1, 1.5]  # Reduced from [1, 1.5, 2.0]
 }
+
+
+def write_progress(
+    path: Path,
+    mode: str,
+    phase: str,
+    elapsed_seconds: float,
+    estimated_seconds_left: Optional[float] = None,
+    percent_complete: Optional[float] = None,
+    message: Optional[str] = None,
+) -> None:
+    """
+    Write training progress to a JSON file for the GUI. Uses temp file + os.replace
+    so the GUI never reads a half-written file.
+    """
+    obj = {
+        "mode": mode,
+        "phase": phase,
+        "elapsed_seconds": elapsed_seconds,
+        "estimated_seconds_left": estimated_seconds_left,
+        "percent_complete": percent_complete,
+        "message": message,
+    }
+    tmp_path = path.parent / (path.name + ".tmp")
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(obj, f, indent=0)
+        os.replace(tmp_path, path)
+    except OSError:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def load_data() -> pd.DataFrame:
@@ -595,9 +629,87 @@ def main() -> None:
         default=None,
         help="Custom model output file path (e.g., 'models/my_custom_model.pkl'). If not specified, uses default naming based on feature set or 'xgb_classifier_selected_features.pkl'"
     )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["explore", "build", "full_auto"],
+        default="full_auto",
+        help="Training mode: 'explore' = tuning only, save config JSON and exit; 'build' = load config JSON, train one model and save; 'full_auto' = single-step tune then train (default)."
+    )
+    parser.add_argument(
+        "--explore-output",
+        type=str,
+        default=None,
+        help="Path for Explore mode: save full config JSON here after tuning (e.g., models/explore_config.json). Required when --mode=explore."
+    )
+    parser.add_argument(
+        "--build-config",
+        type=str,
+        default=None,
+        help="Path to Explore config JSON for Build mode. Required when --mode=build. Horizon, threshold, feature_set, dates, and best_params are read from this file."
+    )
+    parser.add_argument(
+        "--refit-n-estimators",
+        type=int,
+        default=500,
+        help="For Build mode: number of trees for the final model (default: 500). Overrides n_estimators from the explore config for a deeper model."
+    )
     args = parser.parse_args()
 
     start_time = time.time()
+    progress_file = Path.cwd() / ".training_progress.json"
+
+    def _progress(phase: str, message: Optional[str] = None, estimated_left: Optional[float] = None, pct: Optional[float] = None) -> None:
+        elapsed = time.time() - start_time
+        write_progress(progress_file, args.mode, phase, elapsed, estimated_left, pct, message)
+
+    def _cleanup_progress() -> None:
+        try:
+            progress_file.unlink(missing_ok=True)
+            (progress_file.parent / (progress_file.name + ".tmp")).unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    _progress("loading", "Loading data...")
+
+    # Load Build-mode config from JSON if mode=build
+    build_config_loaded: Optional[Dict] = None
+    if args.mode == "build":
+        if not args.build_config:
+            raise ValueError("Build mode requires --build-config <path> to an Explore config JSON.")
+        build_path = Path(args.build_config)
+        if not build_path.is_absolute():
+            build_path = PROJECT_ROOT / build_path
+        if not build_path.exists():
+            raise FileNotFoundError(f"Build config not found: {build_path}")
+        with open(build_path, "r", encoding="utf-8") as f:
+            build_config_loaded = json.load(f)
+        # Override args from config
+        if "horizon" in build_config_loaded and build_config_loaded["horizon"] is not None:
+            args.horizon = int(build_config_loaded["horizon"])
+        if "return_threshold" in build_config_loaded and build_config_loaded["return_threshold"] is not None:
+            args.return_threshold = float(build_config_loaded["return_threshold"])
+        if "feature_set" in build_config_loaded and build_config_loaded["feature_set"]:
+            args.feature_set = build_config_loaded["feature_set"]
+        if "train_start" in build_config_loaded and build_config_loaded["train_start"] is not None:
+            args.train_start = build_config_loaded["train_start"]
+        if "train_end" in build_config_loaded and build_config_loaded["train_end"] is not None:
+            args.train_end = build_config_loaded["train_end"]
+        if "val_end" in build_config_loaded and build_config_loaded["val_end"] is not None:
+            args.val_end = build_config_loaded["val_end"]
+        if "imbalance_multiplier" in build_config_loaded and build_config_loaded["imbalance_multiplier"] is not None:
+            args.imbalance_multiplier = float(build_config_loaded["imbalance_multiplier"])
+        if "early_stopping_rounds" in build_config_loaded and build_config_loaded["early_stopping_rounds"] is not None:
+            args.early_stopping_rounds = int(build_config_loaded["early_stopping_rounds"])
+        print(f"\n=== BUILD MODE: loaded config from {build_path} ===")
+        print(f"  horizon={args.horizon}, return_threshold={args.return_threshold}, feature_set={args.feature_set}")
+        print("=" * 70)
+
+    if args.mode == "explore":
+        if not args.explore_output:
+            raise ValueError("Explore mode requires --explore-output <path> to save the config JSON.")
+        if not args.tune:
+            raise ValueError("Explore mode requires --tune (tuning only, then save config and exit).")
 
     # Step 1.5: Handle feature set configuration
     global DATA_DIR, TRAIN_CFG, MODEL_OUT
@@ -642,6 +754,7 @@ def main() -> None:
     # Step 2: Load & prepare data
     print("Loading data...")
     df_all = load_data()
+    _progress("loading", "Data loaded.")
     
     # Step 2.5: Calculate labels based on horizon and return_threshold
     # Labels are now calculated during training, not during feature engineering
@@ -766,6 +879,8 @@ def main() -> None:
     print(f"Validation positive class: {y_val.sum():,} ({y_val.mean()*100:.2f}%)")
     print(f"Test positive class: {y_test.sum():,} ({y_test.mean()*100:.2f}%)")
 
+    _progress("preparing", "Splits done.")
+
     # Step 7: Baseline DummyClassifier
     print("\n=== TRAINING BASELINE MODELS ===")
     dummy = DummyClassifier(strategy="most_frequent", random_state=42)
@@ -778,13 +893,15 @@ def main() -> None:
     # Note: XGBoost doesn't require feature scaling, so we train on raw features
     lr = LogisticRegression(
         class_weight="balanced",
-        max_iter=1000,
+        max_iter=2000,
         random_state=42
     )
     lr.fit(X_train, y_train)
     lr_proba = lr.predict_proba(X_test)[:, 1]
     lr_auc = roc_auc_score(y_test, lr_proba)
     print(f"LogisticRegression Test AUC: {lr_auc:.4f}")
+
+    _progress("baseline", "Baselines done.")
 
     # Step 9: Compute scale_pos_weight for XGBoost
     pos = y_train.sum()
@@ -804,8 +921,38 @@ def main() -> None:
 
     # Step 10: Hyperparameter tuning or use defaults
     print("\n=== TRAINING XGBOOST CLASSIFIER ===")
-    
-    if args.tune:
+
+    # Build mode: train one model from loaded config (no tuning)
+    if args.mode == "build" and build_config_loaded is not None:
+        best_params = build_config_loaded.get("best_params")
+        if not best_params:
+            raise ValueError("Build config JSON must contain 'best_params' from an Explore run.")
+        # Copy and override n_estimators for deeper final model
+        train_params = dict(best_params)
+        train_params["n_estimators"] = args.refit_n_estimators
+        train_params.pop("early_stopping_rounds", None)
+        train_params["scale_pos_weight"] = scale_pos_weight
+        if "tree_method" not in train_params:
+            train_params["tree_method"] = "hist"
+        train_params["n_jobs"] = -1
+        if not args.no_early_stop and len(X_val) > 0:
+            train_params["early_stopping_rounds"] = args.early_stopping_rounds
+        model = XGBClassifier(**train_params)
+        _progress("training", "Training (Build)...")
+        print(f"Build mode: training with refit_n_estimators={args.refit_n_estimators}, early_stopping_rounds={args.early_stopping_rounds}")
+        if len(X_val) > 0:
+            model.fit(
+                X_train, y_train,
+                eval_set=[(X_train, y_train), (X_val, y_val)],
+                verbose=False
+            )
+            if hasattr(model, "best_iteration") and model.best_iteration is not None:
+                print(f"Early stopping: best iteration {model.best_iteration} (score: {model.best_score:.4f})")
+        else:
+            model.fit(X_train, y_train)
+        # Fall through to Step 11 (evaluate), Step 12 (importance), Step 13 (save), etc.
+
+    elif args.tune:
         print(f"Performing hyperparameter tuning ({args.n_iter} iterations)...")
         
         # Optimize parallelization: During CV, use fewer threads per XGBoost model
@@ -816,20 +963,22 @@ def main() -> None:
         # During hyperparameter search: Use 1-2 threads per XGBoost model
         # This allows RandomizedSearchCV to use more cores for parallelizing across candidates
         # After finding best params, we'll use full parallelization for final training
-        xgb_threads_during_search = max(1, n_cores // 4)  # Use 1/4 of cores per model during search
-        
-        print(f"Parallelization: Using {xgb_threads_during_search} threads per XGBoost model during search")
+        # Explore: use all cores (-1). Full Auto tuning: fewer threads per model for CV parallelization.
+        xgb_threads_during_search = max(1, n_cores // 4)
+        xgb_n_jobs = -1 if args.mode == 'explore' else xgb_threads_during_search
+
+        print(f"Parallelization: Using {'all cores (-1)' if xgb_n_jobs == -1 else xgb_threads_during_search} threads per XGBoost model during search")
         print(f"  (RandomizedSearchCV will parallelize across {n_cores} cores)")
-        
+
         # Base parameters for hyperparameter search
         base_params = {
             'scale_pos_weight': scale_pos_weight,
             'random_state': 42,
             'eval_metric': 'logloss',
-            'tree_method': 'hist',  # Memory-efficient histogram method
-            'n_jobs': xgb_threads_during_search  # Reduced for better CV parallelization
+            'tree_method': 'hist',
+            'n_jobs': xgb_n_jobs
         }
-        
+
         # Create base model
         base_model = XGBClassifier(**base_params)
         
@@ -875,7 +1024,42 @@ def main() -> None:
             print(f"FAST MODE: Reduced search space. This may take {est_time} minutes. Progress updates will appear below...\n")
         else:
             print(f"This may take {est_time} minutes. Progress updates will appear below...\n")
-        
+
+        # One-time calibration: single fit on a subset of data to estimate time per fit (no full-data CV)
+        CALIBRATION_SAMPLE_FRACTION = 0.15  # 15% of training rows
+        n_sample = max(2000, int(len(X_train) * CALIBRATION_SAMPLE_FRACTION))
+        n_sample = min(n_sample, len(X_train))
+        rng = np.random.default_rng(42)
+        sample_idx = rng.choice(len(X_train), size=n_sample, replace=False)
+        X_cal = X_train.iloc[sample_idx]
+        y_cal = y_train.iloc[sample_idx]
+        sampled_params = next(iter(ParameterSampler(param_space, n_iter=1, random_state=42)))
+        cal_params = {**base_params, **sampled_params}
+        cal_model = XGBClassifier(**cal_params)
+        _progress("tuning", "Calibrating (1 fit on subset)...", None, 0)
+        calibration_start = time.time()
+        cal_model.fit(X_cal, y_cal)
+        calibration_elapsed = time.time() - calibration_start
+        # Scale time to full data: time_per_fit ~ elapsed * (full_size / sample_size)
+        time_per_fit = calibration_elapsed * (len(X_train) / n_sample)
+        estimated_tuning_seconds = total_fits * time_per_fit
+        print(f"Calibration: 1 fit on {n_sample:,} rows ({n_sample/len(X_train)*100:.0f}%) took {calibration_elapsed:.1f}s -> ~{time_per_fit:.1f}s per full fit -> estimated tuning: {estimated_tuning_seconds/60:.1f} min")
+
+        tuning_done = threading.Event()
+
+        def _eta_writer() -> None:
+            tuning_start = time.time()
+            while not tuning_done.is_set():
+                elapsed = time.time() - tuning_start
+                est_left = max(0.0, estimated_tuning_seconds - elapsed)
+                pct = min(99.0, 100.0 * elapsed / estimated_tuning_seconds) if estimated_tuning_seconds > 0 else 0.0
+                _progress("tuning", "Hyperparameter tuning...", est_left, pct)
+                tuning_done.wait(60)
+
+        eta_thread = threading.Thread(target=_eta_writer, daemon=True)
+        eta_thread.start()
+        _progress("tuning", "Hyperparameter tuning...", estimated_tuning_seconds, 0)
+
         search = RandomizedSearchCV(
             base_model,
             param_space,
@@ -886,17 +1070,49 @@ def main() -> None:
             random_state=42,
             verbose=2  # Show progress for each fit
         )
-        
+
         # Use only training set for hyperparameter tuning (CV will split internally)
         # We'll use the validation set for early stopping after finding best params
         search.fit(X_train, y_train)
+        tuning_done.set()
         best_model = search.best_estimator_
         
         print(f"\nBest hyperparameters:")
         for param, value in search.best_params_.items():
             print(f"  {param}: {value}")
         print(f"Best CV score: {search.best_score_:.4f}")
-        
+
+        _progress("retraining", "Tuning done.")
+
+        # Explore mode: save full config JSON and exit (no final model training)
+        if args.mode == "explore":
+            explore_config = {
+                "best_params": search.best_params_,
+                "return_threshold": args.return_threshold,
+                "horizon": args.horizon,
+                "label_col": label_col,
+                "feature_set": args.feature_set if args.feature_set else DEFAULT_FEATURE_SET,
+                "train_start": train_start_date,
+                "train_end": train_end_date,
+                "val_end": val_end_date,
+                "imbalance_multiplier": args.imbalance_multiplier,
+                "early_stopping_rounds": args.early_stopping_rounds,
+                "tune_timestamp": datetime.now().isoformat(),
+            }
+            out_path = Path(args.explore_output)
+            if not out_path.is_absolute():
+                out_path = MODEL_DIR / out_path
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(explore_config, f, indent=2)
+            elapsed = time.time() - start_time
+            print(f"\n=== EXPLORE MODE COMPLETE ===")
+            print(f"Config saved to: {out_path}")
+            print(f"Total time: {elapsed:.2f} seconds ({elapsed/60:.2f} minutes)")
+            print("Run Build mode with --mode build --build-config <path> to train the final model.")
+            _cleanup_progress()
+            return
+
         # Now retrain the best model on the full training set with early stopping on validation set
         print("\nRetraining best model on full training set with early stopping...")
         # Create a new model with the best parameters
@@ -941,8 +1157,9 @@ def main() -> None:
                 model.fit(X_train, y_train)
         
     else:
+        _progress("training", "Training (default params)...")
         print("Using default hyperparameters (use --tune for hyperparameter optimization)")
-        
+
         # Default parameters (improved from original)
         model = XGBClassifier(
             n_estimators=300,
@@ -983,6 +1200,8 @@ def main() -> None:
                 )
             else:
                 model.fit(X_train, y_train)
+
+    _progress("evaluating", "Evaluating...")
 
     # Step 11: Evaluate on validation and test sets
     val_proba = model.predict_proba(X_val)[:, 1] if len(X_val) > 0 else None
@@ -1027,6 +1246,8 @@ def main() -> None:
             plot_files['feature_importance'] = plot_feature_importance_chart(model, feats, MODEL_DIR, top_n=20)
         else:
             print("Matplotlib not available. Install with: pip install matplotlib")
+
+    _progress("saving", "Saving model...")
 
     # Step 13: Save the trained model, feature list, and metadata
     training_metadata = {
@@ -1084,6 +1305,7 @@ def main() -> None:
     # Step 14: Optional SHAP explanations (using new SHAP service)
     shap_artifacts_path = None
     if args.shap:
+        _progress("shap", "Computing SHAP...")
         print("\n=== COMPUTING SHAP EXPLANATIONS ===")
         try:
             # Import SHAP service (it's in the same src/ directory)
@@ -1197,6 +1419,8 @@ def main() -> None:
             
         except ImportError:
             print("SHAP library not installed. Install with: pip install shap")
+
+    _cleanup_progress()
 
 
 if __name__ == "__main__":

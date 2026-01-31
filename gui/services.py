@@ -1300,6 +1300,10 @@ class TrainingService:
     
     def train_model(
         self,
+        mode: str = "full_auto",
+        explore_output: Optional[str] = None,
+        build_config: Optional[str] = None,
+        refit_n_estimators: Optional[int] = None,
         tune: bool = False,
         n_iter: int = 20,
         cv: bool = False,
@@ -1319,14 +1323,16 @@ class TrainingService:
         return_threshold: Optional[float] = None,
         feature_set: Optional[str] = None,
         model_output: Optional[str] = None,
-        progress_callback=None
+        progress_callback=None,
+        progress_json_callback=None,
     ) -> Tuple[bool, str, Dict]:
         """
         Train ML model.
-        
+
         Args:
-            progress_callback: Optional function(stage, total_stages, message) to call for progress updates
-        
+            progress_callback: Optional function(stage, total_stages, message) to call for progress updates.
+            progress_json_callback: Optional function(dict) called with .training_progress.json data when polled.
+
         Returns:
             Tuple of (success: bool, message: str)
         """
@@ -1344,7 +1350,16 @@ class TrainingService:
             return False, f"Training script not found: {train_script}", {}
         
         cmd = [sys.executable, str(train_script)]
-        
+
+        if mode and mode != "full_auto":
+            cmd.extend(["--mode", mode])
+        if mode == "explore" and explore_output:
+            cmd.extend(["--explore-output", explore_output])
+        if mode == "build" and build_config:
+            cmd.extend(["--build-config", build_config])
+        if mode == "build" and refit_n_estimators is not None:
+            cmd.extend(["--refit-n-estimators", str(refit_n_estimators)])
+
         if tune:
             cmd.append("--tune")
             cmd.extend(["--n-iter", str(n_iter)])
@@ -1390,14 +1405,16 @@ class TrainingService:
             ("Hyperparameter tuning", "hyperparameter tuning|Performing hyperparameter|RandomizedSearchCV|Fitting|n_iter"),
             ("Training XGBoost", "TRAINING XGBOOST|Retraining|Training with early stopping|XGBClassifier|best_iteration"),
             ("Evaluating model", "Evaluating|Evaluation|ROC AUC|Test set|Validation set|precision|recall"),
-            ("Saving model", "Saving|Model saved|TRAINING COMPLETE|metadata|joblib.dump"),
+            ("Saving model", "Saving|Model saved|TRAINING COMPLETE|EXPLORE MODE COMPLETE|Config saved|metadata|joblib.dump"),
             ("SHAP diagnostics", "SHAP DIAGNOSTICS|SHAP|shap values|shap_importances")
         ]
         
         # Adjust total stages based on options
         total_stages = 7  # Base stages
-        if tune:
+        if mode != "build" and tune:
             total_stages += 1  # Hyperparameter tuning is a separate stage
+        if mode == "explore":
+            total_stages -= 1  # Explore exits after saving config (no save model stage)
         if diagnostics:
             total_stages += 1  # SHAP diagnostics is a separate stage
         
@@ -1522,22 +1539,35 @@ class TrainingService:
             # Use a simple wait with periodic checks for progress updates
             start_time = time.time()
             last_progress_update = start_time
-            
+            last_progress_json_read = 0.0
+            progress_file = PROJECT_ROOT / ".training_progress.json"
+
             while process.poll() is None:
                 # Update progress periodically even if we're not detecting stages
                 # No timeout - training can take as long as needed (user can cancel manually)
-                
+                now = time.time()
+
+                # Poll progress JSON every 1.5s for dashboard ETA
+                if progress_json_callback and now - last_progress_json_read >= 1.5:
+                    last_progress_json_read = now
+                    try:
+                        if progress_file.exists():
+                            with open(progress_file, "r", encoding="utf-8") as f:
+                                data = json.load(f)
+                            progress_json_callback(data)
+                    except (OSError, json.JSONDecodeError):
+                        pass
+
                 # If we have output but haven't updated progress in a while, show we're working
-                if len(stdout_lines) > 0 and time.time() - last_progress_update > 10:
+                if len(stdout_lines) > 0 and now - last_progress_update > 10:
                     if progress_callback:
-                        # Show we're making progress even if stage detection isn't working
                         progress_callback(
-                            min(current_stage + 2, total_stages), 
-                            total_stages, 
+                            min(current_stage + 2, total_stages),
+                            total_stages,
                             f"Training in progress... ({len(stdout_lines)} lines processed)"
                         )
-                        last_progress_update = time.time()
-                
+                        last_progress_update = now
+
                 time.sleep(0.5)  # Check every 0.5 seconds
             
             # Process finished

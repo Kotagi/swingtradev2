@@ -277,12 +277,20 @@ class HelpDialog(QDialog):
         <h2>Model Training</h2>
         <p>Train XGBoost machine learning models with hyperparameter tuning. Labels are calculated on-the-fly based on your horizon and return threshold.</p>
         
+        <h3>Training Mode</h3>
+        <ul>
+            <li><b>Full Auto</b>: Single-step workflow. Optionally tune, then train the final model and save it.</li>
+            <li><b>Explore</b>: Tuning only. Runs hyperparameter search, saves the full config (best params, horizon, threshold, feature set, dates, etc.) to a JSON file, then exits. No final model is trained. Use this to find good hyperparameters without committing to a long final training run.</li>
+            <li><b>Build</b>: Load a config JSON from an Explore run, then train one model with early stopping and save it. Horizon and return threshold are read from the JSON (greyed out in the UI). You can set <b>Refit n_estimators</b> (default: 500) to train a deeper final model than the tuning run used.</li>
+        </ul>
+        
         <h3>Label Calculation</h3>
         <p><b>Labels are calculated during training</b> based on:</p>
         <ul>
             <li><b>Horizon (Trading Days)</b>: How many trading days to look ahead (1-365)</li>
             <li><b>Return Threshold (%)</b>: Minimum return to consider a win (0-100%)</li>
         </ul>
+        <p>In Build mode, horizon and threshold are read from the selected Explore config JSON and cannot be edited.</p>
         <p>This means you can train models with different parameters without rebuilding features!</p>
         
         <h3>Training Options</h3>

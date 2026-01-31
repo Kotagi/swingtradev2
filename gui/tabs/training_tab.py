@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QGroupBox, QSpinBox, QDoubleSpinBox, QComboBox, QCheckBox,
     QMessageBox, QProgressBar, QTextEdit, QLineEdit, QFileDialog,
-    QScrollArea
+    QScrollArea, QFrame
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from pathlib import Path
@@ -19,6 +19,7 @@ from gui.widgets import PresetManagerWidget
 from gui.utils.model_registry import ModelRegistry
 from gui.tabs.feature_selection_dialog import FeatureSelectionDialog
 import yaml
+import json
 
 
 class TrainingWorker(QThread):
@@ -27,22 +28,27 @@ class TrainingWorker(QThread):
     finished = pyqtSignal(bool, str, dict)  # success, message, metrics_dict
     progress = pyqtSignal(int, int)  # current_stage, total_stages (for progress bar)
     progress_message = pyqtSignal(str)  # progress message text
-    
+    progress_json_updated = pyqtSignal(dict)  # progress from .training_progress.json
+
     def __init__(self, service: TrainingService, **kwargs):
         super().__init__()
         self.service = service
         self.kwargs = kwargs
-    
+
+    def _on_progress_json(self, data: dict):
+        """Called by service when progress JSON is read; emit for main thread."""
+        self.progress_json_updated.emit(data)
+
     def training_progress_callback(self, current_stage: int, total_stages: int, message: str):
         """Callback for training progress updates."""
         self.progress.emit(current_stage, total_stages)
         self.progress_message.emit(message)
-    
+
     def run(self):
         """Run model training in background thread."""
         try:
-            # Add progress callback
             self.kwargs['progress_callback'] = self.training_progress_callback
+            self.kwargs['progress_json_callback'] = self._on_progress_json
             success, message, metrics_dict = self.service.train_model(**self.kwargs)
             self.finished.emit(success, message, metrics_dict)
         except Exception as e:
@@ -90,7 +96,54 @@ class TrainingTab(QWidget):
         # Training options group
         options_group = QGroupBox("Training Options")
         options_layout = QVBoxLayout()
-        
+
+        # Mode: Explore / Build / Full Auto
+        mode_row = QHBoxLayout()
+        mode_row.addWidget(QLabel("Mode:"))
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItem("Full Auto", "full_auto")
+        self.mode_combo.addItem("Explore", "explore")
+        self.mode_combo.addItem("Build", "build")
+        self.mode_combo.setToolTip("Full Auto: tune then train in one run. Explore: tuning only, save config JSON. Build: load config JSON, train one model.")
+        mode_row.addWidget(self.mode_combo)
+        mode_row.addStretch()
+        options_layout.addLayout(mode_row)
+
+        # Explore output path (visible when mode=Explore)
+        explore_row = QHBoxLayout()
+        self.explore_output_label = QLabel("Explore output (JSON):")
+        explore_row.addWidget(self.explore_output_label)
+        self.explore_output_edit = QLineEdit()
+        self.explore_output_edit.setPlaceholderText("Auto: models/explore_configs/explore_{horizon}d_{threshold}pct_{feature_set}_{timestamp}.json")
+        explore_row.addWidget(self.explore_output_edit)
+        self.browse_explore_btn = QPushButton("Browse...")
+        self.browse_explore_btn.clicked.connect(self.browse_explore_output)
+        explore_row.addWidget(self.browse_explore_btn)
+        options_layout.addLayout(explore_row)
+
+        # Build config path + Refit n_estimators (visible when mode=Build)
+        build_row = QHBoxLayout()
+        self.build_config_label = QLabel("Build config (JSON):")
+        build_row.addWidget(self.build_config_label)
+        self.build_config_edit = QLineEdit()
+        self.build_config_edit.setPlaceholderText("Select Explore config JSON")
+        self.build_config_edit.textChanged.connect(self.on_build_config_changed)
+        build_row.addWidget(self.build_config_edit)
+        self.browse_build_btn = QPushButton("Browse...")
+        self.browse_build_btn.clicked.connect(self.browse_build_config)
+        build_row.addWidget(self.browse_build_btn)
+        options_layout.addLayout(build_row)
+        refit_row = QHBoxLayout()
+        self.refit_label = QLabel("Refit n_estimators:")
+        refit_row.addWidget(self.refit_label)
+        self.refit_n_estimators_spin = QSpinBox()
+        self.refit_n_estimators_spin.setRange(100, 10000)
+        self.refit_n_estimators_spin.setValue(500)
+        self.refit_n_estimators_spin.setToolTip("Number of trees for the final model in Build mode (default: 500)")
+        refit_row.addWidget(self.refit_n_estimators_spin)
+        refit_row.addStretch()
+        options_layout.addLayout(refit_row)
+
         # Hyperparameter tuning
         tune_row = QHBoxLayout()
         self.tune_check = QCheckBox("Enable Hyperparameter Tuning")
@@ -236,6 +289,10 @@ class TrainingTab(QWidget):
         
         advanced_group.setLayout(advanced_layout)
         layout.addWidget(advanced_group)
+
+        # Connect mode dropdown and set initial visibility (after horizon_spin/return_threshold_spin exist)
+        self.mode_combo.currentIndexChanged.connect(self._update_mode_ui)
+        self._update_mode_ui()
         
         # Feature selection
         feature_row = QHBoxLayout()
@@ -287,10 +344,46 @@ class TrainingTab(QWidget):
         self.status_label.setStyleSheet("color: #b0b0b0; font-style: italic;")
         layout.addWidget(self.status_label)
         
-        # Log output
+        # Live dashboard (phase, progress bar, elapsed | remaining | mode)
+        self.dashboard_frame = QFrame()
+        self.dashboard_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        self.dashboard_frame.setStyleSheet("QFrame { background-color: #1e1e1e; border: 1px solid #333; border-radius: 4px; padding: 8px; }")
+        dashboard_layout = QVBoxLayout(self.dashboard_frame)
+        dashboard_layout.setSpacing(6)
+        self.dashboard_phase_label = QLabel("PHASE: —")
+        self.dashboard_phase_label.setStyleSheet("font-weight: bold; font-size: 13px; color: #00d4aa;")
+        dashboard_layout.addWidget(self.dashboard_phase_label)
+        self.dashboard_progress_bar = QProgressBar()
+        self.dashboard_progress_bar.setMinimumHeight(18)
+        self.dashboard_progress_bar.setRange(0, 100)
+        self.dashboard_progress_bar.setValue(0)
+        self.dashboard_progress_bar.setFormat("%p%")
+        dashboard_layout.addWidget(self.dashboard_progress_bar)
+        dashboard_row = QHBoxLayout()
+        self.dashboard_elapsed_label = QLabel("ELAPSED: 0:00:00")
+        self.dashboard_remaining_label = QLabel("REMAINING: —")
+        self.dashboard_mode_label = QLabel("MODE: —")
+        for lbl in (self.dashboard_elapsed_label, self.dashboard_remaining_label, self.dashboard_mode_label):
+            lbl.setStyleSheet("color: #b0b0b0; font-size: 12px;")
+        dashboard_row.addWidget(self.dashboard_elapsed_label)
+        dashboard_row.addWidget(self.dashboard_remaining_label)
+        dashboard_row.addWidget(self.dashboard_mode_label)
+        dashboard_row.addStretch()
+        dashboard_layout.addLayout(dashboard_row)
+        layout.addWidget(self.dashboard_frame)
+        self.dashboard_frame.setVisible(False)
+        
+        # Log output row: label + Clear Log button
+        log_row = QHBoxLayout()
         log_label = QLabel("Output Log")
         log_label.setStyleSheet("font-size: 16px; font-weight: bold; margin-top: 10px;")
-        layout.addWidget(log_label)
+        log_row.addWidget(log_label)
+        self.clear_log_btn = QPushButton("Clear Log")
+        self.clear_log_btn.setToolTip("Clear the log text but keep the dashboard visible.")
+        self.clear_log_btn.clicked.connect(self._clear_log)
+        log_row.addWidget(self.clear_log_btn)
+        log_row.addStretch()
+        layout.addLayout(log_row)
         
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
@@ -315,6 +408,10 @@ class TrainingTab(QWidget):
         self.return_threshold_spin.valueChanged.connect(self.update_auto_name)
         # Feature set changes - connect to update auto-name immediately
         self.feature_set_combo.currentTextChanged.connect(self.update_auto_name)
+        # When in Explore mode, keep explore output path in sync with horizon/threshold/feature set
+        self.horizon_spin.valueChanged.connect(self._update_explore_output_path)
+        self.return_threshold_spin.valueChanged.connect(self._update_explore_output_path)
+        self.feature_set_combo.currentTextChanged.connect(self._update_explore_output_path)
         self.tune_check.toggled.connect(self.update_auto_name)
         self.cv_check.toggled.connect(self.update_auto_name)
         self.cv_folds_spin.valueChanged.connect(self.update_auto_name)
@@ -366,6 +463,23 @@ class TrainingTab(QWidget):
         filename = f"model_{horizon}d_{threshold}pct_{feature_set_str}_{enabled_features}feat_{tuned}_{cv}_{timestamp}.pkl"
         
         return filename
+
+    def _get_explore_configs_dir(self) -> Path:
+        """Directory for Explore config JSONs: models/explore_configs/."""
+        d = Path(self.data_service.get_models_dir()) / "explore_configs"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def generate_explore_output_path(self) -> str:
+        """
+        Generate the default path for Explore config JSON (models/explore_configs/explore_{horizon}d_{threshold}pct_{feature_set}_{timestamp}.json).
+        """
+        horizon = self.horizon_spin.value()
+        threshold = self.return_threshold_spin.value()
+        feature_set = self.training_feature_set or "default"
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"explore_{horizon}d_{threshold}pct_{feature_set}_{timestamp}.json"
+        return str(self._get_explore_configs_dir() / filename)
     
     def update_auto_name(self):
         """
@@ -416,10 +530,100 @@ class TrainingTab(QWidget):
             self.model_output_edit.setText(file_path)
             self.model_output_manually_edited = True
             self._updating_auto_name = False
-    
+
+    def _update_mode_ui(self):
+        """Show/hide and enable/disable controls based on selected mode."""
+        mode = self.mode_combo.currentData() or "full_auto"
+        is_explore = mode == "explore"
+        is_build = mode == "build"
+        self.explore_output_label.setVisible(is_explore)
+        self.explore_output_edit.setVisible(is_explore)
+        self.browse_explore_btn.setVisible(is_explore)
+        self.build_config_label.setVisible(is_build)
+        self.build_config_edit.setVisible(is_build)
+        self.browse_build_btn.setVisible(is_build)
+        self.refit_label.setVisible(is_build)
+        self.refit_n_estimators_spin.setVisible(is_build)
+        self.horizon_spin.setEnabled(not is_build)
+        self.return_threshold_spin.setEnabled(not is_build)
+        # When switching to Explore, auto-fill the Explore output path so the user is never prompted
+        if is_explore:
+            self._update_explore_output_path()
+
+    def _update_explore_output_path(self):
+        """When in Explore mode, set the explore output path to the auto-generated path if empty or auto-style."""
+        if (self.mode_combo.currentData() or "full_auto") != "explore":
+            return
+        current = self.explore_output_edit.text().strip()
+        # Only auto-fill if empty or filename looks like our auto pattern (explore_*d_*pct_*.json)
+        filename = Path(current).name if current else ""
+        is_auto_style = bool(filename and filename.startswith("explore_") and filename.endswith(".json"))
+        if not current or is_auto_style:
+            path = self.generate_explore_output_path()
+            self.explore_output_edit.setText(path)
+
+    def browse_explore_output(self):
+        """Browse for where to save Explore config JSON (default: models/explore_configs/)."""
+        explore_configs_dir = self._get_explore_configs_dir()
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Explore Config As",
+            str(explore_configs_dir),
+            "JSON Files (*.json);;All Files (*)"
+        )
+        if file_path:
+            if not file_path.lower().endswith(".json"):
+                file_path = file_path + ".json"
+            self.explore_output_edit.setText(file_path)
+
+    def browse_build_config(self):
+        """Browse for Explore config JSON file (default: models/explore_configs/)."""
+        explore_configs_dir = self._get_explore_configs_dir()
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Explore Config (JSON)",
+            str(explore_configs_dir),
+            "JSON Files (*.json);;All Files (*)"
+        )
+        if file_path:
+            self.build_config_edit.setText(file_path)
+            self._load_build_config_into_ui(file_path)
+
+    def on_build_config_changed(self, text: str):
+        """When Build config path changes, try to load JSON and update greyed-out fields."""
+        path = (text or "").strip()
+        if path:
+            self._load_build_config_into_ui(path)
+
+    def _load_build_config_into_ui(self, path: str):
+        """Load Explore config JSON and update horizon/threshold (and feature set) in UI."""
+        p = Path(path)
+        if not p.exists():
+            return
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+        except Exception:
+            return
+        if "horizon" in cfg and cfg["horizon"] is not None:
+            self.horizon_spin.setValue(int(cfg["horizon"]))
+        if "return_threshold" in cfg and cfg["return_threshold"] is not None:
+            self.return_threshold_spin.setValue(round(float(cfg["return_threshold"]) * 100))
+        if "feature_set" in cfg and cfg["feature_set"]:
+            idx = self.feature_set_combo.findData(cfg["feature_set"])
+            if idx >= 0:
+                self.feature_set_combo.setCurrentIndex(idx)
+                self.training_feature_set = cfg["feature_set"]
+                self._check_features_built()
+                self._update_feature_button_text()
+
     def save_config(self):
         """Save current configuration as a dictionary."""
-        return {
+        out = {
+            "mode": self.mode_combo.currentData() or "full_auto",
+            "explore_output": self.explore_output_edit.text().strip(),
+            "build_config": self.build_config_edit.text().strip(),
+            "refit_n_estimators": self.refit_n_estimators_spin.value(),
             "tune": self.tune_check.isChecked(),
             "n_iter": self.n_iter_spin.value(),
             "cv": self.cv_check.isChecked(),
@@ -435,9 +639,20 @@ class TrainingTab(QWidget):
             "feature_set": self.training_feature_set or None,
             "model_output": self.model_output_edit.text().strip()
         }
+        return out
     
     def load_config(self, config: dict):
         """Load configuration from a dictionary."""
+        if "mode" in config:
+            idx = self.mode_combo.findData(config["mode"])
+            if idx >= 0:
+                self.mode_combo.setCurrentIndex(idx)
+        if "explore_output" in config:
+            self.explore_output_edit.setText(config.get("explore_output") or "")
+        if "build_config" in config:
+            self.build_config_edit.setText(config.get("build_config") or "")
+        if "refit_n_estimators" in config:
+            self.refit_n_estimators_spin.setValue(config["refit_n_estimators"])
         if "tune" in config:
             self.tune_check.setChecked(config["tune"])
         if "n_iter" in config:
@@ -479,6 +694,17 @@ class TrainingTab(QWidget):
         if self.worker and self.worker.isRunning():
             QMessageBox.warning(self, "Already Running", "Model training is already in progress.")
             return
+
+        mode = self.mode_combo.currentData() or "full_auto"
+        if mode == "explore":
+            path = self.explore_output_edit.text().strip()
+            if not path:
+                path = self.generate_explore_output_path()
+                self.explore_output_edit.setText(path)
+        elif mode == "build":
+            if not self.build_config_edit.text().strip():
+                QMessageBox.warning(self, "Build Mode", "Please select a Build config (JSON) file from an Explore run.")
+                return
         
         # Disable button
         self.train_btn.setEnabled(False)
@@ -488,17 +714,23 @@ class TrainingTab(QWidget):
         self.status_label.setStyleSheet("color: #ff9800;")
         self.log_text.append(f"[{datetime.now().strftime('%H:%M:%S')}] Starting model training...")
         
-        # Calculate total stages (base 7, +1 for tuning)
+        # Calculate total stages (base 7, +1 for tuning in full_auto/explore when tune enabled; build has no tuning)
         total_stages = 7
-        if self.tune_check.isChecked():
+        if mode != "build" and self.tune_check.isChecked():
             total_stages += 1
+        if mode == "explore":
+            total_stages -= 1  # No "save model" stage (exit after saving config)
         
         self.progress_bar.setRange(0, total_stages)
         self.progress_bar.setValue(0)
         
         # Get parameters
         kwargs = {
-            "tune": self.tune_check.isChecked(),
+            "mode": mode,
+            "explore_output": self.explore_output_edit.text().strip() if mode == "explore" else None,
+            "build_config": self.build_config_edit.text().strip() if mode == "build" else None,
+            "refit_n_estimators": self.refit_n_estimators_spin.value() if mode == "build" else None,
+            "tune": True if mode == "explore" else (self.tune_check.isChecked() if mode != "build" else False),
             "n_iter": self.n_iter_spin.value() if self.tune_check.isChecked() else 20,
             "cv": self.cv_check.isChecked(),
             "cv_folds": self.cv_folds_spin.value() if self.cv_check.isChecked() else None,
@@ -571,14 +803,45 @@ class TrainingTab(QWidget):
         self.worker.finished.connect(self.on_training_finished)
         self.worker.progress.connect(self.on_training_progress)
         self.worker.progress_message.connect(self.on_progress_message)
+        self.worker.progress_json_updated.connect(self.on_progress_json_updated)
         self.worker.start()
+        self.dashboard_frame.setVisible(True)
     
     def on_training_progress(self, current_stage: int, total_stages: int):
         """Handle training progress update."""
         if total_stages > 0:
             self.progress_bar.setRange(0, total_stages)
             self.progress_bar.setValue(current_stage)
-    
+
+    def _format_seconds(self, seconds: float) -> str:
+        """Format seconds as H:MM:SS or M:SS."""
+        if seconds is None or seconds < 0:
+            return "—"
+        s = int(round(seconds))
+        m, s = divmod(s, 60)
+        h, m = divmod(m, 60)
+        if h > 0:
+            return f"{h}:{m:02d}:{s:02d}"
+        return f"{m}:{s:02d}"
+
+    def on_progress_json_updated(self, data: dict):
+        """Update dashboard from backend progress JSON."""
+        phase = (data.get("phase") or "—").upper().replace("_", " ")
+        self.dashboard_phase_label.setText(f"PHASE: {phase}")
+        pct = data.get("percent_complete")
+        if pct is not None:
+            self.dashboard_progress_bar.setValue(int(min(100, max(0, pct))))
+        elapsed = data.get("elapsed_seconds")
+        self.dashboard_elapsed_label.setText(f"ELAPSED: {self._format_seconds(elapsed)}")
+        remaining = data.get("estimated_seconds_left")
+        self.dashboard_remaining_label.setText(f"REMAINING: ~{self._format_seconds(remaining)}" if remaining is not None else "REMAINING: —")
+        mode = (data.get("mode") or "—").upper().replace("_", " ")
+        self.dashboard_mode_label.setText(f"MODE: {mode}")
+
+    def _clear_log(self):
+        """Clear the log text; keep the dashboard visible."""
+        self.log_text.clear()
+
     def on_progress_message(self, message: str):
         """Handle progress message update."""
         self.status_label.setText(message)
@@ -677,8 +940,13 @@ class TrainingTab(QWidget):
     
     def on_training_finished(self, success: bool, message: str, metrics_dict: dict = None):
         """Handle completion of model training."""
-        # Re-enable button
         self.train_btn.setEnabled(True)
+        self.dashboard_frame.setVisible(False)
+        self.dashboard_phase_label.setText("PHASE: —")
+        self.dashboard_progress_bar.setValue(0)
+        self.dashboard_elapsed_label.setText("ELAPSED: 0:00:00")
+        self.dashboard_remaining_label.setText("REMAINING: —")
+        self.dashboard_mode_label.setText("MODE: —")
         
         # Set progress to 100% if successful
         if success and self.progress_bar.maximum() > 0:

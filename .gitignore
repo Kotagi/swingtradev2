@@ -35,6 +35,10 @@ python
 .vscode/
 .idea/
 
+# Training progress (GUI reads this during training)
+.training_progress.json
+.training_progress.json.tmp
+
 # OS files
 .DS_Store
 Thumbs.db
