@@ -1281,11 +1281,13 @@ def main() -> None:
             'best_score': float(model.best_score) if hasattr(model, 'best_score') else None
         }
     
-    # Save model with metadata
+    # Save model with metadata. Save only the enabled/trained feature list so backtest
+    # and prediction use the same columns as the labeled parquet (no missing-feature fill).
     # Note: XGBoost doesn't require feature scaling, so features are used as-is
     model_data = {
         "model": model,
         "features": feats,
+        "features_to_keep": feats,  # Same as features: prediction subset for backtest parity
         "metadata": training_metadata
     }
     joblib.dump(model_data, MODEL_OUT)
@@ -1298,6 +1300,7 @@ def main() -> None:
     elapsed = time.time() - start_time
     print(f"\n=== TRAINING COMPLETE ===")
     print(f"Model saved to: {MODEL_OUT}")
+    print(f"Saved {len(feats)} features (enabled subset for backtest parity)")
     print(f"Metadata saved to: {metadata_file}")
     print(f"Total training time: {elapsed:.2f} seconds ({elapsed/60:.2f} minutes)")
 

@@ -1220,6 +1220,43 @@ class BacktestTab(QWidget):
             pass
         # Fall back to stored value
         return getattr(self, 'current_feature_set', 'v3_New_Dawn')
+
+    def _get_feature_set_for_backtest(self) -> str:
+        """Get the feature set to use for the backtest. When strategy is 'model', use the
+        feature set from the selected model so the backtest uses the correct labeled data
+        (avoids 0 trades from model/data mismatch)."""
+        strategy = self.strategy_combo.currentText()
+        model_path = (self.model_edit.text() or "").strip()
+        if strategy == "model" and model_path:
+            try:
+                import joblib
+                path = Path(model_path)
+                if not path.is_absolute():
+                    path = PROJECT_ROOT / path
+                path = path.resolve()
+                if path.exists():
+                    model_data = joblib.load(path)
+                    if isinstance(model_data, dict) and model_data.get("metadata"):
+                        fs = model_data["metadata"].get("feature_set")
+                        if fs:
+                            return fs
+                    # Fallback: parse filename (e.g. model_20d_15pct_v3_New_Dawn_245feat_... -> v3_New_Dawn)
+                    stem = path.stem
+                    if "_" in stem:
+                        parts = stem.split("_")
+                        for i, part in enumerate(parts):
+                            if part.startswith("v") and len(part) > 1 and part[1:].isdigit():
+                                # Collect parts until we hit something like "245feat" or a timestamp
+                                segs = [part]
+                                for j in range(i + 1, len(parts)):
+                                    p = parts[j]
+                                    if "feat" in p or (len(p) >= 6 and p.isdigit()):
+                                        break
+                                    segs.append(p)
+                                return "_".join(segs)
+            except Exception:
+                pass
+        return self.get_current_feature_set()
     
     def on_feature_set_changed(self, feature_set: str):
         """Handle feature set change from main window."""
@@ -1286,7 +1323,7 @@ class BacktestTab(QWidget):
         self.status_label.setStyleSheet("color: #ff9800;")
         self.log_text.append(f"[{datetime.now().strftime('%H:%M:%S')}] Starting backtest...")
         
-        # Get parameters
+        # Get parameters (use model's feature set when strategy is 'model' so data dir matches)
         kwargs = {
             "horizon": self.horizon_spin.value(),
             "return_threshold": self.return_threshold_spin.value() / 100.0,  # Convert % to decimal
@@ -1294,7 +1331,7 @@ class BacktestTab(QWidget):
             "strategy": self.strategy_combo.currentText(),
             "model_path": self.model_edit.text(),
             "model_threshold": self.model_threshold_spin.value() / 100.0,  # Convert % to decimal
-            "feature_set": self.get_current_feature_set()  # Pass selected feature set
+            "feature_set": self._get_feature_set_for_backtest()
         }
         
         # Stop-loss configuration
@@ -1328,7 +1365,17 @@ class BacktestTab(QWidget):
         # Entry filters
         if self.entry_filters:
             kwargs["entry_filters"] = self.entry_filters
-        
+
+        # Log feature set and data dir so user can verify correct data is used
+        try:
+            from feature_set_manager import get_feature_set_data_path
+            fs = kwargs.get("feature_set", "")
+            data_dir = get_feature_set_data_path(fs) if fs else PROJECT_ROOT / "data" / "features_labeled"
+            parquet_count = len(list(data_dir.glob("*.parquet"))) if data_dir.exists() else 0
+            self.log_text.append(f"[{datetime.now().strftime('%H:%M:%S')}] Backtest feature set: {fs}, data dir: {data_dir}, parquet files: {parquet_count}")
+        except Exception:
+            pass
+
         # Create worker
         self.worker = BacktestWorker(self.service, **kwargs)
         self.worker.finished.connect(self.on_backtest_finished)

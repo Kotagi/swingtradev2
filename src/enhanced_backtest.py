@@ -68,6 +68,10 @@ DEFAULT_MODEL = MODEL_DIR / "xgb_classifier_selected_features.pkl"
 def load_model(model_path: Path):
     """Load trained model and features from pickle file.
     
+    Uses the feature list the model was actually trained on: prefers "features_to_keep"
+    (trained subset) when non-empty, else "features". The feature set parquet may contain
+    more columns than the model uses; we must pass only the trained feature list for prediction.
+    
     Note: scaler and features_to_scale are kept for backward compatibility but are not used
     (XGBoost doesn't require feature scaling).
     """
@@ -76,12 +80,16 @@ def load_model(model_path: Path):
     
     data = joblib.load(model_path)
     if isinstance(data, dict):
+        # Use trained feature list: subset (features_to_keep) if present, else full "features"
+        features_raw = data.get("features", [])
+        features_to_keep = data.get("features_to_keep", [])
+        features = list(features_to_keep) if features_to_keep else list(features_raw)
         return (
             data.get("model"),
-            data.get("features", []),
+            features,
             data.get("scaler"),  # Always None - not used (XGBoost doesn't require scaling)
             data.get("features_to_scale", []),  # Always empty - not used
-            data.get("features_to_keep", [])
+            features_to_keep or features_raw
         )
     # Legacy format (no scaler)
     return data, [], None, [], []
@@ -395,18 +403,22 @@ def generate_model_signals(
     missing_features = [f for f in features if f not in df.columns]
     
     # Log missing features for debugging
+    missing_pct = (len(missing_features) / len(features)) * 100 if features else 0
     if missing_features:
-        missing_pct = (len(missing_features) / len(features)) * 100
         if missing_pct > 5:  # Log if more than 5% of features are missing
             print(f"Warning: {len(missing_features)} features missing from data ({missing_pct:.1f}%): {', '.join(missing_features[:10])}{'...' if len(missing_features) > 10 else ''}")
         else:
             print(f"Note: {len(missing_features)} features missing from data, filling with 0.0")
     
-    # Check if we have enough features (80% threshold)
-    if len(available_features) < len(features) * 0.8:
-        # Return all False signals if too many features are missing
-        print(f"Error: Too many features missing ({len(missing_features)}/{len(features)} = {missing_pct:.1f}%). Need at least 80%. Returning no signals.")
+    # Require at least 50% of model features present (parquet may have only "enabled" subset)
+    # Missing features are filled with 0.0; very low overlap may indicate wrong feature set
+    min_overlap = 0.5
+    if len(available_features) < len(features) * min_overlap:
+        print(f"Error: Too many features missing ({len(missing_features)}/{len(features)} = {missing_pct:.1f}%). Need at least {min_overlap*100:.0f}% present. Returning no signals.")
         return pd.Series(False, index=df.index)
+    
+    if missing_features:
+        print(f"Using {len(available_features)}/{len(features)} features; filling {len(missing_features)} missing with 0.0")
     
     X = df[available_features].copy()
     
@@ -896,12 +908,13 @@ def main():
         if model is None:
             print("ERROR: Model not found. Cannot run model strategy.")
             return
-        print(f"Model loaded. Using {len(features)} features.")
+        print(f"Model loaded. Using {len(features)} features (trained subset for prediction).")
         # Note: XGBoost doesn't require feature scaling, so scaler is not used
     
     # Load tickers
     tickers_df = pd.read_csv(args.tickers_file, header=None)
     tickers = tickers_df.iloc[:, 0].astype(str).tolist()
+    print(f"Data directory: {args.data_dir}")
     print(f"Loaded {len(tickers)} tickers")
     
     # Create stop-loss configuration

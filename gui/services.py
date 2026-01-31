@@ -1981,6 +1981,12 @@ class BacktestService:
                 
                 # Parse output for summary
                 message = self._parse_backtest_summary(stdout, stderr) + message_suffix
+                # If 0 trades, include diagnostic snippet so user can see data dir / ticker count / feature errors
+                if "0 trades" in message or "0.0% win rate" in message:
+                    lines = (stdout + "\n" + stderr).strip().split("\n")
+                    diagnostic = [l for l in lines if any(x in l for x in ("Data directory", "Loaded", "Error", "Warning", "features missing", "tickers"))]
+                    if diagnostic:
+                        message += "\n" + "\n".join(diagnostic[:8])
                 return True, output_path, message
             else:
                 error_msg = stderr if stderr else stdout if stdout else f"Process exited with code {process.returncode}"
